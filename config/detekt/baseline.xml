@@ -1,0 +1,404 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:ExperimentApiIntegrationTests.kt:ExperimentApiIntegrationTests$"\"runStatus\":\"COMPLETED\"" in response.body() || "\"runStatus\":\"FAILED\"" in response.body() || "\"runStatus\":\"VALIDATION_FAILED\"" in response.body() || "\"runStatus\":\"RECOVERY_REQUIRED\"" in response.body()</ID>
+    <ID>ComplexCondition:MultiReliabilityAgent.kt:MultiReliabilityAgent$!focusAreas.isArray || focusAreas.size() !in 1..8 || focusAreas.any { it.asString().trim().isEmpty() || it.asString().length &gt; 500 }</ID>
+    <ID>ComplexCondition:MultiReliabilityAgent.kt:MultiReliabilityAgent$!observations.isArray || observations.size() &gt; 10 || observations.any { it.asString().trim().isEmpty() || it.asString().length &gt; 2_000 }</ID>
+    <ID>CyclomaticComplexMethod:CampaignExecutionService.kt:CampaignExecutionService$private fun execute</ID>
+    <ID>CyclomaticComplexMethod:MultiReliabilityAgent.kt:MultiReliabilityAgent$private fun validateIntermediateOutput</ID>
+    <ID>CyclomaticComplexMethod:StockConcurrencyExperimentService.kt:StockConcurrencyExperimentService$private fun execute</ID>
+    <ID>CyclomaticComplexMethod:TargetTestBatchService.kt:TargetTestBatchService$private fun execute</ID>
+    <ID>ForEachOnRange:JdbcCampaignRepository.kt:JdbcCampaignRepository$1..repeatCount</ID>
+    <ID>LongMethod:CampaignExecutionService.kt:CampaignExecutionService$private fun monitor: MonitorResult</ID>
+    <ID>LongMethod:FollowUpSuggestionService.kt:FollowUpSuggestionService$fun start: FollowUpSuggestionRunDetails</ID>
+    <ID>LongMethod:HttpScenarioV1TargetAdapter.kt:HttpScenarioV1TargetAdapter$override fun executeStockConcurrency: StockConcurrencyExecutionResult</ID>
+    <ID>LongMethod:JdbcAnalysisRunRepository.kt:JdbcAnalysisRunRepository$@Transactional fun complete</ID>
+    <ID>LongMethod:JdbcExperimentRunRepository.kt:JdbcExperimentRunRepository$@Transactional fun create</ID>
+    <ID>LongMethod:MultiReliabilityAgent.kt:MultiReliabilityAgent$private fun executeStep: StepResult</ID>
+    <ID>LongMethod:StockConcurrencyExperimentService.kt:StockConcurrencyExperimentService$private fun collectAndComplete</ID>
+    <ID>LongMethod:StockConcurrencyExperimentService.kt:StockConcurrencyExperimentService$private fun execute</ID>
+    <ID>LongMethod:TargetTestBatchService.kt:TargetTestBatchService$private fun execute</ID>
+    <ID>LoopWithTooManyJumpStatements:CampaignExecutionService.kt:CampaignExecutionService$while</ID>
+    <ID>MagicNumber:AnalysisComparisonService.kt:AnalysisComparisonService$4</ID>
+    <ID>MagicNumber:AnalysisEvaluationService.kt:AnalysisEvaluationService$2_000</ID>
+    <ID>MagicNumber:AnalysisExecutionConfiguration.kt:AnalysisExecutionConfiguration$10</ID>
+    <ID>MagicNumber:AnalysisExecutionConfiguration.kt:AnalysisExecutionConfiguration$20</ID>
+    <ID>MagicNumber:CampaignExecutionConfiguration.kt:CampaignExecutionConfiguration$100</ID>
+    <ID>MagicNumber:CampaignExecutionConfiguration.kt:CampaignExecutionConfiguration$20</ID>
+    <ID>MagicNumber:ExperimentExecutionConfiguration.kt:ExperimentExecutionConfiguration$20</ID>
+    <ID>MagicNumber:FollowUpSuggestionService.kt:FollowUpSuggestionService$100</ID>
+    <ID>MagicNumber:FollowUpSuggestionService.kt:FollowUpSuggestionService$1_024</ID>
+    <ID>MagicNumber:FollowUpSuggestionService.kt:FollowUpSuggestionService$1_048_576</ID>
+    <ID>MagicNumber:FollowUpSuggestionService.kt:FollowUpSuggestionService$20</ID>
+    <ID>MagicNumber:FollowUpSuggestionService.kt:FollowUpSuggestionService$200</ID>
+    <ID>MagicNumber:FollowUpSuggestionService.kt:FollowUpSuggestionService$2_000</ID>
+    <ID>MagicNumber:FollowUpSuggestionService.kt:FollowUpSuggestionService$4_096</ID>
+    <ID>MagicNumber:HttpScenarioV1TargetAdapter.kt:HttpScenarioV1TargetAdapter$200</ID>
+    <ID>MagicNumber:HttpScenarioV1TargetAdapter.kt:HttpScenarioV1TargetAdapter$299</ID>
+    <ID>MagicNumber:JdbcAnalysisRunRepository.kt:JdbcAnalysisRunRepository$100</ID>
+    <ID>MagicNumber:JdbcAnalysisRunRepository.kt:JdbcAnalysisRunRepository$1000</ID>
+    <ID>MagicNumber:JdbcCampaignRepository.kt:JdbcCampaignRepository$1000</ID>
+    <ID>MagicNumber:JdbcExperimentRunRepository.kt:JdbcExperimentRunRepository$1000</ID>
+    <ID>MagicNumber:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$2_000</ID>
+    <ID>MagicNumber:JdbcMultiAgentAnalysisRepository.kt:JdbcMultiAgentAnalysisRepository$100</ID>
+    <ID>MagicNumber:JdbcMultiAgentAnalysisRepository.kt:JdbcMultiAgentAnalysisRepository$1000</ID>
+    <ID>MagicNumber:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$100</ID>
+    <ID>MagicNumber:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$2_000</ID>
+    <ID>MagicNumber:JdbcTargetTestBatchRepository.kt:JdbcTargetTestBatchRepository$1000</ID>
+    <ID>MagicNumber:MultiReliabilityAgent.kt:MultiReliabilityAgent$10</ID>
+    <ID>MagicNumber:MultiReliabilityAgent.kt:MultiReliabilityAgent$100</ID>
+    <ID>MagicNumber:MultiReliabilityAgent.kt:MultiReliabilityAgent$1_000</ID>
+    <ID>MagicNumber:MultiReliabilityAgent.kt:MultiReliabilityAgent$1_024</ID>
+    <ID>MagicNumber:MultiReliabilityAgent.kt:MultiReliabilityAgent$1_048_576</ID>
+    <ID>MagicNumber:MultiReliabilityAgent.kt:MultiReliabilityAgent$2_000</ID>
+    <ID>MagicNumber:MultiReliabilityAgent.kt:MultiReliabilityAgent$500</ID>
+    <ID>MagicNumber:MultiReliabilityAgent.kt:MultiReliabilityAgent$8</ID>
+    <ID>MagicNumber:NetworkCidr.kt:NetworkCidr.Companion$8</ID>
+    <ID>MagicNumber:PinnedTargetHttpTransport.kt:PinnedTargetHttpTransport$443</ID>
+    <ID>MagicNumber:PinnedTargetHttpTransport.kt:PinnedTargetHttpTransport$80</ID>
+    <ID>MagicNumber:RootCauseReportService.kt:RootCauseReportService$100</ID>
+    <ID>MagicNumber:RootCauseReportService.kt:RootCauseReportService$1_024</ID>
+    <ID>MagicNumber:RootCauseReportService.kt:RootCauseReportService$1_048_576</ID>
+    <ID>MagicNumber:RootCauseReportService.kt:RootCauseReportService$20</ID>
+    <ID>MagicNumber:RootCauseReportService.kt:RootCauseReportService$2_000</ID>
+    <ID>MagicNumber:RootCauseReportService.kt:RootCauseReportService$30</ID>
+    <ID>MagicNumber:RootCauseReportService.kt:RootCauseReportService$300</ID>
+    <ID>MagicNumber:RootCauseReportService.kt:RootCauseReportService$4_000</ID>
+    <ID>MagicNumber:RootCauseReportService.kt:RootCauseReportService$4_096</ID>
+    <ID>MagicNumber:SingleReliabilityAgent.kt:SingleReliabilityAgent$100</ID>
+    <ID>MagicNumber:SingleReliabilityAgent.kt:SingleReliabilityAgent$1_024</ID>
+    <ID>MagicNumber:SingleReliabilityAgent.kt:SingleReliabilityAgent$1_048_576</ID>
+    <ID>MagicNumber:SingleReliabilityAgent.kt:SingleReliabilityAgent$200</ID>
+    <ID>MagicNumber:SingleReliabilityAgent.kt:SingleReliabilityAgent$40</ID>
+    <ID>MagicNumber:TargetExperimentProfileRegistry.kt:StockConcurrencyScenarioProfile$15</ID>
+    <ID>MagicNumber:TargetRegistrationProperties.kt:TargetHttpProperties$5</ID>
+    <ID>MagicNumber:TargetSpecRegistry.kt:ReadOnlyHttpOperationSpec$200</ID>
+    <ID>MagicNumber:TargetSpecRegistry.kt:TargetSpecRegistration$5</ID>
+    <ID>MagicNumber:TargetSpecRegistry.kt:TargetSpecRegistry$100</ID>
+    <ID>MagicNumber:TargetSpecRegistry.kt:TargetSpecRegistry$1_000</ID>
+    <ID>MagicNumber:TargetSpecRegistry.kt:TargetSpecRegistry$200</ID>
+    <ID>MagicNumber:TargetSpecRegistry.kt:TargetSpecRegistry$599</ID>
+    <ID>MagicNumber:TargetTestBatchExecutionConfiguration.kt:TargetTestBatchExecutionConfiguration$20</ID>
+    <ID>MaxLineLength:AnalysisComparisonService.kt:AnalysisComparisonNotFoundException : RuntimeException</ID>
+    <ID>MaxLineLength:AnalysisComparisonService.kt:AnalysisComparisonService$?:</ID>
+    <ID>MaxLineLength:AnalysisComparisonService.kt:AnalysisComparisonService$findExisting = { evaluationRepository.findComparisonByExperimentAndIdempotencyKey(experimentRunId, idempotencyKey) }</ID>
+    <ID>MaxLineLength:AnalysisComparisonService.kt:AnalysisComparisonService$findExisting = { evaluationRepository.findComparisonByTargetTestBatchAndIdempotencyKey(targetTestBatchId, idempotencyKey) }</ID>
+    <ID>MaxLineLength:AnalysisComparisonService.kt:AnalysisComparisonService$private</ID>
+    <ID>MaxLineLength:AnalysisController.kt:AnalysisController$.</ID>
+    <ID>MaxLineLength:AnalysisController.kt:AnalysisController$@ExceptionHandler(AnalysisNotFoundException::class, ExperimentNotFoundException::class, TargetTestBatchNotFoundException::class)</ID>
+    <ID>MaxLineLength:AnalysisController.kt:AnalysisRecommendationResponse.Companion$fun</ID>
+    <ID>MaxLineLength:AnalysisDatasetService.kt:AnalysisDatasetNotFoundException : RuntimeException</ID>
+    <ID>MaxLineLength:AnalysisDatasetService.kt:AnalysisDatasetService$if</ID>
+    <ID>MaxLineLength:AnalysisDatasetService.kt:AnalysisDatasetService$throw AnalysisInputException("Evidence bundle size $byteSize exceeds the configured limit ${properties.maxEvidenceBytes}")</ID>
+    <ID>MaxLineLength:AnalysisDatasetService.kt:AnalysisDatasetService$throw AnalysisInputException("Evidence count ${evidence.size} exceeds the configured limit ${properties.maxEvidenceCount}")</ID>
+    <ID>MaxLineLength:AnalysisDatasetService.kt:AnalysisDatasetService$throw AnalysisInputException("Evidence count ${items.size} exceeds the configured limit ${properties.maxEvidenceCount}")</ID>
+    <ID>MaxLineLength:AnalysisEvaluationController.kt:AnalysisComparisonConfigurationResponse.Companion$fun</ID>
+    <ID>MaxLineLength:AnalysisEvaluationController.kt:AnalysisComparisonResponse.Companion$fun</ID>
+    <ID>MaxLineLength:AnalysisEvaluationController.kt:AnalysisComparisonRunResponse.Companion$fun</ID>
+    <ID>MaxLineLength:AnalysisEvaluationController.kt:AnalysisEvaluationController$.</ID>
+    <ID>MaxLineLength:AnalysisEvaluationController.kt:AnalysisEvaluationController$if</ID>
+    <ID>MaxLineLength:AnalysisEvaluationController.kt:AnalysisEvaluationController$throw AnalysisRequestException("COMPARISON_NOT_EVALUABLE", "Every analysis run in the comparison must be COMPLETED before evaluation")</ID>
+    <ID>MaxLineLength:AnalysisEvaluationController.kt:AnalysisEvaluationController$val comparison = comparisonService.startForTargetTestBatch(targetTestBatchId, idempotencyKey, request.toRequestedConfigurations())</ID>
+    <ID>MaxLineLength:AnalysisEvaluationService.kt:AnalysisEvaluationService$require(VERSION_PATTERN.matches(version)) { "Ground truth version must contain 1 to 100 letters, numbers, '.', '_' or '-'" }</ID>
+    <ID>MaxLineLength:AnalysisEvaluationService.kt:AnalysisEvaluationService$require(requiredEvidenceIds.all { it in dataset.evidenceIds }) { "Ground truth references evidence outside the immutable dataset" }</ID>
+    <ID>MaxLineLength:AnalysisEvaluationService.kt:AnalysisEvaluationService$require(requiredEvidenceIds.distinct().size == requiredEvidenceIds.size) { "requiredEvidenceIds must not contain duplicates" }</ID>
+    <ID>MaxLineLength:AnalysisEvaluationService.kt:AnalysisEvaluationService$throw AnalysisRequestException("ANALYSIS_NOT_EVALUABLE", "Only COMPLETED analyses with a verdict may be evaluated")</ID>
+    <ID>MaxLineLength:AnalysisEvaluationService.kt:AnalysisEvaluationService$throw AnalysisRequestException("GROUND_TRUTH_DATASET_MISMATCH", "Analysis and ground truth must use the same immutable dataset")</ID>
+    <ID>MaxLineLength:AnalysisEvaluationService.kt:AnalysisEvaluationService$throw AnalysisRequestException("GROUND_TRUTH_VERSION_EXISTS", "Ground truth version '$version' already exists for this dataset")</ID>
+    <ID>MaxLineLength:AnalysisEvaluationService.kt:AnalysisEvaluationService$val citationRecall = if (requiredEvidenceCount == 0) 1.0 else citedRequiredEvidenceCount.toDouble() / requiredEvidenceCount</ID>
+    <ID>MaxLineLength:AnalysisEvaluationService.kt:AnalysisEvaluationService$val citedEvidenceIds = (details.findings.flatMap { it.evidenceIds } + details.recommendations.flatMap { it.evidenceIds }).toSet()</ID>
+    <ID>MaxLineLength:AnalysisEvaluationService.kt:AnalysisGroundTruthNotFoundException : RuntimeException</ID>
+    <ID>MaxLineLength:AnalysisOutputValidator.kt:AnalysisOutputValidator$if (index &gt;= MAX_RECOMMENDATIONS) throw AnalysisOutputException("Model returned more than $MAX_RECOMMENDATIONS recommendations")</ID>
+    <ID>MaxLineLength:AnalysisOutputValidator.kt:AnalysisOutputValidator$if (unexpected.isNotEmpty()) throw AnalysisOutputException("Model response has unsupported field '${unexpected.sorted().first()}'")</ID>
+    <ID>MaxLineLength:CampaignExecutionService.kt:CampaignExecutionService$?:</ID>
+    <ID>MaxLineLength:CampaignExecutionService.kt:CampaignExecutionService$campaignRepository.completeRun(step.campaignRunId, CampaignRunStatus.RECOVERY_REQUIRED, clock.instant())</ID>
+    <ID>MaxLineLength:CampaignExecutionService.kt:CampaignExecutionService$markCurrentStepFailed(campaignRunId, "CAMPAIGN_STEP_INVALID", exception.message ?: "Campaign step is invalid")</ID>
+    <ID>MaxLineLength:ExperimentApiIntegrationTests.kt:ExperimentApiIntegrationTests$"""{"configurations":[{"architecture":"SINGLE","modelKey":"GPT_OSS"},{"architecture":"SINGLE","modelKey":"QWEN"}]}"""</ID>
+    <ID>MaxLineLength:ExperimentApiIntegrationTests.kt:ExperimentApiIntegrationTests$"{\"version\":\"$version\",\"expectedVerdict\":\"PASSED\",\"requiredEvidenceIds\":[\"$evidenceId\"]}"</ID>
+    <ID>MaxLineLength:ExperimentApiIntegrationTests.kt:ExperimentApiIntegrationTests$HttpRequest.newBuilder(URI("http://127.0.0.1:$serverPort/api/analysis-comparisons/$comparisonId/evaluations/$groundTruthId"))</ID>
+    <ID>MaxLineLength:ExperimentApiIntegrationTests.kt:ExperimentApiIntegrationTests$HttpRequest.newBuilder(URI("http://127.0.0.1:$serverPort/api/experiments/$experimentRunId/analysis-comparisons"))</ID>
+    <ID>MaxLineLength:ExperimentApiIntegrationTests.kt:FakeReliabilityAnalysisModel$"""{"hypotheses":[{"title":"No fault is evidenced in the completed read-only check","confidence":"MEDIUM","rationale":"The completed analysis and its cited evidence report the registered health check as passed.","falsifiability":"A repeatable failed health result or contradictory evidence would disprove this hypothesis.","evidenceIds":["$evidenceId"]}],"improvementProposals":[{"hypothesisOrdinal":1,"title":"Retain a bounded health regression check","proposedChange":"Keep the registered health check in the target's regression suite.","expectedEffect":"Future availability regressions can be detected with the same bounded evidence contract.","risk":"The recommendation may not cover faults outside the registered health operation.","evidenceIds":["$evidenceId"]}]}"""</ID>
+    <ID>MaxLineLength:ExperimentApiIntegrationTests.kt:FakeReliabilityAnalysisModel$"""{"suggestions":[{"candidateId":"catalog-list","rationale":"The completed health result is grounded but does not cover the registered catalog endpoint.","evidenceIds":["$evidenceId"]}]}"""</ID>
+    <ID>MaxLineLength:ExperimentApiIntegrationTests.kt:FakeReliabilityAnalysisModel$"ANALYST" -&gt; """{"observations":["The deterministic evidence reports no oversell."],"proposedVerdict":"PASSED","evidenceIds":["$evidenceId"]}"""</ID>
+    <ID>MaxLineLength:ExperimentApiIntegrationTests.kt:FakeReliabilityAnalysisModel$"SUPERVISOR" -&gt; """{"objective":"Review the supplied deterministic reliability evidence.","evidenceIds":["$evidenceId"]}"""</ID>
+    <ID>MaxLineLength:ExperimentController.kt:ExperimentController$.</ID>
+    <ID>MaxLineLength:FailureInjectionPlanController.kt:CreateFailureInjectionPlanRequest</ID>
+    <ID>MaxLineLength:FailureInjectionPlanController.kt:FailureInjectionCandidateResponse</ID>
+    <ID>MaxLineLength:FailureInjectionPlanController.kt:FailureInjectionPlanController$@ExceptionHandler(FailureInjectionPlanNotFoundException::class, TargetSystemNotFoundException::class, TargetSpecNotFoundException::class)</ID>
+    <ID>MaxLineLength:FailureInjectionPlanController.kt:FailureInjectionPlanController$@GetMapping("/failure-injection-plans/{planId}") fun find</ID>
+    <ID>MaxLineLength:FailureInjectionPlanController.kt:FailureInjectionPlanController$fun</ID>
+    <ID>MaxLineLength:FailureInjectionPlanController.kt:FailureInjectionPlanController$return ResponseEntity.status(HttpStatus.ACCEPTED).body(FailureInjectionPlanResponse.from(service.approve(planId)))</ID>
+    <ID>MaxLineLength:FailureInjectionPlanController.kt:FailureInjectionPlanController$return ResponseEntity.status(HttpStatus.ACCEPTED).body(FailureInjectionPlanResponse.from(service.create(CreateFailureInjectionPlan(request.targetSystemId, request.candidateIds), key)))</ID>
+    <ID>MaxLineLength:FailureInjectionPlanController.kt:FailureInjectionPlanItemResponse</ID>
+    <ID>MaxLineLength:FailureInjectionPlanController.kt:FailureInjectionPlanResponse</ID>
+    <ID>MaxLineLength:FailureInjectionPlanService.kt:FailureInjectionPlanDetails</ID>
+    <ID>MaxLineLength:FailureInjectionPlanService.kt:FailureInjectionPlanService$?:</ID>
+    <ID>MaxLineLength:FailureInjectionPlanService.kt:FailureInjectionPlanService$Companion</ID>
+    <ID>MaxLineLength:FailureInjectionPlanService.kt:FailureInjectionPlanService$if (existing.requestHash != requestHash) throw FailureInjectionPlanRequestException("FAILURE_INJECTION_PLAN_IDEMPOTENCY_CONFLICT", "Idempotency-Key is already associated with a different plan")</ID>
+    <ID>MaxLineLength:FailureInjectionPlanService.kt:FailureInjectionPlanService$private fun String.sha256: String</ID>
+    <ID>MaxLineLength:FailureInjectionPlanService.kt:FailureInjectionPlanService$require</ID>
+    <ID>MaxLineLength:FailureInjectionPlanService.kt:FailureInjectionPlanService$require(IDEMPOTENCY_KEY_PATTERN.matches(idempotencyKey)) { "Idempotency-Key must contain 1 to 200 allowed characters" }</ID>
+    <ID>MaxLineLength:FailureInjectionPlanService.kt:FailureInjectionPlanService$val</ID>
+    <ID>MaxLineLength:FailureInjectionPlanService.kt:FailureInjectionPlanService$val requestHash = (command.targetSystemId + "|" + selected.joinToString("|") { listOf(it.id, it.type, it.risk, it.title, it.recoveryExpectation).joinToString("~") }).sha256()</ID>
+    <ID>MaxLineLength:FollowUpSuggestionController.kt:FollowUpSuggestionController$.</ID>
+    <ID>MaxLineLength:FollowUpSuggestionController.kt:FollowUpSuggestionController$fun</ID>
+    <ID>MaxLineLength:FollowUpSuggestionController.kt:FollowUpSuggestionRunResponse.Companion$FollowUpTestSuggestionResponse(suggestion.ordinal, suggestion.candidateId, suggestion.candidateTitle, suggestion.rationale, suggestion.evidenceIds)</ID>
+    <ID>MaxLineLength:FollowUpSuggestionController.kt:FollowUpSuggestionRunResponse.Companion$failureCode = details.run.failureCode</ID>
+    <ID>MaxLineLength:FollowUpSuggestionController.kt:FollowUpSuggestionRunResponse.Companion$id = details.run.id</ID>
+    <ID>MaxLineLength:FollowUpSuggestionController.kt:FollowUpSuggestionRunResponse.Companion$inputChecksum = details.run.inputChecksum</ID>
+    <ID>MaxLineLength:FollowUpSuggestionController.kt:FollowUpTestSuggestionResponse</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$"FOLLOW_UP_CANDIDATE_CATALOG_TOO_LARGE: Candidate catalog exceeds ${properties.maxCandidateCatalogBytes} bytes"</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$"FOLLOW_UP_CANDIDATE_CATALOG_TOO_LARGE: Target has ${candidates.size} candidates; maximum is ${properties.maxCandidateCatalogCount}"</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$"FOLLOW_UP_TARGET_BATCH_REQUIRED"</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$"analysisRun"</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$?:</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$NewFollowUpTestSuggestion(UUID.randomUUID().toString(), candidateId, candidate.path("title").asString(), rationale, evidenceIds)</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$if (TransactionSynchronizationManager.isSynchronizationActive()) TransactionSynchronizationManager.registerSynchronization(object : TransactionSynchronization { override fun afterCommit() = action() }) else action()</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$private</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$private fun String.sha256: String</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$private fun ensureSameConfiguration</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$private fun failureCode: String</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$private fun schedule</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$repository.complete(suggestionRunId, FollowUpSuggestionCompletion(response.content, suggestions, response.promptTokenCount, response.completionTokenCount, response.durationMillis), clock.instant())</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$repository.fail(suggestionRunId, failureCode(exception), exception.message ?: exception.javaClass.simpleName, clock.instant())</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$repository.findRunningIds().forEach { repository.fail(it, "ARL_RESTART", "ARL restarted while a follow-up suggestion was running; it was not replayed", clock.instant()) }</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$require</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$require(IDEMPOTENCY_KEY_PATTERN.matches(idempotencyKey)) { "Idempotency-Key must contain 1 to 200 allowed characters" }</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$require(node.isObject &amp;&amp; node.propertyNames().toSet() == setOf("candidateId", "rationale", "evidenceIds")) { "Each suggestion has an invalid contract" }</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$require(response.content.toByteArray(StandardCharsets.UTF_8).size &lt;= properties.maxOutputBytes) { "Follow-up suggestion output exceeds configured size" }</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$require(root.isObject &amp;&amp; root.propertyNames().toSet() == setOf("suggestions")) { "Follow-up suggestion response must contain exactly suggestions" }</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$require(suggestions.isArray &amp;&amp; suggestions.size() &lt;= properties.maxSuggestions) { "suggestions must contain at most ${properties.maxSuggestions} entries" }</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$val</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$val analysis = analysisRepository.findDetails(run.analysisRunId) ?: throw AnalysisNotFoundException(run.analysisRunId)</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$val candidate = candidates[candidateId] ?: throw AnalysisOutputException("Suggestion references an unknown registered candidate")</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$val datasetId = details.run.analysisDatasetId ?: throw AnalysisInputException("Analysis run '$analysisRunId' has no dataset")</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$val root = try { objectMapper.readTree(output) } catch (exception: Exception) { throw AnalysisOutputException("Follow-up suggestion response is not valid JSON") }</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$val run = repository.findById(suggestionRunId) ?: error("Claimed follow-up suggestion '$suggestionRunId' no longer exists")</ID>
+    <ID>MaxLineLength:FollowUpSuggestionService.kt:FollowUpSuggestionService$}</ID>
+    <ID>MaxLineLength:HttpScenarioV1TargetAdapter.kt:HttpScenarioV1TargetAdapter$?:</ID>
+    <ID>MaxLineLength:HttpScenarioV1TargetAdapter.kt:HttpScenarioV1TargetAdapter$throw ExternalOperationOutcomeUnknownException("Target Scenario returned an unreadable result contract: ${exception.javaClass.simpleName}")</ID>
+    <ID>MaxLineLength:HttpTargetSystem.kt:HttpTargetSystem$message = if (isUp) "Target health endpoint is reachable" else "Target health endpoint returned a non-success status"</ID>
+    <ID>MaxLineLength:JdbcAnalysisEvaluationRepository.kt:JdbcAnalysisEvaluationRepository$"$SELECT_EVALUATION where analysis_run_id = :analysisRunId and analysis_ground_truth_id = :groundTruthId and evaluation_version = :evaluationVersion"</ID>
+    <ID>MaxLineLength:JdbcAnalysisEvaluationRepository.kt:JdbcAnalysisEvaluationRepository$)</ID>
+    <ID>MaxLineLength:JdbcAnalysisEvaluationRepository.kt:JdbcAnalysisEvaluationRepository$fun</ID>
+    <ID>MaxLineLength:JdbcAnalysisEvaluationRepository.kt:JdbcAnalysisEvaluationRepository$jdbcClient.sql("$SELECT_COMPARISON where experiment_run_id = :experimentRunId and idempotency_key = :idempotencyKey")</ID>
+    <ID>MaxLineLength:JdbcAnalysisEvaluationRepository.kt:JdbcAnalysisEvaluationRepository$jdbcClient.sql("$SELECT_COMPARISON where target_test_batch_id = :targetTestBatchId and idempotency_key = :idempotencyKey")</ID>
+    <ID>MaxLineLength:JdbcAnalysisRunRepository.kt:JdbcAnalysisRunRepository$jdbcClient.sql("$SELECT_ANALYSIS_RUN where experiment_run_id = :experimentRunId and idempotency_key = :idempotencyKey")</ID>
+    <ID>MaxLineLength:JdbcAnalysisRunRepository.kt:JdbcAnalysisRunRepository$jdbcClient.sql("$SELECT_ANALYSIS_RUN where target_test_batch_id = :targetTestBatchId and idempotency_key = :idempotencyKey")</ID>
+    <ID>MaxLineLength:JdbcExperimentRunRepository.kt:JdbcExperimentRunRepository$fun</ID>
+    <ID>MaxLineLength:JdbcFailureInjectionPlanRepository.kt:JdbcFailureInjectionPlanRepository$ from failure_injection_plan_item where plan_id = :planId order by sequence_number</ID>
+    <ID>MaxLineLength:JdbcFailureInjectionPlanRepository.kt:JdbcFailureInjectionPlanRepository$ where id = :id and status = :pending</ID>
+    <ID>MaxLineLength:JdbcFailureInjectionPlanRepository.kt:JdbcFailureInjectionPlanRepository$"requestHash" to command.requestHash</ID>
+    <ID>MaxLineLength:JdbcFailureInjectionPlanRepository.kt:JdbcFailureInjectionPlanRepository$"type" to candidate.candidate.type.name</ID>
+    <ID>MaxLineLength:JdbcFailureInjectionPlanRepository.kt:JdbcFailureInjectionPlanRepository$.</ID>
+    <ID>MaxLineLength:JdbcFailureInjectionPlanRepository.kt:JdbcFailureInjectionPlanRepository$Companion</ID>
+    <ID>MaxLineLength:JdbcFailureInjectionPlanRepository.kt:JdbcFailureInjectionPlanRepository$FailureInjectionPlanItemRecord</ID>
+    <ID>MaxLineLength:JdbcFailureInjectionPlanRepository.kt:JdbcFailureInjectionPlanRepository$FailureInjectionType.valueOf(rs.getString("injection_type"))</ID>
+    <ID>MaxLineLength:JdbcFailureInjectionPlanRepository.kt:JdbcFailureInjectionPlanRepository$fun</ID>
+    <ID>MaxLineLength:JdbcFailureInjectionPlanRepository.kt:JdbcFailureInjectionPlanRepository$fun findById: FailureInjectionPlanRecord?</ID>
+    <ID>MaxLineLength:JdbcFailureInjectionPlanRepository.kt:JdbcFailureInjectionPlanRepository$getString("request_hash")</ID>
+    <ID>MaxLineLength:JdbcFailureInjectionPlanRepository.kt:JdbcFailureInjectionPlanRepository$private</ID>
+    <ID>MaxLineLength:JdbcFailureInjectionPlanRepository.kt:NewFailureInjectionPlan</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:FollowUpSuggestionCompletion</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$ ) values (:id, :suggestionRunId, :ordinal, :candidateId, :candidateTitle, :rationale, :evidenceIdsJson)</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$ failure_message = :failureMessage, completed_at = :completedAt where id = :id and status in (:requested, :running)</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$"completionTokenCount" to completion.completionTokenCount</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$"failed" to FollowUpSuggestionRunStatus.FAILED.name</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$"id" to command.id</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$"rationale" to suggestion.rationale</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$"status" to FollowUpSuggestionRunStatus.REQUESTED.name</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$"update follow_up_suggestion_run set status = :running, started_at = :startedAt where id = :id and status = :requested"</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$)</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$durationMillis = nullableLong("duration_millis")</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$id = getString("id")</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$idempotencyKey = getString("idempotency_key")</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$inputChecksum = getString("input_checksum")</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$modelId = getString("model_id")</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$private</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$promptTokenCount = nullableInt("prompt_token_count")</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$queryRun("where analysis_run_id = :analysisRunId and idempotency_key = :idempotencyKey", mapOf("analysisRunId" to analysisRunId, "idempotencyKey" to idempotencyKey))</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$requestedAt = getTimestamp("requested_at").toInstant()</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository$rs.getString("candidate_id")</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:NewFollowUpSuggestionRun$val id: String</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:NewFollowUpSuggestionRun$val modelKey: String</ID>
+    <ID>MaxLineLength:JdbcFollowUpSuggestionRepository.kt:NewFollowUpTestSuggestion</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$ ) values (:id, :reportRunId, :ordinal, :hypothesisOrdinal, :title, :proposedChange, :expectedEffect, :risk, :evidenceIdsJson)</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$ ) values (:id, :reportRunId, :ordinal, :title, :confidence, :rationale, :falsifiability, :evidenceIdsJson)</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$ failure_message = :failureMessage, completed_at = :completedAt where id = :id and status in (:requested, :running)</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$"completionTokenCount" to completion.completionTokenCount</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$"configurationHash" to command.configurationHash</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$"falsifiability" to hypothesis.falsifiability</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$"id" to command.id</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$"id" to id</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$"outputJson" to completion.outputJson</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$"update root_cause_report_run set status = :running, started_at = :startedAt where id = :id and status = :requested"</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$configurationHash = getString("configuration_hash")</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$durationMillis = nullableLong("duration_millis")</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$id = getString("id")</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$mapOf("id" to id, "requested" to RootCauseReportStatus.REQUESTED.name, "running" to RootCauseReportStatus.RUNNING.name, "startedAt" to Timestamp.from(now))</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$private</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$promptTokenCount = nullableInt("prompt_token_count")</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$promptVersion = getString("prompt_version")</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$queryRun("where analysis_run_id = :analysisRunId and idempotency_key = :idempotencyKey", mapOf("analysisRunId" to analysisRunId, "idempotencyKey" to idempotencyKey))</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$requestedAt = getTimestamp("requested_at").toInstant()</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$resultSet.getInt("hypothesis_ordinal")</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$resultSet.getString("expected_effect")</ID>
+    <ID>MaxLineLength:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository$resultSet.getString("rationale")</ID>
+    <ID>MaxLineLength:JdbcWorkloadLeaseRepository.kt:JdbcWorkloadLeaseRepository$)</ID>
+    <ID>MaxLineLength:MultiAgentAnalysisController.kt:MultiAgentAnalysisController$AnalysisRunResponse.from(multiAgent.startForExperiment(experimentRunId, idempotencyKey, request?.toSelection() ?: MultiAgentModelSelection()))</ID>
+    <ID>MaxLineLength:MultiAgentAnalysisController.kt:MultiAgentAnalysisController$AnalysisRunResponse.from(multiAgent.startForTargetTestBatch(targetTestBatchId, idempotencyKey, request?.toSelection() ?: MultiAgentModelSelection()))</ID>
+    <ID>MaxLineLength:MultiAgentAnalysisController.kt:MultiAgentAnalysisExceptionHandler$.</ID>
+    <ID>MaxLineLength:MultiReliabilityAgent.kt:MultiReliabilityAgent$(finalCompletion ?: throw AnalysisOutputException("Multi-agent reviewer did not produce a final analysis"))</ID>
+    <ID>MaxLineLength:MultiReliabilityAgent.kt:MultiReliabilityAgent$?:</ID>
+    <ID>MaxLineLength:MultiReliabilityAgent.kt:MultiReliabilityAgent$MultiAgentRole.entries.associateWith { role -&gt; modelRegistry.resolveRequired(selection.roleModelKeys.getValue(role)) }</ID>
+    <ID>MaxLineLength:MultiReliabilityAgent.kt:MultiReliabilityAgent$if</ID>
+    <ID>MaxLineLength:MultiReliabilityAgent.kt:MultiReliabilityAgent$if (!properties.enabled) throw AnalysisRequestException("MULTI_AGENT_DISABLED", "Multi-agent analysis is disabled")</ID>
+    <ID>MaxLineLength:MultiReliabilityAgent.kt:MultiReliabilityAgent$is AnalysisModelUnavailableException -&gt; Failure("MODEL_UNAVAILABLE", exception.message ?: "Analysis model is unavailable")</ID>
+    <ID>MaxLineLength:MultiReliabilityAgent.kt:MultiReliabilityAgent$private</ID>
+    <ID>MaxLineLength:MultiReliabilityAgent.kt:MultiReliabilityAgent$role.name to linkedMapOf("modelKey" to models.getValue(role).key, "modelId" to models.getValue(role).modelId)</ID>
+    <ID>MaxLineLength:MultiReliabilityAgent.kt:MultiReliabilityAgent$throw AnalysisOutputException("$role response must contain exactly ${expectedFields.sorted().joinToString()}")</ID>
+    <ID>MaxLineLength:MultiReliabilityAgent.kt:MultiReliabilityAgent$throw AnalysisOutputException("ANALYST observations must contain at most 10 non-empty strings of at most 2000 characters")</ID>
+    <ID>MaxLineLength:MultiReliabilityAgent.kt:MultiReliabilityAgent$throw AnalysisOutputException("PLANNER focusAreas must contain 1 to 8 non-empty strings of at most 500 characters")</ID>
+    <ID>MaxLineLength:MultiReliabilityAgent.kt:MultiReliabilityAgent$throw AnalysisRequestException("MULTI_ANALYSIS_IDEMPOTENCY_CONFLICT", "Idempotency-Key is already associated with a different multi-agent configuration")</ID>
+    <ID>MaxLineLength:MultiReliabilityAgent.kt:MultiReliabilityAgent$val message = "Multi-agent task could not be scheduled: ${exception.message ?: exception.javaClass.simpleName}"</ID>
+    <ID>MaxLineLength:PinnedTargetHttpTransport.kt:PinnedTargetHttpTransport$if (bytes.size() &gt; MAX_HEADER_LINE_BYTES) throw TargetHttpTransportException("Target response header is too large")</ID>
+    <ID>MaxLineLength:PinnedTargetHttpTransport.kt:PinnedTargetHttpTransport$if (output.size() + count &gt; maxBytes) throw TargetHttpTransportException("Target response exceeds the configured limit")</ID>
+    <ID>MaxLineLength:PinnedTargetHttpTransport.kt:PinnedTargetHttpTransport$private</ID>
+    <ID>MaxLineLength:PinnedTargetHttpTransport.kt:PinnedTargetHttpTransport$throw TargetHttpTransportException("Pinned target HTTP request failed: ${exception.javaClass.simpleName}", exception)</ID>
+    <ID>MaxLineLength:PinnedTargetHttpTransport.kt:PinnedTargetHttpTransport$val line = input.readHeaderLine() ?: throw TargetHttpTransportException("Target closed the response headers early")</ID>
+    <ID>MaxLineLength:RootCauseReportController.kt:RootCauseReportController$.</ID>
+    <ID>MaxLineLength:RootCauseReportController.kt:RootCauseReportController$fun</ID>
+    <ID>MaxLineLength:RootCauseReportController.kt:RootCauseReportResponse.Companion$modelId = details.run.modelId</ID>
+    <ID>MaxLineLength:RootCauseReportController.kt:RootCauseReportResponse.Companion$requestedAt = details.run.requestedAt</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService$?:</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService$TransactionSynchronizationManager.registerSynchronization(object : TransactionSynchronization { override fun afterCommit() = action() })</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService$if (existing != requested) throw AnalysisRequestException("ROOT_CAUSE_REPORT_IDEMPOTENCY_CONFLICT", "Idempotency-Key is already associated with a different model configuration")</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService$private</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService$private fun String.sha256: String</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService$repository.fail(it, "ARL_RESTART", "ARL restarted while a root-cause report was running; it was not replayed", clock.instant())</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService$repository.fail(reportId, failureCode(exception), exception.message ?: exception.javaClass.simpleName, clock.instant())</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService$require</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService$require(IDEMPOTENCY_KEY_PATTERN.matches(idempotencyKey)) { "Idempotency-Key must contain 1 to 200 allowed characters" }</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService$require(hypothesisOrdinal in 1..hypothesisCount) { "Improvement proposal must reference a returned hypothesis ordinal" }</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService$require(node.isObject &amp;&amp; node.propertyNames().toSet() == HYPOTHESIS_FIELDS) { "Each root-cause hypothesis has an invalid contract" }</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService$require(node.isObject &amp;&amp; node.propertyNames().toSet() == PROPOSAL_FIELDS) { "Each improvement proposal has an invalid contract" }</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService$require(parsedHypotheses.map { it.title }.distinct().size == parsedHypotheses.size) { "Hypotheses cannot repeat a title" }</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService$require(parsedProposals.map { it.title }.distinct().size == parsedProposals.size) { "Improvement proposals cannot repeat a title" }</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService$return NewRootCauseHypothesis(UUID.randomUUID().toString(), title, confidence, rationale, falsifiability, node.evidenceIds(allowedEvidenceIds))</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService$val</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService$val analysis = analysisRepository.findDetails(run.analysisRunId) ?: throw AnalysisNotFoundException(run.analysisRunId)</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService$val datasetId = analysis.run.analysisDatasetId ?: throw AnalysisInputException("Analysis run '$analysisRunId' has no immutable dataset")</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService$val parsedProposals = proposals.values().map { node -&gt; parseImprovementProposal(node, parsedHypotheses.size, allowedEvidenceIds) }</ID>
+    <ID>MaxLineLength:RootCauseReportService.kt:RootCauseReportService.Companion$val PROPOSAL_FIELDS = setOf("hypothesisOrdinal", "title", "proposedChange", "expectedEffect", "risk", "evidenceIds")</ID>
+    <ID>MaxLineLength:SingleReliabilityAgent.kt:SingleReliabilityAgent$?:</ID>
+    <ID>MaxLineLength:SingleReliabilityAgent.kt:SingleReliabilityAgent$analysisRepository.fail(analysisRunId, "EVIDENCE_INPUT_INVALID", exception.message ?: "Evidence input is invalid", clock.instant())</ID>
+    <ID>MaxLineLength:SingleReliabilityAgent.kt:SingleReliabilityAgent$analysisRepository.fail(analysisRunId, "MODEL_OUTPUT_INVALID", exception.message ?: "Model output is invalid", clock.instant())</ID>
+    <ID>MaxLineLength:SingleReliabilityAgent.kt:SingleReliabilityAgent$analysisRepository.fail(analysisRunId, "MODEL_UNAVAILABLE", exception.message ?: "Analysis model is unavailable", clock.instant())</ID>
+    <ID>MaxLineLength:SingleReliabilityAgent.kt:SingleReliabilityAgent$dataset.experimentRunId != null -&gt; analysisRepository.findByExperimentAndIdempotencyKey(dataset.experimentRunId, idempotencyKey)</ID>
+    <ID>MaxLineLength:SingleReliabilityAgent.kt:SingleReliabilityAgent$dataset.targetTestBatchId != null -&gt; analysisRepository.findByTargetTestBatchAndIdempotencyKey(dataset.targetTestBatchId, idempotencyKey)</ID>
+    <ID>MaxLineLength:SingleReliabilityAgent.kt:SingleReliabilityAgent$fun</ID>
+    <ID>MaxLineLength:StockConcurrencyDefinitionInitializer.kt:StockConcurrencyDefinitionInitializer$"definitionJson" to "{\"input\":[\"stock\",\"requestCount\",\"concurrency\",\"quantityPerRequest\"],\"targetContract\":\"TARGET_PROFILE_AND_ADAPTER\",\"requiredEvidence\":[\"successCount\",\"failureCount\",\"oversellCount\",\"finalRedisStock\",\"finalDbStock\"]}"</ID>
+    <ID>MaxLineLength:StockConcurrencyExperimentService.kt:StockConcurrencyExperimentService$"A target action was dispatched but ARL could not durably record its result: ${exception.javaClass.simpleName}"</ID>
+    <ID>MaxLineLength:StockConcurrencyExperimentService.kt:StockConcurrencyExperimentService$completeness = if (result.finalRedisStock == null || result.finalDbStock == null) "PARTIAL" else "COMPLETE"</ID>
+    <ID>MaxLineLength:StockConcurrencyExperimentService.kt:StockConcurrencyExperimentService$fixturePlanJson = "{\"fixtureStrategy\":\"TARGET_PROFILE_ISOLATED_NAMESPACE\",\"runIdGeneratedBy\":\"ARL\"}"</ID>
+    <ID>MaxLineLength:StockConcurrencyExperimentService.kt:StockConcurrencyExperimentService$if</ID>
+    <ID>MaxLineLength:StockConcurrencyExperimentService.kt:StockConcurrencyExperimentService$repository.markRecoveryRequired(runId, clock.instant(), exception.message ?: "External operation outcome is unknown")</ID>
+    <ID>MaxLineLength:StockConcurrencyExperimentService.kt:StockConcurrencyExperimentService$require</ID>
+    <ID>MaxLineLength:StockConcurrencyExperimentService.kt:StockConcurrencyExperimentService$specHash = "${command.targetSystem}|${targetProfile.adapterId}|${targetProfile.stockConcurrency.endpoint}|$DEFINITION_VERSION|$parametersJson|$LOAD_PROFILE_JSON".sha256()</ID>
+    <ID>MaxLineLength:StockConcurrencyExperimentService.kt:StockConcurrencyExperimentService$val cleanupStatus = if (result.cleanupVerified &amp;&amp; resources.isNotEmpty()) CleanupStatus.VERIFIED else CleanupStatus.FAILED</ID>
+    <ID>MaxLineLength:StockConcurrencyExperimentService.kt:StockConcurrencyParametersInput.Companion$fun</ID>
+    <ID>MaxLineLength:TargetExperimentProfileRegistry.kt:TargetExperimentProfileRegistry$"Target experiment profile '${registration.targetSystemId}' must declare a STOCK_CONCURRENCY scenario in Phase 1"</ID>
+    <ID>MaxLineLength:TargetNetworkPolicy.kt:TargetNetworkPolicy$if</ID>
+    <ID>MaxLineLength:TargetNetworkPolicy.kt:TargetNetworkPolicy$throw TargetNetworkPolicyException("Target host '${uri.host}' could not be resolved: ${exception.javaClass.simpleName}")</ID>
+    <ID>MaxLineLength:TargetSpecRegistry.kt:TargetSpecRegistry$"Target Spec '${registration.targetSystemId}' has duplicate failure injection candidate ids: ${duplicateFailureCandidateIds.sorted().joinToString()}"</ID>
+    <ID>MaxLineLength:TargetSpecRegistry.kt:TargetSpecRegistry$"Target Spec '${registration.targetSystemId}' has duplicate operation ids: ${duplicateOperationIds.sorted().joinToString()}"</ID>
+    <ID>MaxLineLength:TargetSpecRegistry.kt:TargetSpecRegistry$FailureInjectionCandidate(candidate.id, targetSystemId, candidate.type, candidate.risk, candidate.title, candidate.description, candidate.recoveryExpectation)</ID>
+    <ID>MaxLineLength:TargetSpecRegistry.kt:TargetSpecRegistry$require(description.length &lt;= 1_000) { "Failure injection candidate '$id' description must contain at most 1000 characters" }</ID>
+    <ID>MaxLineLength:TargetSpecRegistry.kt:TargetSpecRegistry$require(recoveryExpectation.isNotBlank() &amp;&amp; recoveryExpectation.length &lt;= 1_000) { "Failure injection candidate '$id' recoveryExpectation must contain 1 to 1000 characters" }</ID>
+    <ID>MaxLineLength:TargetSpecRegistry.kt:TargetSpecRegistry$require(title.isNotBlank() &amp;&amp; title.length &lt;= 200) { "Failure injection candidate '$id' title must contain 1 to 200 characters" }</ID>
+    <ID>MaxLineLength:TargetSpecRegistry.kt:TargetSpecRegistry$val duplicateFailureCandidateIds = registration.failureInjectionCandidates.groupingBy { it.id }.eachCount().filterValues { it &gt; 1 }.keys</ID>
+    <ID>MaxLineLength:TargetTestBatchApiIntegrationTests.kt:TargetTestBatchApiIntegrationTests$assertEquals(202, post("/api/test-batches/$batchId/approve", """{"confirmation":"EXECUTE_SAFE_HTTP_BATCH"}""").statusCode())</ID>
+    <ID>MaxLineLength:TargetTestBatchApiIntegrationTests.kt:TargetTestBatchApiIntegrationTests$fun</ID>
+    <ID>MaxLineLength:TargetTestBatchApiIntegrationTests.kt:TargetTestBatchApiIntegrationTests$if</ID>
+    <ID>MaxLineLength:TargetTestBatchApiIntegrationTests.kt:TargetTestBatchApiIntegrationTests$post("/api/test-batches/$batchId/approve", """{"confirmation":"EXECUTE_SAFE_HTTP_BATCH"}""").statusCode()</ID>
+    <ID>MaxLineLength:TargetTestBatchApiIntegrationTests.kt:TargetTestBatchApiIntegrationTests$val analysisRunId = """"id":"([^"]+)"""".toRegex().find(analysis.body())?.groupValues?.get(1) ?: error("Analysis run ID was absent")</ID>
+    <ID>MaxLineLength:TargetTestBatchApiIntegrationTests.kt:TargetTestBatchApiIntegrationTests$val analysisRunId = """"id":"([^"]+)""".toRegex().find(analysis.body())?.groupValues?.get(1) ?: error("Analysis run ID was absent")</ID>
+    <ID>MaxLineLength:TargetTestBatchApiIntegrationTests.kt:TargetTestBatchApiIntegrationTests$val batchId = """"id":"([^"]+)"""".toRegex().find(batch.body())?.groupValues?.get(1) ?: error("Batch ID was absent")</ID>
+    <ID>MaxLineLength:TargetTestBatchApiIntegrationTests.kt:TargetTestBatchApiIntegrationTests$val batchId = """"id":"([^"]+)""".toRegex().find(created.body())?.groupValues?.get(1) ?: error("Batch ID was absent")</ID>
+    <ID>MaxLineLength:TargetTestBatchApiIntegrationTests.kt:TargetTestBatchApiIntegrationTests$val planId = """"id":"([^"]+)"""".toRegex().find(created.body())?.groupValues?.get(1) ?: error("Plan ID was absent")</ID>
+    <ID>MaxLineLength:TargetTestBatchApiIntegrationTests.kt:TargetTestBatchApiIntegrationTests$val planId = """"id":"([^"]+)""".toRegex().find(created.body())?.groupValues?.get(1) ?: error("Plan ID was absent")</ID>
+    <ID>MaxLineLength:TargetTestBatchApiIntegrationTests.kt:TargetTestBatchApiIntegrationTests$val reportId = """"id":"([^"]+)"""".toRegex().find(report.body())?.groupValues?.get(1) ?: error("Report ID was absent")</ID>
+    <ID>MaxLineLength:TargetTestBatchApiIntegrationTests.kt:TargetTestBatchApiIntegrationTests$val suggestionRunId = """"id":"([^"]+)""".toRegex().find(suggestion.body())?.groupValues?.get(1) ?: error("Suggestion run ID was absent")</ID>
+    <ID>MaxLineLength:TargetTestBatchApiIntegrationTests.kt:TargetTestBatchApiIntegrationTests.Companion$registry.add("arl.target-specs.registrations[0].failure-injection-candidates[0].description") { "Plan a controlled consumer restart." }</ID>
+    <ID>MaxLineLength:TargetTestBatchApiIntegrationTests.kt:TargetTestBatchApiIntegrationTests.Companion$registry.add("arl.target-specs.registrations[0].failure-injection-candidates[0].recovery-expectation") { "Consumer returns to healthy state and processes the next registered message." }</ID>
+    <ID>MaxLineLength:TargetTestBatchApiIntegrationTests.kt:TargetTestBatchApiIntegrationTests.Companion$registry.add("arl.target-specs.registrations[0].failure-injection-candidates[0].title") { "Restart the registered consumer" }</ID>
+    <ID>MaxLineLength:TargetTestBatchApiIntegrationTests.kt:TargetTestBatchApiIntegrationTests.Companion$registry.add("arl.target-specs.registrations[0].failure-injection-candidates[0].type") { "CONSUMER_RESTART" }</ID>
+    <ID>MaxLineLength:TargetTestBatchApiIntegrationTests.kt:TargetTestBatchApiIntegrationTests.Companion$registry.add("arl.target-specs.registrations[0].read-only-operations[0].description") { "Catalog endpoint responds to a bounded read request." }</ID>
+    <ID>MaxLineLength:TargetTestBatchController.kt:TargetTestBatchExceptionHandler$.</ID>
+    <ID>MaxLineLength:TargetTestBatchService.kt:TargetTestBatchService$"A Target HTTP request may have reached the Target but its outcome was not confirmed: ${exception.message}"</ID>
+    <ID>MaxLineLength:TargetTestBatchService.kt:TargetTestBatchService$failureMessage = if (passed) null else "Expected HTTP ${item.expectedStatusCodes.sorted().joinToString()} but received ${response.statusCode}"</ID>
+    <ID>MaxLineLength:TargetTestBatchService.kt:TargetTestBatchService$private</ID>
+    <ID>NestedBlockDepth:CampaignExecutionService.kt:CampaignExecutionService$private fun execute</ID>
+    <ID>ReturnCount:AnalysisEvaluationService.kt:AnalysisEvaluationService$@Transactional fun evaluate: AnalysisEvaluationRecord</ID>
+    <ID>ReturnCount:CampaignExecutionService.kt:CampaignExecutionService$fun start: CampaignRunRecord</ID>
+    <ID>ReturnCount:CampaignExecutionService.kt:CampaignExecutionService$private fun execute</ID>
+    <ID>ReturnCount:CampaignExecutionService.kt:CampaignExecutionService$private fun monitor: MonitorResult</ID>
+    <ID>ReturnCount:CampaignExecutionService.kt:CampaignExecutionService$private fun schedule: Boolean</ID>
+    <ID>ReturnCount:ExperimentApiIntegrationTests.kt:FakeReliabilityAnalysisModel$override fun analyze: ReliabilityAnalysisModelResponse</ID>
+    <ID>ReturnCount:JdbcCampaignRepository.kt:JdbcCampaignRepository$fun claimNextQueuedStep: CampaignStepRunRecord?</ID>
+    <ID>ReturnCount:JdbcWorkloadLeaseRepository.kt:JdbcWorkloadLeaseRepository$fun tryAcquire: WorkloadLease?</ID>
+    <ID>ReturnCount:MultiReliabilityAgent.kt:MultiReliabilityAgent$private fun createForDataset: AnalysisRunRecord</ID>
+    <ID>ReturnCount:NetworkCidr.kt:NetworkCidr$fun contains: Boolean</ID>
+    <ID>ReturnCount:SingleReliabilityAgent.kt:SingleReliabilityAgent$@Transactional fun startForDataset: AnalysisRunRecord</ID>
+    <ID>ReturnCount:StockConcurrencyExperimentService.kt:StockConcurrencyExperimentService$private fun createRun: ExperimentRunRecord</ID>
+    <ID>ReturnCount:StockConcurrencyExperimentService.kt:StockConcurrencyExperimentService$private fun execute</ID>
+    <ID>ReturnCount:TargetTestBatchService.kt:TargetTestBatchService$fun create: TargetTestBatchRecord</ID>
+    <ID>SwallowedException:AnalysisOutputValidator.kt:AnalysisOutputValidator$exception: Exception</ID>
+    <ID>SwallowedException:FollowUpSuggestionService.kt:FollowUpSuggestionService$exception: Exception</ID>
+    <ID>SwallowedException:FollowUpSuggestionService.kt:FollowUpSuggestionService$exception: TaskRejectedException</ID>
+    <ID>SwallowedException:HttpScenarioV1TargetAdapter.kt:HttpScenarioV1TargetAdapter$exception: Exception</ID>
+    <ID>SwallowedException:MultiReliabilityAgent.kt:MultiReliabilityAgent$exception: Exception</ID>
+    <ID>SwallowedException:OllamaReliabilityAnalysisModel.kt:OllamaReliabilityAnalysisModel$exception: Exception</ID>
+    <ID>SwallowedException:StockConcurrencyExperimentService.kt:StockConcurrencyExperimentService$exception: TargetExperimentProfileNotFoundException</ID>
+    <ID>SwallowedException:TargetNetworkPolicy.kt:TargetNetworkPolicy$exception: Exception</ID>
+    <ID>ThrowsCount:AnalysisDatasetService.kt:AnalysisDatasetService$private fun buildEvidenceBundle: EvidenceBundle</ID>
+    <ID>ThrowsCount:AnalysisEvaluationService.kt:AnalysisEvaluationService$@Transactional fun evaluate: AnalysisEvaluationRecord</ID>
+    <ID>ThrowsCount:AnalysisOutputValidator.kt:AnalysisOutputValidator$fun parseFinal: AnalysisCompletion</ID>
+    <ID>ThrowsCount:FollowUpSuggestionService.kt:FollowUpSuggestionService$fun start: FollowUpSuggestionRunDetails</ID>
+    <ID>ThrowsCount:HttpScenarioV1TargetAdapter.kt:HttpScenarioV1TargetAdapter$override fun executeStockConcurrency: StockConcurrencyExecutionResult</ID>
+    <ID>ThrowsCount:MultiReliabilityAgent.kt:MultiReliabilityAgent$private fun execute</ID>
+    <ID>ThrowsCount:MultiReliabilityAgent.kt:MultiReliabilityAgent$private fun validateIntermediateOutput</ID>
+    <ID>ThrowsCount:OllamaReliabilityAnalysisModel.kt:OllamaReliabilityAnalysisModel$override fun analyze: ReliabilityAnalysisModelResponse</ID>
+    <ID>ThrowsCount:PinnedTargetHttpTransport.kt:PinnedTargetHttpTransport$private fun BufferedInputStream.readBoundedTrailers</ID>
+    <ID>ThrowsCount:PinnedTargetHttpTransport.kt:PinnedTargetHttpTransport$private fun BufferedInputStream.readChunked: ByteArray</ID>
+    <ID>ThrowsCount:PinnedTargetHttpTransport.kt:PinnedTargetHttpTransport$private fun readResponse: PinnedHttpResponse</ID>
+    <ID>ThrowsCount:RootCauseReportService.kt:RootCauseReportService$fun start: RootCauseReportDetails</ID>
+    <ID>TooGenericExceptionCaught:AnalysisOutputValidator.kt:AnalysisOutputValidator$exception: Exception</ID>
+    <ID>TooGenericExceptionCaught:CampaignExecutionService.kt:CampaignExecutionService$exception: Exception</ID>
+    <ID>TooGenericExceptionCaught:FollowUpSuggestionService.kt:FollowUpSuggestionService$exception: Exception</ID>
+    <ID>TooGenericExceptionCaught:HttpScenarioV1TargetAdapter.kt:HttpScenarioV1TargetAdapter$exception: Exception</ID>
+    <ID>TooGenericExceptionCaught:MultiReliabilityAgent.kt:MultiReliabilityAgent$exception: Exception</ID>
+    <ID>TooGenericExceptionCaught:OllamaReliabilityAnalysisModel.kt:OllamaReliabilityAnalysisModel$exception: Exception</ID>
+    <ID>TooGenericExceptionCaught:PinnedTargetHttpTransport.kt:PinnedTargetHttpTransport$exception: Exception</ID>
+    <ID>TooGenericExceptionCaught:RootCauseReportService.kt:RootCauseReportService$exception: Exception</ID>
+    <ID>TooGenericExceptionCaught:SingleReliabilityAgent.kt:SingleReliabilityAgent$exception: Exception</ID>
+    <ID>TooGenericExceptionCaught:StockConcurrencyExperimentService.kt:StockConcurrencyExperimentService$exception: Exception</ID>
+    <ID>TooGenericExceptionCaught:TargetNetworkPolicy.kt:TargetNetworkPolicy$exception: Exception</ID>
+    <ID>TooGenericExceptionCaught:TargetTestBatchService.kt:TargetTestBatchService$exception: Exception</ID>
+    <ID>TooManyFunctions:CampaignExecutionService.kt:CampaignExecutionService</ID>
+    <ID>TooManyFunctions:JdbcAnalysisRunRepository.kt:JdbcAnalysisRunRepository</ID>
+    <ID>TooManyFunctions:JdbcCampaignRepository.kt:JdbcCampaignRepository</ID>
+    <ID>TooManyFunctions:JdbcExperimentRunRepository.kt:JdbcExperimentRunRepository</ID>
+    <ID>TooManyFunctions:JdbcFollowUpSuggestionRepository.kt:JdbcFollowUpSuggestionRepository</ID>
+    <ID>TooManyFunctions:JdbcMultiAgentAnalysisRepository.kt:JdbcMultiAgentAnalysisRepository</ID>
+    <ID>TooManyFunctions:JdbcRootCauseReportRepository.kt:JdbcRootCauseReportRepository</ID>
+    <ID>TooManyFunctions:JdbcTargetTestBatchRepository.kt:JdbcTargetTestBatchRepository</ID>
+    <ID>TooManyFunctions:MultiReliabilityAgent.kt:MultiReliabilityAgent : ReliabilityAnalysisAgent</ID>
+    <ID>TooManyFunctions:PinnedTargetHttpTransport.kt:PinnedTargetHttpTransport</ID>
+    <ID>TooManyFunctions:RootCauseReportService.kt:RootCauseReportService</ID>
+    <ID>TooManyFunctions:StockConcurrencyExperimentService.kt:StockConcurrencyExperimentService</ID>
+    <ID>TooManyFunctions:TargetTestBatchService.kt:TargetTestBatchService</ID>
+    <ID>UnusedParameter:MultiReliabilityAgent.kt:MultiReliabilityAgent$analysisRunId: String</ID>
+  </CurrentIssues>
+</SmellBaseline>

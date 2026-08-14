@@ -1,0 +1,43 @@
+arl:
+  targets:
+    registrations:
+      - id: eventful-local
+        name: Eventful Commerce Local Docker
+        adapter-type: HTTP_TARGET
+        environment: LOCAL
+        base-url: http://127.0.0.1
+        allowed-origin: http://127.0.0.1
+        allowed-cidrs:
+          - 127.0.0.0/8
+        health-path: /actuator/health
+        source-repository: eventful-commerce-sideproject
+        identity-verification: CONFIGURATION_ONLY
+        capabilities:
+          - HEALTH
+          - HTTP_API
+          - STOCK_CONCURRENCY
+
+  experiment-targets:
+    registrations:
+      - target-system-id: eventful-local
+        adapter-id: HTTP_SCENARIO_V1
+        execution-enabled: false
+        host-resource-group: eventful-local
+        stock-concurrency:
+          endpoint: /reliability/v1/scenarios/STOCK_CONCURRENCY/executions
+          max-stock: 10
+          max-request-count: 20
+          max-concurrency: 2
+          max-quantity-per-request: 1
+          execution-timeout: 30s
+
+  # Phase 4.5: only GET checks declared here become executable candidates.
+  # Set execution-enabled true only after the target URL and expected status codes are verified.
+  target-specs:
+    registrations:
+      - target-system-id: eventful-local
+        execution-enabled: false
+        # Share this value with any experiment profile that reaches the same Target resources.
+        host-resource-group: eventful-local
+        max-batch-size: 10
+        request-timeout: 5s

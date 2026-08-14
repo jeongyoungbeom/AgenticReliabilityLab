@@ -1,0 +1,59 @@
+# Local application configuration and secrets
+# Keep target-profile.sample.yaml in Git; target-profile.yaml may contain local URLs and CIDRs.
+target-profile.yaml
+.env
+.env.*
+!.env.example
+
+# Gradle, Kotlin, and Java build output
+.gradle/
+.kotlin/
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+*.class
+
+# Frontend dependencies and generated output
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/*.tsbuildinfo
+
+# IDE metadata
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+.vscode/
+
+# Eclipse / Spring Tool Suite metadata
+.apt_generated/
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.sts4-cache/
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+# NetBeans metadata
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# Local logs and operating-system files
+*.log
+logs/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Spring Initializr help file is not part of the application source.
+HELP.md

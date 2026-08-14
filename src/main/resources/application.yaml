@@ -1,0 +1,80 @@
+spring:
+  application:
+    name: AgenticReliabilityLab
+  datasource:
+    url: ${ARL_DB_URL:jdbc:postgresql://localhost:5433/agentic_reliability_lab}
+    username: ${ARL_DB_USERNAME:arl}
+    password: ${ARL_DB_PASSWORD:arl-local-password}
+  flyway:
+    enabled: true
+    validate-on-migrate: true
+  ai:
+    model:
+      chat: ollama
+    ollama:
+      base-url: ${ARL_OLLAMA_BASE_URL:http://localhost:11434}
+      chat:
+        model: ${ARL_OLLAMA_MODEL:gpt-oss:20b}
+        format: json
+
+server:
+  port: ${ARL_SERVER_PORT:8090}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when_authorized
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%X{correlationId:-system}] %logger{36} - %msg%n"
+
+arl:
+  jobs:
+    enabled: ${ARL_JOBS_ENABLED:true}
+    poll-delay: ${ARL_JOBS_POLL_DELAY:200ms}
+    max-jobs-per-poll: ${ARL_JOBS_MAX_PER_POLL:4}
+    max-concurrent-jobs: ${ARL_JOBS_MAX_CONCURRENT:4}
+    max-concurrent-target-jobs: ${ARL_JOBS_MAX_CONCURRENT_TARGET:${ARL_JOBS_MAX_CONCURRENT:2}}
+    max-concurrent-analysis-jobs: ${ARL_JOBS_MAX_CONCURRENT_ANALYSIS:${ARL_JOBS_MAX_CONCURRENT:2}}
+    lease-duration: ${ARL_JOBS_LEASE_DURATION:30m}
+    max-attempts: ${ARL_JOBS_MAX_ATTEMPTS:3}
+  agent:
+    enabled: ${ARL_AGENT_ENABLED:true}
+    default-model-key: GPT_OSS
+    prompt-version: single-reliability-agent-v1
+    max-evidence-count: 50
+    max-evidence-bytes: 131072
+    max-output-bytes: 65536
+  multi-agent:
+    enabled: ${ARL_MULTI_AGENT_ENABLED:true}
+    prompt-version: multi-reliability-agent-v1
+    max-step-output-bytes: 65536
+  follow-up-suggestions:
+    enabled: ${ARL_FOLLOW_UP_SUGGESTIONS_ENABLED:true}
+    prompt-version: follow-up-test-suggestion-v1
+    max-output-bytes: 65536
+    max-suggestions: 5
+    max-candidate-catalog-count: 50
+    max-candidate-catalog-bytes: 65536
+    max-input-bytes: 262144
+  root-cause-reports:
+    enabled: ${ARL_ROOT_CAUSE_REPORTS_ENABLED:true}
+    prompt-version: root-cause-report-v1
+    max-output-bytes: 65536
+    max-hypotheses: 5
+    max-improvement-proposals: 10
+    max-input-bytes: 262144
+  analysis-models:
+    registrations:
+      - key: GPT_OSS
+        model-id: ${ARL_GPT_OSS_MODEL:gpt-oss:20b}
+      - key: QWEN
+        model-id: ${ARL_QWEN_MODEL:qwen3:4b}
+  http:
+    connect-timeout: 2s
+    read-timeout: 5s

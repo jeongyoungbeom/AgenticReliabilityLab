@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: agentic_reliability_lab
+      POSTGRES_USER: arl
+      POSTGRES_PASSWORD: arl-local-password
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arl -d agentic_reliability_lab"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - arl-postgres-data:/var/lib/postgresql/data
+
+  arl:
+    build: .
+    profiles: ["arl"]
+    environment:
+      ARL_DB_URL: jdbc:postgresql://postgres:5432/agentic_reliability_lab
+      ARL_DB_USERNAME: arl
+      ARL_DB_PASSWORD: ${ARL_DB_PASSWORD:-arl-local-password}
+      ARL_OLLAMA_BASE_URL: ${ARL_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      ARL_ACCESS_MODE: LOCAL
+      SPRING_CONFIG_ADDITIONAL_LOCATION: optional:file:/config/target-profile.yaml
+    ports:
+      - "127.0.0.1:8090:8090"
+    configs:
+      - source: arl-target-profile
+        target: /config/target-profile.yaml
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  arl-postgres-data:
+
+configs:
+  arl-target-profile:
+    file: ${ARL_TARGET_PROFILE:-./target-profile.sample.yaml}

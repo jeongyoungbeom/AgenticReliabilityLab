@@ -1,0 +1,63 @@
+spring:
+  ai:
+    model:
+      chat: none
+  datasource:
+    url: jdbc:h2:mem:arl-${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  flyway:
+    enabled: true
+
+arl:
+  access:
+    mode: LOCAL
+  agent:
+    enabled: true
+    default-model-key: GPT_OSS
+    prompt-version: single-reliability-agent-v1
+    max-evidence-count: 50
+    max-evidence-bytes: 131072
+    max-output-bytes: 65536
+  analysis-models:
+    registrations:
+      - key: GPT_OSS
+        model-id: fake-gpt-oss
+      - key: QWEN
+        model-id: fake-qwen
+  targets:
+    registrations:
+      - id: contract-test-target
+        name: HTTP Scenario Contract Target
+        adapter-type: HTTP_TARGET
+        environment: LOCAL
+        base-url: http://127.0.0.1:9
+        allowed-origin: http://127.0.0.1:9
+        allowed-cidrs:
+          - 127.0.0.0/8
+        health-path: /actuator/health
+        source-repository: private-target-reference
+        identity-verification: CONFIGURATION_ONLY
+        capabilities:
+          - HEALTH
+          - HTTP_API
+          - STOCK_CONCURRENCY
+
+  experiment-targets:
+    registrations:
+      - target-system-id: contract-test-target
+        adapter-id: HTTP_SCENARIO_V1
+        execution-enabled: true
+        host-resource-group: contract-test-target
+        stock-concurrency:
+          endpoint: /reliability/v1/scenarios/STOCK_CONCURRENCY/executions
+          max-stock: 10000
+          max-request-count: 100000
+          max-concurrency: 1000
+          max-quantity-per-request: 100
+          execution-timeout: 30s
+
+  http:
+    connect-timeout: 100ms
+    read-timeout: 200ms
