@@ -4,13 +4,10 @@ import com.project.agenticreliabilitylab.experiment.domain.ExperimentTargetAdapt
 import com.project.agenticreliabilitylab.experiment.domain.ExternalOperationOutcomeUnknownException
 import com.project.agenticreliabilitylab.experiment.domain.StockConcurrencyExecutionResult
 import com.project.agenticreliabilitylab.experiment.domain.StockConcurrencyTargetExecutionRequest
-import com.project.agenticreliabilitylab.experiment.domain.TargetResource
 import com.project.agenticreliabilitylab.target.http.PinnedTargetHttpTransport
 import org.springframework.stereotype.Component
 import tools.jackson.databind.ObjectMapper
-import java.net.URI
 import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
 
 /**
  * Built-in adapter for a Target-owned HTTP Scenario endpoint. It accepts only
@@ -28,9 +25,7 @@ class HttpScenarioV1TargetAdapter(
     ): StockConcurrencyExecutionResult {
         val endpoint = request.profile.stockConcurrency.endpoint
         val uri = request.target.baseUri.resolve(endpoint)
-        require(uri.normalizedOrigin() == request.target.allowedOrigin.normalizedOrigin()) {
-            "Registered STOCK_CONCURRENCY endpoint is outside the target allowed origin"
-        }
+        requireRegisteredOrigin(uri, request.target, "STOCK_CONCURRENCY endpoint")
         val durableActionKey = "${request.runId}:${request.actionId}"
 
         val requestBody = objectMapper.writeValueAsString(
@@ -93,74 +88,25 @@ class HttpScenarioV1TargetAdapter(
             executionStatus = status,
             message = root.path("message").asString("Target Scenario completed"),
             productId = result.path("productId").asString().takeIf { it.isNotBlank() },
-            successCount = result.requiredNonNegativeInt("successCount"),
-            failureCount = result.requiredNonNegativeInt("failureCount"),
-            oversellCount = result.requiredNonNegativeInt("oversellCount"),
+            successCount = result.requiredNonNegativeInt("successCount", RESULT_LABEL),
+            failureCount = result.requiredNonNegativeInt("failureCount", RESULT_LABEL),
+            oversellCount = result.requiredNonNegativeInt("oversellCount", RESULT_LABEL),
             finalRedisStock = result.path("finalRedisStock").asString().toIntOrNull(),
             finalDbStock = result.path("finalDbStock").asString().toIntOrNull(),
-            durationSeconds = result.requiredNonNegativeLong("durationSeconds"),
+            durationSeconds = result.requiredNonNegativeLong("durationSeconds", RESULT_LABEL),
             cleanupVerified = root.path("cleanup").path("status").asString() == "VERIFIED",
             artifactReference = artifact.path("reference").asString().takeIf { ARTIFACT_REFERENCE_PATTERN.matches(it) }
                 ?: "target-inline-result:${request.runId}",
-            artifactChecksum = artifact.path("checksum").asString().takeIf { it.isNotBlank() } ?: body.sha256(),
+            artifactChecksum = artifact.path("checksum").asString().takeIf { it.isNotBlank() } ?: body.sha256Hex(),
             resources = root.path("resources").toResources(request.runId.toString()),
         )
     }
 
-    private fun tools.jackson.databind.JsonNode.requiredNonNegativeInt(field: String): Int =
-        path(field).asString().toIntOrNull()?.takeIf { it >= 0 }
-            ?: throw ExternalOperationOutcomeUnknownException("Target Scenario result field '$field' must be a non-negative integer")
-
-    private fun tools.jackson.databind.JsonNode.requiredNonNegativeLong(field: String): Long =
-        path(field).asString().toLongOrNull()?.takeIf { it >= 0 }
-            ?: throw ExternalOperationOutcomeUnknownException("Target Scenario result field '$field' must be a non-negative integer")
-
-    private fun tools.jackson.databind.JsonNode.toResources(defaultNamespace: String): List<TargetResource> {
-        if (!isArray) {
-            return emptyList()
-        }
-        return buildList {
-            for (resource in this@toResources) {
-            val type = resource.path("type").asString()
-            val id = resource.path("id").asString()
-            if (!RESOURCE_VALUE_PATTERN.matches(type) || !RESOURCE_VALUE_PATTERN.matches(id)) {
-                throw ExternalOperationOutcomeUnknownException(
-                    "Target Scenario resource type and id must be non-empty safe identifiers",
-                )
-            }
-            val namespace = resource.path("namespace").asString().takeIf { it.isNotBlank() } ?: defaultNamespace
-            if (!RESOURCE_VALUE_PATTERN.matches(namespace)) {
-                throw ExternalOperationOutcomeUnknownException(
-                    "Target Scenario resource namespace must be a non-empty safe identifier",
-                )
-            }
-            add(TargetResource(
-                type = type,
-                id = id,
-                namespace = namespace,
-            ))
-            }
-        }
-    }
-
-    private fun URI.normalizedOrigin(): String {
-        val effectivePort = when {
-            port >= 0 -> port
-            scheme.equals("https", ignoreCase = true) -> 443
-            else -> 80
-        }
-        return "${scheme.lowercase()}://${host.lowercase()}:$effectivePort"
-    }
-
-    private fun String.sha256(): String = MessageDigest.getInstance("SHA-256")
-        .digest(toByteArray(StandardCharsets.UTF_8))
-        .joinToString("") { "%02x".format(it) }
-
     private companion object {
         const val ADAPTER_ID = "HTTP_SCENARIO_V1"
+        const val RESULT_LABEL = "Target Scenario result field"
         val TERMINAL_STATUSES = setOf("COMPLETED", "FAILED")
         val OPERATION_ID_PATTERN = Regex("[A-Za-z0-9._:@/-]{1,300}")
-        val RESOURCE_VALUE_PATTERN = Regex("[A-Za-z0-9._:@/-]{1,300}")
         val ARTIFACT_REFERENCE_PATTERN = Regex("[A-Za-z0-9._:@/-]{1,500}")
     }
 }

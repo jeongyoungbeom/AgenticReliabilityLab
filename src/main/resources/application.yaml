@@ -19,6 +19,11 @@ spring:
 
 server:
   port: ${ARL_SERVER_PORT:8090}
+  tomcat:
+    # Payload filters answer 413 without reading the body, so Tomcat must be able to drain what is left of an
+    # oversized request. Below this bound it aborts the connection instead and the caller never receives the
+    # refusal. Keep it above the largest MAX_JSON_REQUEST_BYTES any payload filter allows.
+    max-swallow-size: 4MB
 
 management:
   endpoints:

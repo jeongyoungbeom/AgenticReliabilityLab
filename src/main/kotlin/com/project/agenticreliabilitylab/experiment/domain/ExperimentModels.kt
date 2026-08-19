@@ -95,6 +95,32 @@ data class WorkloadLease(
     val leaseExpiresAt: Instant,
 )
 
+/** Whether one named invariant held, broke, or could not be judged from what the Target actually reported. */
+enum class InvariantOutcome {
+    PASSED,
+    FAILED,
+    NOT_EVALUATED,
+}
+
+/**
+ * One named invariant and the evidence behind its verdict.
+ *
+ * A bare pass/fail flag cannot answer "what broke, and how do you know". Carrying the expected and observed values with
+ * each verdict is what lets a result say which rule was violated and by how much, and lets a later analysis cite the
+ * specific invariant rather than restating that the experiment failed.
+ *
+ * [InvariantOutcome.NOT_EVALUATED] is deliberately distinct from a failure: an observation the Target never reported
+ * is missing evidence, not a violated rule, and reporting it as a violation would invent a finding.
+ */
+data class InvariantVerdict(
+    val id: String,
+    val title: String,
+    val outcome: InvariantOutcome,
+    val expected: String,
+    val observed: String,
+    val detail: String,
+)
+
 data class InvariantEvaluation(
     val outcome: SystemOutcome,
     val reason: String,

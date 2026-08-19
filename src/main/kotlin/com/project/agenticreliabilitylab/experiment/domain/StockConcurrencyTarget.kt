@@ -46,4 +46,16 @@ data class TargetResource(
     val namespace: String,
 )
 
-class ExternalOperationOutcomeUnknownException(message: String) : RuntimeException(message)
+class ExternalOperationOutcomeUnknownException(message: String, cause: Throwable? = null) :
+    RuntimeException(message, cause)
+
+/**
+ * The Target was not ready to accept this run, and nothing was dispatched to it.
+ *
+ * The engine records an action as dispatched before it calls an adapter, so any other failure has to be treated as a
+ * possible side effect that needs manual recovery. An adapter raises this instead when it can still guarantee the
+ * Target was only read: the run then fails validation cleanly, the workload lease is released and later runs are not
+ * blocked.
+ */
+class TargetPreflightFailedException(message: String, cause: Throwable? = null) :
+    RuntimeException(message, cause)

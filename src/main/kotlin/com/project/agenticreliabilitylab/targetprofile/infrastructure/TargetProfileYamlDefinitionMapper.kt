@@ -115,6 +115,7 @@ class TargetProfileYamlDefinitionMapper {
             hostResourceGroup = requiredString("host-resource-group"),
             stockConcurrency = StockConcurrencyScenarioProfile(
                 endpoint = stock.requiredString("endpoint"),
+                capabilitiesEndpoint = stock.optionalString("capabilities-endpoint"),
                 maxStock = stock.optionalInt("max-stock") ?: DEFAULT_MAX_STOCK,
                 maxRequestCount = stock.optionalInt("max-request-count") ?: DEFAULT_MAX_REQUEST_COUNT,
                 maxConcurrency = stock.optionalInt("max-concurrency") ?: DEFAULT_MAX_CONCURRENCY,

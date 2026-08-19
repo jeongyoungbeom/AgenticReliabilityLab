@@ -49,6 +49,11 @@ class TargetExperimentProfileRegistry(
                 require(stockConcurrency.endpoint.isSafeRelativePath()) {
                     "STOCK_CONCURRENCY endpoint must be an absolute path on the registered target origin"
                 }
+                stockConcurrency.capabilitiesEndpoint?.let { capabilitiesEndpoint ->
+                    require(capabilitiesEndpoint.isSafeRelativePath()) {
+                        "Test Harness capabilities endpoint must be an absolute path on the registered target origin"
+                    }
+                }
                 require(
                     stockConcurrency.maxStock > 0 &&
                         stockConcurrency.maxRequestCount > 0 &&

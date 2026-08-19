@@ -44,10 +44,10 @@ class ApiAuthorizationFilter(
 
         val authorization = request.getHeader(AUTHORIZATION_HEADER)
         when {
-            request.requestURI.isProfileManagementPath() && request.method.isSafeReadMethod() ->
+            request.requestURI.isAuthoringPath() && request.method.isSafeReadMethod() ->
                 operatorAccessService.requireViewer(authorization)
 
-            request.requestURI.isProfileManagementPath() ->
+            request.requestURI.isAuthoringPath() ->
                 operatorAccessService.requireProfileEditor(authorization)
 
             request.requestURI.isTargetHealthPath() ->
@@ -71,8 +71,13 @@ class ApiAuthorizationFilter(
         )
     }
 
-    private fun String.isProfileManagementPath(): Boolean =
-        startsWith(TARGET_PROFILES_PATH) || startsWith(TARGET_PROFILE_DRAFTS_PATH)
+    /**
+     * Routes that author or analyse documents rather than run anything against the Target.
+     *
+     * These read supplied text and stored analysis only, so they need the editor role rather than the executor role.
+     * Anything that can reach the Target keeps falling through to the executor default below.
+     */
+    private fun String.isAuthoringPath(): Boolean = AUTHORING_PATHS.any(::startsWith)
 
     private fun String.isTargetHealthPath(): Boolean =
         matches(TARGET_HEALTH_PATH)
@@ -91,8 +96,13 @@ class ApiAuthorizationFilter(
 
     private companion object {
         const val API_PATH = "/api/"
-        const val TARGET_PROFILES_PATH = "/api/target-profiles"
-        const val TARGET_PROFILE_DRAFTS_PATH = "/api/target-profile-drafts"
+        val AUTHORING_PATHS = listOf(
+            "/api/target-profiles",
+            "/api/target-profile-drafts",
+            "/api/target-knowledge-snapshots",
+            "/api/test-candidate-generations",
+            "/api/test-candidate-requests",
+        )
         const val AUTHORIZATION_HEADER = "Authorization"
         const val CORRELATION_ID_KEY = "correlationId"
         val TARGET_HEALTH_PATH = Regex("/api/targets/[^/]+/health")

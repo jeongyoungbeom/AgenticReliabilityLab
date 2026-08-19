@@ -19,7 +19,8 @@ internal object TargetProfileYamlSchema {
         "target-system-id", "adapter-id", "execution-enabled", "host-resource-group", "stock-concurrency",
     )
     val STOCK_CONCURRENCY_FIELDS = setOf(
-        "endpoint", "max-stock", "max-request-count", "max-concurrency", "max-quantity-per-request",
+        "endpoint", "capabilities-endpoint", "max-stock", "max-request-count", "max-concurrency",
+        "max-quantity-per-request",
         "execution-timeout",
     )
     val ALL_REGISTRATION_FIELDS = TARGET_FIELDS + GENERIC_FIELDS + EXPERIMENT_FIELDS

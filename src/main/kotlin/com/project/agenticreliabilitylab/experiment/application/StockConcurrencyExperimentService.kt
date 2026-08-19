@@ -16,6 +16,7 @@ import com.project.agenticreliabilitylab.experiment.domain.ExperimentRunStatus
 import com.project.agenticreliabilitylab.experiment.domain.ExperimentTargetAdapter
 import com.project.agenticreliabilitylab.experiment.domain.ExperimentType
 import com.project.agenticreliabilitylab.experiment.domain.ExternalOperationOutcomeUnknownException
+import com.project.agenticreliabilitylab.experiment.domain.TargetPreflightFailedException
 import com.project.agenticreliabilitylab.experiment.domain.StockConcurrencyParameters
 import com.project.agenticreliabilitylab.experiment.domain.StockConcurrencyTargetExecutionRequest
 import com.project.agenticreliabilitylab.experiment.domain.SystemOutcome
@@ -236,6 +237,8 @@ class StockConcurrencyExperimentService(
         } catch (exception: ExternalOperationOutcomeUnknownException) {
             preserveLease = true
             repository.markRecoveryRequired(runId, clock.instant(), exception.message ?: "External operation outcome is unknown")
+        } catch (exception: TargetPreflightFailedException) {
+            completeValidationFailure(runId, exception.message ?: "Target preflight validation failed")
         } catch (exception: TargetSystemNotFoundException) {
             completeValidationFailure(runId, exception.message ?: "Target system does not exist")
         } catch (exception: ResourceNotFoundException) {
