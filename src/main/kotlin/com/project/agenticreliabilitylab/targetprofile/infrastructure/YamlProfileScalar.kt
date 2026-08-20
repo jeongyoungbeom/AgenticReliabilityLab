@@ -8,6 +8,11 @@ internal fun Map<String, Any?>.requiredStringList(key: String): List<String> =
         value as? String ?: throw TargetProfileDocumentException("'$key[$index]' must be a string")
     } ?: throw TargetProfileDocumentException("'$key' must be an array")
 
+internal fun Map<String, Any?>.optionalStringList(key: String): List<String>? =
+    optionalList(key)?.mapIndexed { index, value ->
+        value as? String ?: throw TargetProfileDocumentException("'$key[$index]' must be a string")
+    }
+
 internal fun Map<String, Any?>.optionalIntList(key: String): List<Int>? =
     optionalList(key)?.mapIndexed { index, value -> value.yamlInt("$key[$index]") }
 

@@ -13,7 +13,9 @@ import java.time.Duration
 
 /** Maps the whitelisted YAML tree into one target Version definition. */
 @Component
-class TargetProfileYamlDefinitionMapper {
+class TargetProfileYamlDefinitionMapper(
+    private val testSpecExecutionMapper: TestSpecExecutionYamlMapper,
+) {
     fun map(root: Map<String, Any?>): TargetProfileDefinition {
         val arl = root.requiredMap("arl", TargetProfileYamlSchema.ARL_FIELDS)
         val target = arl.requiredMap("targets", TargetProfileYamlSchema.REGISTRATIONS_FIELD)
@@ -36,7 +38,18 @@ class TargetProfileYamlDefinitionMapper {
                 TargetProfileYamlSchema.ALL_REGISTRATION_FIELDS,
             )
             ?.toExperimentDefinition(target.id)
-        return TargetProfileDefinition(target, generic, experiment)
+        val testSpecExecution = arl.optionalMap(
+            "test-spec-execution",
+            TargetProfileYamlSchema.REGISTRATIONS_FIELD,
+        )
+            ?.requiredList("registrations")
+            ?.singleMatchingMap(
+                "arl.test-spec-execution.registrations",
+                target.id,
+                TargetProfileYamlSchema.ALL_REGISTRATION_FIELDS,
+            )
+            ?.let { registration -> testSpecExecutionMapper.map(registration, target.id) }
+        return TargetProfileDefinition(target, generic, experiment, testSpecExecution)
     }
 
     private fun Map<String, Any?>.toTargetDefinition(): TargetRegistrationDefinition {

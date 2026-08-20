@@ -1,0 +1,44 @@
+package com.project.agenticreliabilitylab.testspec.application
+
+import com.project.agenticreliabilitylab.testspec.domain.SpecHttpCall
+
+/**
+ * What the active Profile allows a specification to do.
+ *
+ * A specification is untrusted input, so nothing here is inferred from the specification itself. Every limit is
+ * read from the Profile, and the effective limit is always the smaller of Profile and any Target-declared value:
+ * a Target claiming a larger allowance can lower the ceiling, never raise it.
+ */
+data class TargetSpecCapabilities(
+    val targetSystemId: String,
+    val environment: String,
+    /** Paths the Profile registers, as "METHOD /path". Nothing else may be called. */
+    val allowedCalls: Set<String>,
+    val authProfiles: Set<String>,
+    /** Required auth profile for each registered call. A present null value explicitly means no auth. */
+    val authProfilesByCall: Map<String, String?> = emptyMap(),
+    /** Observation source name to the fields it provides. */
+    val observationSources: Map<String, Set<String>>,
+    val supportedFaults: Set<String>,
+    val infrastructureTargets: Set<String>,
+    val maxConcurrency: Int,
+    val maxRequestCount: Int,
+    val maxTrials: Int,
+    val stateChangingAllowed: Boolean,
+) {
+    fun matchingCall(call: SpecHttpCall): String? {
+        val method = call.method.uppercase()
+        val exact = "$method ${call.path}"
+        if (exact in allowedCalls) return exact
+        return allowedCalls.filter { registered ->
+            val separator = registered.indexOf(' ')
+            separator > 0 && registered.substring(0, separator) == method &&
+                SpecRequestPolicy.registeredPathMatches(registered.substring(separator + 1), call.path)
+        }.singleOrNull()
+    }
+
+    fun allows(call: SpecHttpCall): Boolean = matchingCall(call) != null
+
+    fun providesField(sourceName: String, field: String): Boolean =
+        observationSources[sourceName]?.contains(field) == true
+}

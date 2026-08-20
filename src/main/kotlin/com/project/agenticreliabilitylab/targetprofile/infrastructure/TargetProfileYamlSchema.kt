@@ -1,7 +1,7 @@
 package com.project.agenticreliabilitylab.targetprofile.infrastructure
 
 internal object TargetProfileYamlSchema {
-    val ARL_FIELDS = setOf("targets", "target-specs", "experiment-targets")
+    val ARL_FIELDS = setOf("targets", "target-specs", "experiment-targets", "test-spec-execution")
     val REGISTRATIONS_FIELD = setOf("registrations")
     val TARGET_FIELDS = setOf(
         "id", "name", "adapter-type", "environment", "base-url", "allowed-origin", "allowed-cidrs",
@@ -23,5 +23,16 @@ internal object TargetProfileYamlSchema {
         "max-quantity-per-request",
         "execution-timeout",
     )
-    val ALL_REGISTRATION_FIELDS = TARGET_FIELDS + GENERIC_FIELDS + EXPERIMENT_FIELDS
+    val TEST_SPEC_EXECUTION_FIELDS = setOf(
+        "target-system-id", "execution-enabled", "allowed-calls", "auth-profiles", "observation-sources",
+        "supported-faults", "infrastructure-targets", "max-concurrency", "max-request-count", "max-trials",
+        "state-changing-allowed", "reset",
+    )
+    val SPEC_CALL_FIELDS = setOf("method", "path", "auth-profile")
+    val OBSERVATION_SOURCE_FIELDS = setOf("name", "fields")
+    val RESET_FIELDS = setOf("method", "hook", "expected-duration", "verifications")
+    val RESET_VERIFICATION_FIELDS = setOf("id", "call", "expr", "condition", "read-at")
+    val READ_TIMING_FIELDS = setOf("rule", "max-wait", "interval")
+    val ALL_REGISTRATION_FIELDS =
+        TARGET_FIELDS + GENERIC_FIELDS + EXPERIMENT_FIELDS + TEST_SPEC_EXECUTION_FIELDS
 }

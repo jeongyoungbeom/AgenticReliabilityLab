@@ -24,9 +24,17 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
+/**
+ * Drives the Test Plan API on H2.
+ *
+ * The class is open so [com.project.agenticreliabilitylab.testplan.api.PostgreSqlTestPlanApiIntegrationTests] can run
+ * the same cases against a real PostgreSQL. The concurrency cases below depend on row locking and on a blocked update
+ * re-reading the committed row, which is engine behaviour rather than application logic, so proving them on H2 alone
+ * would prove them on a database nobody deploys.
+ */
 @ActiveProfiles("test")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class TestPlanApiIntegrationTests {
+open class TestPlanApiIntegrationTests {
     @Value("\${local.server.port}")
     private var serverPort: Int = 0
 

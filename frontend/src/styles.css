@@ -83,3 +83,144 @@ code { font-family: "SFMono-Regular", Consolas, monospace; font-size: .86em; }
   .summary-list div { grid-template-columns: 1fr; gap: 2px; }
   .batch-item-list li { grid-template-columns: 1fr; gap: 5px; }.batch-item-list > li > span:last-child { text-align: left; }
 }
+
+/* --- 하위 단계 내비게이션과 이해 모델 --- */
+.section-nav {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  flex-wrap: wrap;
+}
+
+.section-nav button {
+  background: transparent;
+  border: 1px solid #d5d9e0;
+  border-radius: 999px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.section-nav button.active {
+  background: #1f2937;
+  border-color: #1f2937;
+  color: #fff;
+}
+
+.badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.75rem;
+  background: #eef1f5;
+  color: #33415c;
+  margin-right: 0.4rem;
+}
+
+.badge.ok { background: #e3f5e9; color: #1b6b3a; }
+.badge.warn { background: #fdf0e3; color: #8a4b12; }
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.meta-grid dt { font-size: 0.75rem; color: #6b7280; }
+.meta-grid dd { margin: 0.15rem 0 0; font-family: ui-monospace, monospace; font-size: 0.85rem; }
+
+.fact-group { margin-top: 0.85rem; }
+.fact-group > summary { cursor: pointer; font-weight: 600; }
+
+.fact-list { list-style: none; padding: 0; margin: 0.5rem 0 0; }
+.fact-list > li { border-top: 1px solid #edeff3; padding: 0.6rem 0; }
+
+.citation-list { list-style: none; padding: 0; margin: 0.4rem 0 0; }
+.citation-list > li { font-size: 0.8rem; color: #55606e; }
+.citation-source { display: block; color: #8a94a3; }
+
+.warning-list { margin: 0.5rem 0; padding-left: 1.1rem; font-size: 0.85rem; color: #8a4b12; }
+
+.selection-list { list-style: none; padding: 0; margin: 0; }
+.selection-list > li { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0; }
+
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #1d4ed8;
+  cursor: pointer;
+  font-family: ui-monospace, monospace;
+}
+
+.muted { color: #6b7280; font-size: 0.88rem; }
+
+.notice.warning { background: #fdf6e3; border-left: 3px solid #c98a2b; color: #7a4d0c; }
+.char-count { margin: 0.15rem 0 0.6rem; font-size: 0.75rem; color: #8a94a3; text-align: right; }
+.char-count.over { color: #b42318; font-weight: 600; }
+
+/* --- 테스트 후보 --- */
+.candidate-list { list-style: none; padding: 0; margin: 0.75rem 0 0; display: grid; gap: 0.75rem; }
+
+.candidate-card {
+  border: 1px solid #e2e6ec;
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  background: #fff;
+}
+
+.candidate-card.blocked { background: #fbfbfc; border-style: dashed; }
+
+.candidate-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; }
+.candidate-select { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
+.candidate-select input { margin: 0; }
+.candidate-meta { margin: 0.5rem 0; }
+
+.candidate-expectation { font-size: 0.9rem; margin: 0.4rem 0; }
+.candidate-expectation .label {
+  display: block;
+  font-size: 0.72rem;
+  color: #8a94a3;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* --- Test Plan --- */
+.plan-item-list { list-style: none; padding: 0; margin: 0.6rem 0 0; }
+.plan-item-list > li {
+  display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;
+  border-top: 1px solid #edeff3; padding: 0.5rem 0;
+}
+.plan-item-list .sequence {
+  min-width: 1.4rem; height: 1.4rem; border-radius: 50%; background: #eef1f5;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem;
+}
+
+/* --- 실험 결과와 불변식 판정 --- */
+.badge.danger { background: #fde8e6; color: #a4232a; }
+
+.outcome-reason { font-size: 0.95rem; margin: 0.5rem 0; }
+
+.verdict-list { list-style: none; padding: 0; margin: 0.75rem 0 0; display: grid; gap: 0.6rem; }
+
+.verdict {
+  border: 1px solid #e2e6ec;
+  border-left-width: 4px;
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  background: #fff;
+}
+
+.verdict.passed { border-left-color: #2f9e5f; }
+.verdict.failed { border-left-color: #c8383f; background: #fffafa; }
+.verdict.not_evaluated { border-left-color: #c98a2b; background: #fffdf7; }
+
+.verdict-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 0.75rem; }
+.verdict-values { display: flex; gap: 1.5rem; margin: 0.4rem 0; font-family: ui-monospace, monospace; }
+.verdict-values .label {
+  display: block; font-family: system-ui, sans-serif; font-size: 0.72rem;
+  color: #8a94a3; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.verdict-detail { font-size: 0.88rem; color: #4a5462; margin: 0.3rem 0; }
+.verdict-id { font-size: 0.72rem; color: #98a1ae; }

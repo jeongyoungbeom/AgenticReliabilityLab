@@ -1,5 +1,8 @@
 package com.project.agenticreliabilitylab.targetprofile.api
 
+import com.project.agenticreliabilitylab.testspec.application.port.TestSpecExecutionProfileCatalog
+import com.project.agenticreliabilitylab.testspec.domain.CleanupMethod
+import com.project.agenticreliabilitylab.testspec.domain.SpecHttpCall
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
@@ -16,6 +19,7 @@ import java.util.UUID
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import tools.jackson.databind.ObjectMapper
 
 @ActiveProfiles("test")
@@ -26,6 +30,9 @@ class TargetProfileApiIntegrationTests {
 
     @Autowired
     private lateinit var objectMapper: ObjectMapper
+
+    @Autowired
+    private lateinit var testSpecProfiles: TestSpecExecutionProfileCatalog
 
     private val httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()
 
@@ -53,6 +60,16 @@ class TargetProfileApiIntegrationTests {
         )
         assertEquals(202, activated.statusCode())
         assertContains(activated.body(), "\"status\":\"ACTIVE\"")
+
+        val executionProfile = testSpecProfiles.requireActive(targetId)
+        assertEquals(UUID.fromString(versionId), executionProfile.profileVersionId)
+        assertTrue(
+            executionProfile.capabilities.allows(
+                SpecHttpCall("GET", "/api/read-only", "reader", emptyMap(), null),
+            ),
+        )
+        assertEquals(2, executionProfile.capabilities.maxConcurrency)
+        assertEquals(CleanupMethod.NOT_REQUIRED, executionProfile.resetPlan.method)
 
         val candidates = get("/api/targets/$targetId/test-candidates")
         assertEquals(200, candidates.statusCode())
@@ -159,6 +176,21 @@ class TargetProfileApiIntegrationTests {
                     description: Verifies that an imported Profile supplies a safe read-only candidate.
                     path: /api/read-only
                     expected-status-codes: [200]
+          test-spec-execution:
+            registrations:
+              - target-system-id: $targetId
+                execution-enabled: true
+                allowed-calls:
+                  - method: GET
+                    path: /api/read-only
+                    auth-profile: reader
+                auth-profiles: [reader]
+                max-concurrency: 2
+                max-request-count: 20
+                max-trials: 5
+                state-changing-allowed: false
+                reset:
+                  method: NOT_REQUIRED
     """.trimIndent()
 
     private fun profileJson(yaml: String): String = "{\"yaml\":${objectMapper.writeValueAsString(yaml)}}"

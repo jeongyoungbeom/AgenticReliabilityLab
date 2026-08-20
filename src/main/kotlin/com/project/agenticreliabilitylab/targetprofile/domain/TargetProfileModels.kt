@@ -10,6 +10,8 @@ import com.project.agenticreliabilitylab.target.domain.TargetEnvironment
 import com.project.agenticreliabilitylab.targetspec.domain.FailureInjectionCandidate
 import com.project.agenticreliabilitylab.targetspec.domain.TargetTestCandidate
 import com.project.agenticreliabilitylab.targetspec.domain.TargetTestCandidateKind
+import com.project.agenticreliabilitylab.testspec.domain.CleanupMethod
+import com.project.agenticreliabilitylab.testspec.domain.StabilityRule
 import java.net.URI
 import java.time.Duration
 import java.time.Instant
@@ -30,6 +32,7 @@ data class TargetProfileDefinition(
     val target: TargetRegistrationDefinition,
     val genericHttp: GenericHttpProfileDefinition? = null,
     val experiment: ExperimentProfileDefinition? = null,
+    val testSpecExecution: TestSpecExecutionProfileDefinition? = null,
 )
 
 data class TargetRegistrationDefinition(
@@ -70,6 +73,54 @@ data class ExperimentProfileDefinition(
     val executionEnabled: Boolean,
     val hostResourceGroup: String,
     val stockConcurrency: StockConcurrencyScenarioProfile,
+)
+
+/** Profile-owned limits and allowlists for Phase 17 declarative specification execution. */
+data class TestSpecExecutionProfileDefinition(
+    val executionEnabled: Boolean,
+    val allowedCalls: List<ProfileHttpCallDefinition>,
+    val authProfiles: Set<String>,
+    val observationSources: List<ProfileObservationSourceDefinition>,
+    val supportedFaults: Set<String>,
+    val infrastructureTargets: Set<String>,
+    val maxConcurrency: Int,
+    val maxRequestCount: Int,
+    val maxTrials: Int,
+    val stateChangingAllowed: Boolean,
+    val reset: ProfileResetDefinition?,
+)
+
+/** A call template contains no credential value; [authProfile] is resolved only by the Runner. */
+data class ProfileHttpCallDefinition(
+    val method: String,
+    val path: String,
+    val authProfile: String? = null,
+)
+
+data class ProfileObservationSourceDefinition(
+    val name: String,
+    val fields: Set<String>,
+)
+
+data class ProfileResetDefinition(
+    val method: CleanupMethod,
+    val hook: ProfileHttpCallDefinition?,
+    val expectedDuration: Duration,
+    val verifications: List<ProfileResetVerificationDefinition>,
+)
+
+data class ProfileResetVerificationDefinition(
+    val id: String,
+    val call: ProfileHttpCallDefinition,
+    val expression: String,
+    val condition: String,
+    val readTiming: ProfileReadTimingDefinition,
+)
+
+data class ProfileReadTimingDefinition(
+    val rule: StabilityRule,
+    val maxWait: Duration,
+    val interval: Duration,
 )
 
 data class TargetProfileVersion(

@@ -4,6 +4,8 @@ import com.project.agenticreliabilitylab.common.ClientRequestException
 import com.project.agenticreliabilitylab.common.AccessDeniedException
 import com.project.agenticreliabilitylab.common.ResourceNotFoundException
 import com.project.agenticreliabilitylab.targetprofile.domain.TargetProfileDocumentException
+import com.project.agenticreliabilitylab.testspec.application.SpecParseException
+import com.project.agenticreliabilitylab.testspec.application.SpecValidationException
 import org.slf4j.LoggerFactory
 import org.slf4j.MDC
 import org.springframework.http.HttpStatus
@@ -30,6 +32,14 @@ class ApiExceptionHandler {
     @ExceptionHandler(TargetProfileDocumentException::class)
     fun invalidTargetProfile(exception: TargetProfileDocumentException): ResponseEntity<ApiErrorResponse> =
         response(HttpStatus.BAD_REQUEST, exception.code, exception.message)
+
+    @ExceptionHandler(SpecParseException::class, SpecValidationException::class)
+    fun invalidTestSpecification(exception: RuntimeException): ResponseEntity<ApiErrorResponse> =
+        response(
+            HttpStatus.BAD_REQUEST,
+            "INVALID_TEST_SPECIFICATION",
+            exception.message ?: "Test specification is invalid",
+        )
 
     @ExceptionHandler(AccessDeniedException::class)
     fun forbidden(exception: AccessDeniedException): ResponseEntity<ApiErrorResponse> =

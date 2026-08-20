@@ -1,0 +1,79 @@
+package com.project.agenticreliabilitylab.testspec.domain
+
+/** What the engine concluded about one invariant. */
+enum class InvariantOutcome {
+    PASSED,
+    VIOLATED,
+
+    /** We could not judge. Not a defect - an absent observation or an unmet precondition. */
+    NOT_EVALUATED,
+}
+
+/** Why an invariant could not be judged. Kept apart from the outcome so a report can say what to fix. */
+enum class NotEvaluatedReason {
+    /** An observation this invariant reads was never successfully read. */
+    OBSERVATION_MISSING,
+
+    /** The invariant named in `requires` did not pass. */
+    REQUIREMENT_UNMET,
+
+    /** The expression could not be evaluated against the observed values. */
+    EXPRESSION_FAILED,
+
+    /** The trial never ran to completion, so there was nothing to judge. */
+    TRIAL_NOT_RUN,
+}
+
+/**
+ * One invariant's verdict, with the evidence behind it.
+ *
+ * "The concurrency test failed" is not something an operator can act on, so every verdict carries the expression
+ * that was judged and the values it saw.
+ */
+data class InvariantVerdict(
+    val invariantId: String,
+    val description: String,
+    val outcome: InvariantOutcome,
+    val condition: String,
+    val observedValues: Map<String, String>,
+    val notEvaluatedReason: NotEvaluatedReason? = null,
+    val detail: String? = null,
+    /** Set when an exception the reviewer approved turned a violation into a pass. */
+    val appliedException: String? = null,
+)
+
+/** How one trial of a specification came out. */
+enum class TrialOutcome {
+    PASSED,
+    VIOLATED,
+
+    /** Nothing was violated but something could not be judged. */
+    INCONCLUSIVE,
+}
+
+/** One run of the whole specification. */
+data class TrialResult(
+    val trialNumber: Int,
+    val outcome: TrialOutcome,
+    val verdicts: List<InvariantVerdict>,
+)
+
+/**
+ * The verdict over every trial.
+ *
+ * A probabilistic defect shows up in some trials and not others, so `20회 중 3회 위반` and `1회 위반` are different
+ * facts and both are kept. Reporting only the final outcome would throw away how reproducible the defect is.
+ */
+data class SpecificationResult(
+    val outcome: TrialOutcome,
+    val trialsRun: Int,
+    val trialsViolated: Int,
+    val trialsInconclusive: Int,
+    val trials: List<TrialResult>,
+) {
+    val reason: String = when (outcome) {
+        TrialOutcome.VIOLATED -> "$trialsRun trial(s) run, $trialsViolated violated"
+        TrialOutcome.INCONCLUSIVE -> "$trialsRun trial(s) run, $trialsInconclusive could not be judged"
+        TrialOutcome.PASSED -> "$trialsRun trial(s) run, no violation observed"
+    }
+}

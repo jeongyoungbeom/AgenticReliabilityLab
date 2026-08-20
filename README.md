@@ -2,21 +2,21 @@
 
 여러 프로젝트에 붙여 **안전한 신뢰성 확인을 실행하고, 결과를 AI로 분석하는 로컬 워크벤치**입니다.
 
-특정 서비스의 코드·DB·스크립트에 종속되지 않습니다. Target Profile에 허용한 범위 안에서만 동작하며, ARL이 직접 보내는 요청은 명시적으로 등록한 읽기 전용 `GET`뿐입니다. 상태를 바꾸는 테스트는 Target이 스스로 공개한 Test Harness를 통해서만 실행합니다.
+특정 서비스의 코드·DB·스크립트에 종속되지 않습니다. Target Profile에 허용한 범위 안에서만 동작하며, 일반 점검은 명시적으로 등록한 읽기 전용 `GET`만 실행합니다. 상태 변경 테스트는 Target의 Test Harness 또는 사람이 승인한 선언형 테스트 명세로 실행하며, 선언형 명세는 `LOCAL`/`TEST` 환경의 허용 경로·인증 프로필·실행 상한·검증된 reset 안에서만 동작합니다.
 
 ## 먼저 알아둘 현재 범위
 
-현재 구현 범위는 `DESIGN.md`의 Phase 0–10.7과 `DESIGN2.md`의 Phase 11–15입니다.
+현재 구현 범위는 `DESIGN.md`의 Phase 0–10.7, `DESIGN2.md`의 Phase 11–15, `DESIGN3.md`의 Phase 17입니다. `DESIGN2.md`의 Phase 16 실제 파일럿은 후속 Phase 구현 뒤 마지막에 수행합니다.
 
 | 할 수 있는 일 | 아직 할 수 없는 일 |
 | --- | --- |
 | Target의 health와 등록한 읽기 전용 HTTP endpoint를 여러 개 선택해 점검 | Target 저장소를 직접 읽어 코드·DB 구조를 자동 이해 |
-| 제공한 OpenAPI·README·설명에서 Target 이해 모델(Knowledge Snapshot)을 만들기 | Target 코드 수정 없이 상태 변경 테스트를 실행 |
+| 제공한 OpenAPI·README·설명에서 Target 이해 모델(Knowledge Snapshot)을 만들기 | `/harness/state`, Prometheus, trace를 관측 소스로 사용 |
 | 이해 모델을 근거로 테스트 후보를 생성하고 Test Plan으로 묶어 승인·실행 | POST/PUT/PATCH/DELETE, DB, Docker, 셸 명령으로 Target을 임의 변경 |
-| Test Harness를 제공하는 Target에 한해 동시성 실험을 실행하고 불변식으로 판정 | AI가 스스로 테스트를 설계해 승인 없이 실행 |
+| Test Harness 또는 허용된 선언형 명세로 상태 변경 실험을 실행하고 불변식으로 판정 | AI가 스스로 테스트를 설계해 승인 없이 실행 |
 | 점검 결과를 단일/멀티 에이전트와 선택한 로컬 모델로 분석·비교 | `STAGING`·`PRODUCTION` 환경에서 실행 |
 
-ARL이 직접 실행하는 HTTP 요청은 여전히 **Profile에 등록한 읽기 전용 `GET`뿐**입니다. 상태를 바꾸는 테스트는 Target이 자기 쪽에 Test Harness를 구현해 공개했을 때만, 그 Harness를 통해 실행합니다. 후보 생성은 규칙 기반이며 LLM이 판정을 내리지 않습니다.
+일반 HTTP Batch는 여전히 **Profile에 등록한 읽기 전용 `GET`만** 실행합니다. 별도 Phase 17 경로는 활성 Profile의 `test-spec-execution` 권한 안에서 승인된 JSON 명세만 실행하고, 상태를 바꾸는 각 시행 뒤 환경 reset과 reset 검증을 요구합니다. 후보 생성은 규칙 기반이며 LLM이 판정을 내리지 않습니다.
 
 ## 주요 특징
 
@@ -25,6 +25,7 @@ ARL이 직접 실행하는 HTTP 요청은 여전히 **Profile에 등록한 읽�
 - 테스트 후보 생성: 이해 모델을 근거로 후보를 만들고, 각 후보가 지금 실행 가능한지를 저장된 실행 바인딩으로 구분합니다.
 - Test Plan: 여러 후보를 하나의 계획으로 묶어 승인하고, 승인된 계획만 기존 실행 엔진으로 넘깁니다.
 - Test Harness 연동: 표준 capability 계약을 공개한 Target에 한해 동시성 실험을 실행하고, 판정은 ARL의 결정적 불변식이 수행합니다.
+- 선언형 테스트 명세: JSON Schema·의미 검증을 통과한 명세를 사람이 위험도별 문구로 승인한 뒤, 멱등 키로 실행하고 결정적 판정·reset 검증·결과 저장까지 수행합니다.
 - 안전한 HTTP Batch: health와 선언한 `GET` endpoint만 후보가 되며, 여러 후보를 한 Batch로 묶어 사람이 승인한 뒤 실행합니다.
 - 선택형 AI 분석: `SINGLE` 또는 `MULTI`, `GPT_OSS` 또는 `QWEN` 중 원하는 조합만 골라 분석합니다.
 - 분석 비교: 선택한 2–4개 조합이 같은 불변 Dataset을 분석하므로 결과·토큰·시간을 비교할 수 있습니다.
@@ -38,7 +39,7 @@ ARL이 직접 실행하는 HTTP 요청은 여전히 **Profile에 등록한 읽�
         │
         ├─ Target Profile 관리 / 안전한 테스트 / 분석 / Chat 안내
         │
-ARL Backend + PostgreSQL ── 허용된 읽기 전용 GET ── Target 프로젝트
+ARL Backend + PostgreSQL ── 허용된 GET / 승인된 선언형 호출 ── Target 프로젝트
         │
         └─ Ollama (호스트의 로컬 모델) ── 분석·비교·원인 가설 생성
 ```
@@ -133,17 +134,19 @@ Profile은 실행 권한의 기준입니다. 새 버전을 활성화하면 이�
 
 ### 2. Target 이해 모델과 테스트 후보 만들기
 
+**1. Target Profile** 탭 안의 `Target 이해 모델` 하위 화면과 **2. 안전 테스트** 탭의 `테스트 후보`·`Test Plan` 하위 화면에서 진행합니다.
+
 1. OpenAPI 문서, README, 짧은 설명 중 가진 것을 제출해 **Knowledge Snapshot**을 만듭니다.
 2. Snapshot은 활성 Profile 버전에 묶입니다. Profile을 새로 활성화하면 이전 Snapshot은 사용 불가로 표시됩니다.
 3. Snapshot을 근거로 **테스트 후보**를 생성합니다. 후보에는 분류, 위험도, 그리고 지금 실행 가능한지를 나타내는 실행 바인딩이 붙습니다.
-4. 실행 경로가 없는 후보는 제안만 되고 실행되지 않습니다. 무엇이 더 필요한지가 사유로 표시됩니다.
-5. 실행할 후보를 골라 **Test Plan**으로 묶고, 확인 문구 `EXECUTE_SAFE_TEST_PLAN`을 입력해 승인합니다.
+4. 실행 경로가 없는 후보는 제안만 되고 실행되지 않습니다. 무엇이 더 필요한지가 사유로 함께 반환됩니다.
+5. 실행할 후보를 골라 **Test Plan**으로 묶고, 확인 문구 `EXECUTE_SAFE_TEST_PLAN`으로 승인합니다.
 
 승인된 Plan을 넘기면 기존 읽기 전용 Batch 엔진이 실행합니다. Plan 승인과 dispatch 사이에 Profile 버전이 바뀌면 그 Plan은 자동으로 대체 처리되어 실행되지 않습니다.
 
 ### 3. 안전한 테스트 후보 선택 및 승인
 
-Test Plan을 거치지 않고 읽기 전용 점검만 바로 실행하고 싶을 때 쓰는 경로입니다. 두 경로는 같은 실행 엔진과 같은 승인 규칙을 사용합니다.
+**2. 안전 테스트** 탭의 `즉시 실행` 하위 화면입니다. Test Plan을 거치지 않고 읽기 전용 점검만 바로 실행하고 싶을 때 쓰며, 두 경로는 같은 실행 엔진과 같은 승인 규칙을 사용합니다.
 
 1. **2. 안전 테스트** 탭에서 Target을 선택합니다.
 2. health와 Profile에 선언한 읽기 전용 endpoint 후보 중 하나 이상을 선택합니다.
@@ -177,6 +180,10 @@ Multi agent는 `SUPERVISOR → PLANNER → ANALYST → REVIEWER` 순서로 같�
 ### 6. Chat 탭의 역할
 
 **4. Chat**은 화면 사용 흐름과 다음 행동을 안내합니다. Chat 메시지만으로 Batch 승인, Target 호출, 장애 주입, 코드 변경은 일어나지 않습니다.
+
+### 실험 결과 확인
+
+**2. 안전 테스트** 탭의 `실험 결과` 하위 화면에서 Experiment Run ID로 판정 근거를 봅니다. 불변식마다 기대값·관측값·근거가 따로 표시되며, Target이 보고하지 않은 항목은 위반이 아니라 판정하지 않음으로 남습니다. 정리가 확인되지 않은 실행은 그 원인과 함께, 같은 Target의 다음 실험이 막힌다는 사실을 함께 알립니다.
 
 ## Target Profile 작성법
 
@@ -264,7 +271,7 @@ arl:
 
 - `LOCAL` 또는 `TEST` 환경만 실행할 수 있습니다. `STAGING`, `PRODUCTION`은 실행을 차단합니다.
 - `read-only-operations`에는 고정된 상대 경로만 씁니다. query string, fragment, user-info, 변수 치환은 허용하지 않습니다.
-- 현재 실행 가능한 HTTP method는 `GET`뿐입니다.
+- 일반 `read-only-operations`에서 실행 가능한 HTTP method는 `GET`뿐입니다. 상태 변경 method는 별도 `test-spec-execution.allowed-calls`와 승인된 명세가 모두 허용해야 합니다.
 - `execution-enabled: true`여야 승인과 worker 실행이 가능합니다.
 - 인증 토큰, 비밀번호, DB 접속 문자열, 요청 본문, 셸 명령을 Profile에 넣지 마세요.
 - `allowed-origin`과 `allowed-cidrs`는 SSRF 방지를 위한 이중 제한입니다. Docker Desktop의 host gateway 대역은 설치 환경마다 다를 수 있으므로 실제 환경에 맞춰 확인해야 합니다.
@@ -277,9 +284,18 @@ Target Profile 탭의 초안 기능에 OpenAPI 문서나 README 내용을 붙여
 
 초안은 실행되지 않습니다. 사용자가 endpoint, 기대 상태, CIDR, 실행 허용 여부를 직접 검토하고 import·활성화해야 후보가 됩니다. 이 기능은 코드 분석기가 아니며, 저장소 파일·DB 스키마·비즈니스 로직을 읽지 않습니다.
 
-## 상태 변경 테스트: Test Harness 계약
+## 상태 변경 테스트
 
-동시성 같은 상태 변경 실험은 ARL이 Target의 임의 endpoint에 병렬 요청을 보내는 방식이 아닙니다. Target이 자기 쪽에 **Test Harness**를 구현해 공개해야 하며, ARL은 그 Harness를 통해서만 실행합니다. fixture 준비, workload, 관측, cleanup은 모두 Target 안에서 일어나고 ARL은 관측값을 받아 판정만 합니다.
+상태 변경 테스트는 두 경로로 분리됩니다.
+
+- **Test Harness**: Target이 표준 capability 계약 또는 전용 시나리오 endpoint를 구현합니다.
+- **선언형 테스트 명세**: ARL이 승인된 JSON 명세의 setup·workload·observation·invariant·cleanup을 직접 조율합니다. 활성 Profile의 `test-spec-execution`보다 권한을 넓힐 수 없고, 같은 Target에는 활성 run을 하나만 허용합니다.
+
+선언형 명세의 전체 형식은 `TEST_SPEC.md`, 기계 검증 계약은 `src/main/resources/schema/test-spec.schema.json`, Profile 예시는 `target-profile.sample.yaml`을 참고하세요. 인증값은 명세나 DB에 저장하지 않고 Runner 환경 변수 `ARL_SPEC_AUTH_<TARGET>_<PROFILE>`에서 실행 직전에 읽습니다. 기본 헤더는 `Authorization`이며 `<변수명>_HEADER`로 바꿀 수 있습니다.
+
+### Test Harness 계약
+
+Harness 경로에서는 Target이 자기 쪽에 Test Harness를 구현해 공개해야 합니다. fixture 준비, workload, 관측, cleanup은 모두 Target 안에서 일어나고 ARL은 관측값을 받아 판정합니다.
 
 Profile의 `adapter-id`로 어떤 경로를 쓸지 고릅니다.
 
@@ -312,8 +328,8 @@ capability 선언은 신뢰하지 않는 입력으로 다룹니다. 실제 실�
 외부에 API를 노출할 때는 반드시 `SECURED` 모드와 역할별 Bearer token을 사용해야 합니다.
 
 - `VIEWER`: 조회
-- `PROFILE_EDITOR`: Profile import·활성화·초안 생성, Knowledge Snapshot 제출, 테스트 후보 생성
-- `EXECUTOR`: Test Plan 승인·dispatch, Batch·Experiment·분석 같은 실행 요청
+- `PROFILE_EDITOR`: Profile import·활성화·초안 생성, Knowledge Snapshot 제출, 테스트 후보·선언형 명세 생성
+- `EXECUTOR`: Test Plan·선언형 명세 승인, 명세 run·Batch·Experiment·분석 같은 실행 요청
 
 Target을 이해하고 후보를 만드는 작업(작성)과 그것을 실제로 실행하는 작업(실행)은 서로 다른 역할을 요구합니다. `EXECUTOR` 토큰만으로는 Snapshot을 만들거나 후보를 생성할 수 없습니다.
 
@@ -338,9 +354,15 @@ POST /api/test-plans                                     Test Plan 생성       
 POST /api/test-plans/{id}/approve                        승인                         (EXECUTOR)
 POST /api/test-plans/{id}/dispatch                       실행 엔진으로 인계           (EXECUTOR)
 GET  /api/test-plans/{id}                                조회                         (VIEWER)
+
+POST /api/test-specifications                            선언형 명세 등록             (PROFILE_EDITOR)
+POST /api/test-specifications/{id}/approve               위험도별 문구로 승인         (EXECUTOR)
+POST /api/test-specifications/{id}/runs                  멱등 실행                    (EXECUTOR)
+GET  /api/test-specifications/{id}                        명세 조회                    (VIEWER)
+GET  /api/test-spec-runs/{runId}                          실행·판정·reset 결과 조회    (VIEWER)
 ```
 
-확인 문구는 Snapshot이 `CONFIRM_TARGET_KNOWLEDGE`, Test Plan 승인이 `EXECUTE_SAFE_TEST_PLAN`입니다.
+확인 문구는 Snapshot이 `CONFIRM_TARGET_KNOWLEDGE`, Test Plan 승인이 `EXECUTE_SAFE_TEST_PLAN`입니다. 선언형 명세는 응답의 `requiredConfirmation`을 그대로 사용하며 위험도에 따라 `APPROVE_SAFE_TEST_SPECIFICATION`, `APPROVE_MODERATE_TEST_SPECIFICATION`, `APPROVE_DESTRUCTIVE_TEST_SPECIFICATION` 중 하나입니다. 실행 요청에는 `Idempotency-Key` 헤더가 필요합니다.
 
 같은 문서를 다시 제출하거나 같은 Snapshot으로 후보를 다시 생성하면 새로 만들지 않고 기존 결과를 돌려줍니다. 승인과 실행 인계는 중복 호출과 동시 호출 모두에서 한 번만 일어납니다.
 
@@ -392,6 +414,8 @@ Ollama            : http://localhost:11434
 
 ```powershell
 Set-Location frontend
+npm ci
+npm test
 npm run build
 ```
 
@@ -404,6 +428,9 @@ frontend/         React Workbench
 config/           Detekt 설정
 DESIGN.md         Phase 0-10.7 설계 계약과 안전 경계
 DESIGN2.md        Phase 11-16 설계 계약
+DESIGN3.md        Phase 17 이후 선언형 명세·관측·피드백 설계
+TEST_SPEC.md      Phase 17 선언형 테스트 명세 계약
+HANDOFF.md        현재 완료 상태와 다음 Phase 인수인계
 compose.yaml      로컬 Docker Compose 구성
 start.ps1         로컬 통합 기동 스크립트
 ```
@@ -412,13 +439,14 @@ start.ps1         로컬 통합 기동 스크립트
 
 ## 다음 핵심 개발 방향
 
-Phase 11–15로 이해 모델, 후보 생성, Test Plan, Test Harness 연동, 불변식 판정을 구현했습니다. 남은 것은 `DESIGN2.md`의 Phase 16이며, 실제 프로젝트 하나로 전체 흐름을 검증하는 단계입니다.
+Phase 17까지 선언형 명세 등록·승인·멱등 실행·관측·결정적 판정·reset 검증·영속화를 구현했습니다. 다음은 Phase 18의 `/harness/state`, Prometheus 관측과 관측 실패 국소화입니다. 이후 Phase 19–22를 진행하고, 실제 프로젝트 파일럿은 마지막에 수행합니다.
 
 아직 없는 기능과 검증되지 않은 부분은 다음과 같습니다.
 
-- **Target 인증 수단이 없습니다.** ARL은 Target에 credential을 전달하는 방법을 아직 구현하지 않았으므로, 인증이 필요한 Target은 테스트할 수 없습니다.
-- **Harness 연동은 스텁으로만 검증했습니다.** 실제 프로젝트가 이 계약을 구현했을 때 무엇이 부족한지는 파일럿에서 확인해야 합니다.
+- **선언형 명세 인증만 지원합니다.** auth profile의 credential은 Runner 환경 변수에서 주입되며, 일반 read-only Batch와 기존 Harness에는 범용 Target 인증 전달 수단이 없습니다.
+- **실제 프로젝트 파일럿은 아직입니다.** Harness와 선언형 명세는 로컬 HTTP Target·스텁으로 검증했으며, 실제 프로젝트 계약의 부족한 점은 마지막 파일럿에서 확인해야 합니다.
 - **후보 생성은 규칙 기반입니다.** LLM이 후보를 제안하는 경로는 안전 검증기까지만 준비되어 있고 모델은 연결하지 않았습니다.
-- 동시성 관련 검증은 대부분 H2 기준입니다. PostgreSQL에서의 재검증이 남아 있습니다.
+- **Phase 17 API는 아직 Workbench UI에 연결하지 않았습니다.** 현재는 API로 명세를 등록·승인·실행·조회합니다.
+- 프로세스가 실제로 죽는 상황의 복구는 저장소 상태를 직접 만들어 검증했습니다. 실제 강제 종료를 재현한 검증은 아닙니다.
 
-쓰기 요청과 테스트 데이터 생성은 읽기 전용 안전 경계를 넓히는 일이므로, Target 계약·권한·격리·cleanup·감사 규칙을 먼저 고정한 뒤에만 확장합니다.
+추가 쓰기 요청과 테스트 데이터 생성은 Phase 17의 Profile 권한·환경 격리·승인·reset 검증·감사 규칙을 통과하는 경우에만 확장합니다.

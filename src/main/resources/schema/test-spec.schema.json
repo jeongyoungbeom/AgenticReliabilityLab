@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-reliability-lab.local/schema/test-spec.schema.json",
+  "title": "Agentic Reliability Lab test specification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["specKey", "title", "category", "risk", "observations", "invariants", "policy"],
+  "properties": {
+    "specKey": { "type": "string", "minLength": 1 },
+    "version": { "type": "integer", "minimum": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "category": {
+      "type": "string",
+      "enum": [
+        "AVAILABILITY",
+        "CONTRACT_INPUT",
+        "WORKFLOW",
+        "RETRY_RECOVERY",
+        "IDEMPOTENCY",
+        "CONCURRENCY",
+        "CONSISTENCY"
+      ]
+    },
+    "risk": { "type": "string", "enum": ["SAFE", "MODERATE", "DESTRUCTIVE"] },
+    "evidence": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidence" }
+    },
+    "setup": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "call"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "call": { "$ref": "#/$defs/call" },
+          "captures": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          }
+        }
+      }
+    },
+    "workload": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "name"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "CALL",
+              "WAIT",
+              "INJECT_FAULT",
+              "RELEASE_FAULT",
+              "INFRA_ACTION",
+              "INFRA_RESTORE"
+            ]
+          },
+          "name": { "type": "string", "minLength": 1 },
+          "call": { "$ref": "#/$defs/call" },
+          "requestCount": { "type": "integer", "minimum": 1 },
+          "concurrency": { "type": "integer", "minimum": 1 },
+          "captureAs": { "type": "string", "minLength": 1 },
+          "duration": { "type": "integer", "minimum": 0, "maximum": 300000 },
+          "faultType": { "type": "string", "minLength": 1 },
+          "scope": { "type": "string", "minLength": 1 },
+          "ttl": { "type": "integer", "minimum": 0 },
+          "action": { "type": "string", "minLength": 1 },
+          "target": { "type": "string", "minLength": 1 },
+          "maxHold": { "type": "integer", "minimum": 0 },
+          "handle": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "observations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "source", "expr"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "label": { "type": "string", "minLength": 1 },
+          "source": { "type": "string", "enum": ["API", "RESPONSES", "DECLARED_SOURCE"] },
+          "sourceName": { "type": "string", "minLength": 1 },
+          "call": { "$ref": "#/$defs/call" },
+          "expr": { "type": "string", "minLength": 1 },
+          "readAt": { "$ref": "#/$defs/readTiming" }
+        }
+      }
+    },
+    "invariants": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description", "condition"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "condition": { "type": "string", "minLength": 1 },
+          "requires": { "type": "string", "minLength": 1 },
+          "unmet": { "type": "string", "enum": ["NOT_EVALUATED"] },
+          "exceptions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["condition", "description"],
+              "properties": {
+                "condition": { "type": "string", "minLength": 1 },
+                "description": { "type": "string", "minLength": 1 },
+                "evidence": { "$ref": "#/$defs/evidence" },
+                "approvedBy": { "type": "string", "minLength": 1 }
+              }
+            }
+          },
+          "threshold": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "literal": {},
+              "reference": { "type": "string", "minLength": 1 },
+              "evidence": { "$ref": "#/$defs/evidence" }
+            }
+          }
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trials"],
+      "properties": {
+        "trials": { "type": "integer", "minimum": 1 },
+        "aggregation": { "type": "string", "enum": ["ANY_VIOLATION_FAILS"] },
+        "stopPolicy": { "type": "string", "enum": ["STOP_ON_FIRST_VIOLATION", "RUN_ALL"] },
+        "cleanupTiming": { "type": "string", "enum": ["EACH_TRIAL", "AFTER_ALL"] },
+        "interval": { "type": "integer", "minimum": 0, "maximum": 60000 }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method"],
+      "properties": {
+        "method": { "type": "string", "enum": ["ENVIRONMENT_RESET", "NOT_REQUIRED"] }
+      }
+    }
+  },
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceType", "location", "excerpt"],
+      "properties": {
+        "sourceType": { "type": "string", "minLength": 1 },
+        "location": { "type": "string", "minLength": 1 },
+        "excerpt": { "type": "string", "minLength": 1 }
+      }
+    },
+    "call": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "path"],
+      "properties": {
+        "method": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "authProfile": { "type": "string", "minLength": 1 },
+        "headers": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "body": {}
+      }
+    },
+    "readTiming": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule"],
+      "properties": {
+        "rule": {
+          "type": "string",
+          "enum": ["IMMEDIATE", "TWO_CONSECUTIVE_EQUAL", "THREE_CONSECUTIVE_EQUAL"]
+        },
+        "maxWait": { "type": "integer", "minimum": 0, "maximum": 60000 },
+        "interval": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    }
+  }
+}

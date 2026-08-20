@@ -11,6 +11,7 @@ version = "0.0.1-SNAPSHOT"
 description = "AgenticReliabilityLab"
 
 val testcontainersVersion = "1.21.4"
+val celVersion = "0.9.1"
 
 java {
     toolchain {
@@ -37,6 +38,7 @@ dependencies {
     implementation("org.springframework.ai:spring-ai-starter-model-ollama")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.yaml:snakeyaml")
+    implementation("dev.cel:cel:$celVersion")
     runtimeOnly("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("org.postgresql:postgresql")
     testImplementation("org.springframework.boot:spring-boot-starter-test")

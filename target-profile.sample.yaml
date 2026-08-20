@@ -41,3 +41,44 @@ arl:
         host-resource-group: eventful-local
         max-batch-size: 10
         request-timeout: 5s
+
+  # Phase 17: declarative specifications can use only this explicit authority.
+  # Execution stays disabled until the paths, auth profiles, and reset checks are verified locally.
+  test-spec-execution:
+    registrations:
+      - target-system-id: eventful-local
+        execution-enabled: false
+        allowed-calls:
+          - method: POST
+            path: /products
+            auth-profile: seller
+          - method: POST
+            path: /orders
+            auth-profile: buyer
+          - method: GET
+            path: /products/{id}
+        auth-profiles: [seller, buyer]
+        observation-sources:
+          - name: harness
+            fields: [dbStock, redisStock, redisHoldCount, orderCount]
+        supported-faults: [PAYMENT_FAILURE]
+        infrastructure-targets: [payment-service]
+        max-concurrency: 50
+        max-request-count: 1000
+        max-trials: 100
+        state-changing-allowed: true
+        reset:
+          method: ENVIRONMENT_RESET
+          hook:
+            method: POST
+            path: /harness/reset
+          expected-duration: 120s
+          verifications:
+            - id: orderCount
+              call:
+                method: GET
+                path: /harness/state
+              expr: response.body.orderCount
+              condition: orderCount == 0
+              read-at:
+                rule: IMMEDIATE

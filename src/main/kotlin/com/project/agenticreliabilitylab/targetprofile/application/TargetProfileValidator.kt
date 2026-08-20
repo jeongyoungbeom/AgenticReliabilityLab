@@ -11,11 +11,16 @@ import java.time.Duration
 
 /** Validates one complete Profile before it can be persisted or made active. */
 @Component
-class TargetProfileValidator {
+class TargetProfileValidator(
+    private val testSpecExecutionValidator: TestSpecExecutionProfileValidator,
+) {
     fun validate(definition: TargetProfileDefinition) {
         definition.target.validate()
         definition.genericHttp?.validate(definition.target.id)
         definition.experiment?.validate(definition.target.id)
+        definition.testSpecExecution?.let { profile ->
+            testSpecExecutionValidator.validate(profile, definition.target)
+        }
     }
 
     private fun TargetRegistrationDefinition.validate() {
