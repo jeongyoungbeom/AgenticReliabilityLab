@@ -1,8 +1,10 @@
 package com.project.agenticreliabilitylab.testspec.application
 
+import com.project.agenticreliabilitylab.testspec.domain.Observation
 import com.project.agenticreliabilitylab.testspec.domain.ObservationSourceKind
 import com.project.agenticreliabilitylab.testspec.domain.SpecHttpCall
 import com.project.agenticreliabilitylab.testspec.domain.SpecRisk
+import com.project.agenticreliabilitylab.testspec.domain.StabilityRule
 import com.project.agenticreliabilitylab.testspec.domain.TestSpecification
 import com.project.agenticreliabilitylab.testspec.domain.WorkloadStep
 import com.project.agenticreliabilitylab.testspec.domain.WorkloadStepKind
@@ -19,6 +21,7 @@ import org.springframework.stereotype.Component
  * rejected before anything is dispatched, instead of failing after the Target has already been changed.
  */
 @Component
+@Suppress("TooManyFunctions") // Each helper owns one independent specification validation dimension.
 class TestSpecValidator(
     private val expressions: SpecExpressionEnvironment,
     private val references: SpecReferenceResolver,
@@ -80,9 +83,9 @@ class TestSpecValidator(
                 }
             }
             if (observation.sourceKind != ObservationSourceKind.DECLARED_SOURCE) return@forEach
-            add(
-                "Observation '${observation.id}' cannot read declared observation sources in Phase 17",
-            )
+            if (observation.call != null) {
+                add("Declared-source observation '${observation.id}' must not declare an HTTP call")
+            }
             val source = observation.sourceName
             if (source == null || source !in capabilities.observationSources) {
                 add("Observation '${observation.id}' reads undeclared source '$source'")
@@ -92,9 +95,41 @@ class TestSpecValidator(
                 add("Source '$source' does not provide field '${observation.expression}'")
             }
         }
+        addAll(sharedSourceTimingViolations(specification, capabilities))
         val duplicates = specification.observations.groupBy { it.id }.filterValues { it.size > 1 }.keys
         duplicates.forEach { add("Observation id '$it' is declared more than once") }
     }
+
+    /**
+     * Every observation of one declared source must settle on the same schedule.
+     *
+     * Fields of one source are read together, in one sampling round, so that invariants comparing them are
+     * comparing one moment. Two fields of the same source that settle on different schedules would be read at
+     * different times, and an invariant relating them would then judge a difference that only ever existed
+     * between the two reads. For spans this is the whole game: a reservation list and a deduction list taken
+     * seconds apart disagree about which traces exist, and a trace present in one but not the other looks exactly
+     * like work that was started and never finished.
+     */
+    private fun sharedSourceTimingViolations(
+        specification: TestSpecification,
+        capabilities: TargetSpecCapabilities,
+    ): List<String> = specification.observations
+        .filter { observation ->
+            observation.sourceKind == ObservationSourceKind.DECLARED_SOURCE &&
+                observation.sourceName?.let { capabilities.observationSources.containsKey(it) } == true
+        }
+        .groupBy { observation -> requireNotNull(observation.sourceName) }
+        .mapNotNull { (source, observations) ->
+            val timings = observations.map { observation ->
+                Triple(
+                    observation.readTiming.rule,
+                    observation.readTiming.maxWait,
+                    observation.readTiming.interval,
+                )
+            }.distinct()
+            "Observations of source '$source' must use one shared read timing"
+                .takeIf { timings.size > 1 }
+        }
 
     /**
      * Compiles every expression, including the exceptions.
@@ -222,7 +257,7 @@ class TestSpecValidator(
         capabilities: TargetSpecCapabilities,
     ): List<String> = buildList {
         specification.unsupportedSteps().forEach { kind ->
-            add("Phase 17 cannot execute step kind '$kind'")
+            add("This build cannot execute step kind '$kind'")
         }
         val mutating = (specification.setup.map { it.call } + specification.workload.mapNotNull(WorkloadStep::call))
             .any { it.method.uppercase() !in READ_METHODS }
@@ -257,14 +292,7 @@ class TestSpecValidator(
         if (specification.policy.trialInterval > MAX_TRIAL_INTERVAL) {
             add("Trial interval exceeds ${MAX_TRIAL_INTERVAL.toMillis()}ms")
         }
-        specification.observations.forEach { observation ->
-            if (observation.readTiming.maxWait > MAX_OBSERVATION_WAIT) {
-                add("Observation '${observation.id}' max wait exceeds ${MAX_OBSERVATION_WAIT.toMillis()}ms")
-            }
-            if (observation.readTiming.interval > MAX_OBSERVATION_INTERVAL) {
-                add("Observation '${observation.id}' interval exceeds ${MAX_OBSERVATION_INTERVAL.toMillis()}ms")
-            }
-        }
+        specification.observations.forEach { observation -> addAll(observationBoundaryViolations(observation)) }
         val mutating = (specification.setup.map { it.call } + specification.workload.mapNotNull(WorkloadStep::call))
             .any { it.method.uppercase() !in READ_METHODS }
         val minimumRisk = when {
@@ -274,6 +302,21 @@ class TestSpecValidator(
         }
         if (specification.risk.ordinal < minimumRisk.ordinal) {
             add("Risk '${specification.risk}' understates the required '$minimumRisk' approval")
+        }
+    }
+
+    private fun observationBoundaryViolations(observation: Observation) = buildList {
+        if (
+            observation.readTiming.rule != StabilityRule.IMMEDIATE &&
+            (observation.readTiming.maxWait.isZero || observation.readTiming.interval.isZero)
+        ) {
+            add("Observation '${observation.id}' settling waits and intervals must be positive")
+        }
+        if (observation.readTiming.maxWait > MAX_OBSERVATION_WAIT) {
+            add("Observation '${observation.id}' max wait exceeds ${MAX_OBSERVATION_WAIT.toMillis()}ms")
+        }
+        if (observation.readTiming.interval > MAX_OBSERVATION_INTERVAL) {
+            add("Observation '${observation.id}' interval exceeds ${MAX_OBSERVATION_INTERVAL.toMillis()}ms")
         }
     }
 

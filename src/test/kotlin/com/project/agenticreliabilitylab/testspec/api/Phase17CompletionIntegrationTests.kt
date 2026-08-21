@@ -1,6 +1,8 @@
 package com.project.agenticreliabilitylab.testspec.api
 
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileHttpCallDefinition
+import com.project.agenticreliabilitylab.targetprofile.domain.ProfileObservationSourceDefinition
+import com.project.agenticreliabilitylab.targetprofile.domain.ProfileObservationSourceKind
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileReadTimingDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileResetDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileResetVerificationDefinition
@@ -98,6 +100,24 @@ class Phase17CompletionIntegrationTests {
         )
     }
 
+    @Test
+    fun `keeps judging independent invariants when the harness state source is absent`() {
+        val response = executeApproved(phase18PartialObservationSpecification(), "phase18-missing-state")
+
+        assertEquals(201, response.statusCode(), response.body())
+        assertContains(response.body(), "\"status\":\"COMPLETED\"")
+        assertContains(response.body(), "\"resultOutcome\":\"INCONCLUSIVE\"")
+        val verdicts = objectMapper.readTree(response.body()).path("trials").path(0).path("verdicts")
+            .values().associate { verdict ->
+                verdict.path("invariantId").asString() to verdict.path("outcome").asString()
+            }
+        assertEquals("PASSED", verdicts["balanceConserved"], response.body())
+        assertEquals("PASSED", verdicts["metricsAvailable"], response.body())
+        assertEquals("NOT_EVALUATED", verdicts["harnessStockVisible"], response.body())
+        assertEquals(1, fixture.audit().harnessStateRequests)
+        assertEquals(1, fixture.audit().prometheusRequests)
+    }
+
     private fun executeApproved(document: Map<String, Any>, idempotencyKey: String): HttpResponse<String> {
         val created = post(
             "/api/test-specifications",
@@ -170,6 +190,34 @@ class Phase17CompletionIntegrationTests {
         invariants = listOf(
             invariant("balanceConserved", "A transfer conserves total balance", "totalBalance == 200"),
             invariant("ledgerWritten", "A transfer writes one ledger entry", "ledgerCount == 1"),
+        ),
+    )
+
+    private fun phase18PartialObservationSpecification(): Map<String, Any> = baseSpecification(
+        key = "partial-observation-localization",
+        category = "CONSISTENCY",
+        trials = 1,
+        setupPath = "/scenario/consistency",
+        workload = callStep("transfers", "/transfers", 1, 1),
+        observations = listOf(
+            apiObservation("totalBalance", "response.body.totalBalance"),
+            mapOf(
+                "id" to "harnessStock",
+                "source" to "DECLARED_SOURCE",
+                "sourceName" to "harness",
+                "expr" to "dbStock",
+            ),
+            mapOf(
+                "id" to "metricsUp",
+                "source" to "DECLARED_SOURCE",
+                "sourceName" to "metrics",
+                "expr" to "httpUp",
+            ),
+        ),
+        invariants = listOf(
+            invariant("balanceConserved", "API state remains judgeable", "totalBalance == 200"),
+            invariant("metricsAvailable", "Prometheus remains judgeable", "metricsUp == 1"),
+            invariant("harnessStockVisible", "Harness stock is non-negative", "harnessStock >= 0"),
         ),
     )
 
@@ -255,7 +303,21 @@ class Phase17CompletionIntegrationTests {
             ProfileHttpCallDefinition("GET", "/state"),
         ),
         authProfiles = emptySet(),
-        observationSources = emptyList(),
+        observationSources = listOf(
+            ProfileObservationSourceDefinition(
+                name = "harness",
+                kind = ProfileObservationSourceKind.HARNESS_STATE,
+                endpoint = "/harness/state",
+                fields = setOf("dbStock"),
+            ),
+            ProfileObservationSourceDefinition(
+                name = "metrics",
+                kind = ProfileObservationSourceKind.PROMETHEUS,
+                endpoint = fixture.origin,
+                fields = setOf("httpUp"),
+                queries = mapOf("httpUp" to "up"),
+            ),
+        ),
         supportedFaults = emptySet(),
         infrastructureTargets = emptySet(),
         maxConcurrency = CONCURRENT_REQUESTS,

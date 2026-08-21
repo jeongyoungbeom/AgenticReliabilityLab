@@ -159,7 +159,13 @@ class TestSpecificationService(
         correlationId: String,
     ) {
         try {
-            val outcome = runner.run(specification, target, profile.resetPlan, run.id.toString())
+            val outcome = runner.run(
+                specification,
+                target,
+                profile.resetPlan,
+                run.id.toString(),
+                profile.capabilities.observationSources,
+            )
             runStore.complete(run.id, outcome, clock.instant())
         } catch (exception: Exception) {
             log.error(

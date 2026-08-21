@@ -6,6 +6,7 @@ import com.project.agenticreliabilitylab.testspec.domain.ResetCheck
 import com.project.agenticreliabilitylab.testspec.domain.SpecRunOutcome
 import com.project.agenticreliabilitylab.testspec.domain.StepTiming
 import com.project.agenticreliabilitylab.testspec.domain.StoredResetResult
+import com.project.agenticreliabilitylab.testspec.domain.ObservedEvidence
 import com.project.agenticreliabilitylab.testspec.domain.StoredTrialResult
 import com.project.agenticreliabilitylab.testspec.domain.TestSpecRun
 import com.project.agenticreliabilitylab.testspec.domain.TestSpecRunStatus
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import tools.jackson.core.type.TypeReference
 import tools.jackson.databind.ObjectMapper
+import java.nio.charset.StandardCharsets
 import java.sql.ResultSet
 import java.sql.Timestamp
 import java.time.Instant
@@ -202,6 +204,7 @@ class JdbcTestSpecRunRepository(
                     "failure" to execution.failure,
                     "verdictsJson" to objectMapper.writeValueAsString(trial.verdicts),
                     "timingsJson" to objectMapper.writeValueAsString(execution.timings),
+                    "observationsJson" to observationsJson(trial.observations),
                 ),
             )
             .update()
@@ -244,7 +247,30 @@ class JdbcTestSpecRunRepository(
             getString("timings_json"),
             object : TypeReference<List<StepTiming>>() {},
         ),
+        observations = getString("observations_json")?.let { json ->
+            objectMapper.readValue(json, object : TypeReference<Map<String, ObservedEvidence>>() {})
+        } ?: emptyMap(),
     )
+
+    /**
+     * The observed values a trial was judged on, bounded so one trial cannot outgrow its row.
+     *
+     * When the whole set does not fit, the values are dropped and **the fact that they were dropped is written
+     * down**. A record that quietly lost its evidence looks exactly like a record whose evidence was thin, and an
+     * improvement suggestion built on the second is worth less than one that knows it is missing something.
+     * Displays are kept either way: they are small and they are what an operator reads first.
+     */
+    private fun observationsJson(observations: Map<String, ObservedEvidence>): String {
+        val full = objectMapper.writeValueAsString(observations)
+        if (full.toByteArray(StandardCharsets.UTF_8).size <= MAX_OBSERVATIONS_BYTES) return full
+        val omitted = observations.mapValues { (_, evidence) ->
+            evidence.copy(
+                value = null,
+                omitted = "dropped: the trial's observed values exceeded $MAX_OBSERVATIONS_BYTES bytes",
+            )
+        }
+        return objectMapper.writeValueAsString(omitted)
+    }
 
     private fun ResultSet.toReset() = StoredResetResult(
         runId = getObject("run_id", UUID::class.java),
@@ -257,4 +283,9 @@ class JdbcTestSpecRunRepository(
         ),
         failure = getString("failure"),
     )
+
+    private companion object {
+        /** What one trial's observed values may take in its row. Generous enough for a few hundred spans. */
+        const val MAX_OBSERVATIONS_BYTES = 256 * 1024
+    }
 }

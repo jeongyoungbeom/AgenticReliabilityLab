@@ -235,7 +235,8 @@ class MultiReliabilityAgent(
     ): AnalysisRunRecord? = when {
         dataset.experimentRunId != null -> findByExperiment(dataset.experimentRunId, internalKey)
         dataset.targetTestBatchId != null -> findByTargetTestBatch(dataset.targetTestBatchId, internalKey)
-        else -> throw AnalysisInputException("Analysis dataset '${dataset.id}' has no source")
+        // A specification run is identified by its dataset alone; see AnalysisRunStore.findByDatasetAndIdempotencyKey.
+        else -> analysisRepository.findByDatasetAndIdempotencyKey(dataset.id, internalKey)
     }
 
     private fun internalIdempotencyKey(clientKey: String): String {

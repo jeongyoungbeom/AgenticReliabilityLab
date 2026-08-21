@@ -7,6 +7,8 @@ import com.project.agenticreliabilitylab.target.domain.TargetEnvironment
 import com.project.agenticreliabilitylab.targetprofile.application.TestSpecExecutionProfileValidator
 import com.project.agenticreliabilitylab.targetprofile.domain.ExperimentProfileDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileHttpCallDefinition
+import com.project.agenticreliabilitylab.targetprofile.domain.ProfileObservationSourceDefinition
+import com.project.agenticreliabilitylab.targetprofile.domain.ProfileObservationSourceKind
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileReadTimingDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileResetDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileResetVerificationDefinition
@@ -39,6 +41,10 @@ class TestSpecExecutionProfileMapperTests {
         assertEquals(10, mapped.capabilities.maxTrials)
         assertTrue(mapped.capabilities.allowedCalls.contains("POST /products"))
         assertEquals("seller", mapped.capabilities.authProfilesByCall["POST /products"])
+        assertEquals(
+            DeclaredObservationSourceKind.HARNESS_STATE,
+            mapped.capabilities.observationSources.getValue("harness").kind,
+        )
         assertEquals("/harness/reset", mapped.resetPlan.hook?.path)
         assertEquals("orderCount", mapped.resetPlan.verifications.single().id)
     }
@@ -61,11 +67,55 @@ class TestSpecExecutionProfileMapperTests {
         }
     }
 
+    /**
+     * A trace query that names no trial also matches another developer's request and this trial's own setup work.
+     * The Profile is where this is caught because the Profile is what a human approved - a specification cannot
+     * add the scope, so it must not be able to leave it out either.
+     */
+    @Test
+    fun `refuses a trace source whose query cannot be attributed to one trial`() {
+        val unscoped = executionProfile().copy(
+            observationSources = listOf(traceSource("""{name="inventory.reserve"}""")),
+        )
+
+        val failure = assertFailsWith<IllegalArgumentException> {
+            validator.validate(unscoped, target())
+        }
+
+        assertTrue(failure.message.orEmpty().contains("reserveSpans"))
+    }
+
+    @Test
+    fun `accepts a trace source whose query names the trial`() {
+        val scoped = executionProfile().copy(
+            observationSources = listOf(
+                traceSource("""{name="inventory.reserve" && span.arl.trial="${'$'}{trial}"}"""),
+            ),
+        )
+
+        validator.validate(scoped, target())
+    }
+
+    private fun traceSource(query: String) = ProfileObservationSourceDefinition(
+        name = "traces",
+        kind = ProfileObservationSourceKind.TRACE,
+        endpoint = "http://127.0.0.1:3200",
+        fields = setOf("reserveSpans"),
+        queries = mapOf("reserveSpans" to query),
+    )
+
     private fun executionProfile() = TestSpecExecutionProfileDefinition(
         executionEnabled = true,
         allowedCalls = listOf(ProfileHttpCallDefinition("POST", "/products", "seller")),
         authProfiles = setOf("seller"),
-        observationSources = emptyList(),
+        observationSources = listOf(
+            ProfileObservationSourceDefinition(
+                name = "harness",
+                kind = ProfileObservationSourceKind.HARNESS_STATE,
+                endpoint = "/harness/state",
+                fields = setOf("dbStock"),
+            ),
+        ),
         supportedFaults = emptySet(),
         infrastructureTargets = emptySet(),
         maxConcurrency = 50,

@@ -8,6 +8,7 @@ import com.project.agenticreliabilitylab.testspec.application.port.SpecExecution
 import com.project.agenticreliabilitylab.testspec.domain.RecordedResponse
 import com.project.agenticreliabilitylab.testspec.domain.SpecExecutionException
 import com.project.agenticreliabilitylab.testspec.domain.SpecHttpCall
+import com.project.agenticreliabilitylab.testspec.domain.TraceScope
 import org.springframework.stereotype.Component
 import java.net.URI
 import java.nio.charset.StandardCharsets
@@ -28,15 +29,17 @@ class SpecHttpCaller(
     private val authProvider: SpecAuthProvider,
     private val settings: SpecExecutionSettings,
 ) {
+    @Suppress("LongParameterList") // The trial scope is per-request and role-dependent; it cannot be derived here.
     fun send(
         target: RegisteredTarget,
         call: SpecHttpCall,
         bindings: Map<String, String>,
         requestNumber: Int,
         runId: String,
+        trialScope: String? = null,
     ): RecordedResponse {
         val uri = resolveUri(target, call, bindings)
-        val headers = buildHeaders(target, call, bindings, runId)
+        val headers = buildHeaders(target, call, bindings, runId, trialScope)
         val body = call.bodyJson?.let { references.resolve(it, bindings) }
             ?.toByteArray(StandardCharsets.UTF_8) ?: ByteArray(0)
 
@@ -77,15 +80,20 @@ class SpecHttpCaller(
         return uri
     }
 
+    @Suppress("LongParameterList") // Same reason as send: the scope travels with the request, not with the caller.
     private fun buildHeaders(
         target: RegisteredTarget,
         call: SpecHttpCall,
         bindings: Map<String, String>,
         runId: String,
+        trialScope: String?,
     ): Map<String, String> = buildMap {
         put("Accept", "application/json")
         if (call.bodyJson != null) put("Content-Type", "application/json")
         put(RUN_HEADER, runId)
+        // Only the workload carries this. Setup shares the run and the trial, so a Target that recorded it for
+        // setup too would make fixture creation indistinguishable from the requests being judged.
+        trialScope?.let { scope -> put(TraceScope.HEADER, scope) }
         val specificationHeaders = references.resolveAll(call.headers, bindings)
         specificationHeaders.keys.forEach { name ->
             SpecRequestPolicy.specificationHeaderViolation(name)?.let { violation ->

@@ -2,6 +2,7 @@ package com.project.agenticreliabilitylab.testspec.application
 
 import com.project.agenticreliabilitylab.target.domain.TargetEnvironment
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileHttpCallDefinition
+import com.project.agenticreliabilitylab.targetprofile.domain.ProfileObservationSourceDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileReadTimingDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileResetDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileResetVerificationDefinition
@@ -34,7 +35,7 @@ class TestSpecExecutionProfileMapper {
             allowedCalls = profile.allowedCalls.mapTo(linkedSetOf()) { call -> call.key() },
             authProfiles = profile.authProfiles,
             authProfilesByCall = profile.allowedCalls.associate { call -> call.key() to call.authProfile },
-            observationSources = profile.observationSources.associate { source -> source.name to source.fields },
+            observationSources = profile.observationSources.associate { source -> source.name to source.toDomain() },
             supportedFaults = profile.supportedFaults,
             infrastructureTargets = profile.infrastructureTargets,
             maxConcurrency = minOf(profile.maxConcurrency, targetLimits?.maxConcurrency ?: Int.MAX_VALUE),
@@ -78,6 +79,15 @@ class TestSpecExecutionProfileMapper {
         authProfile = authProfile,
         headers = emptyMap(),
         bodyJson = null,
+    )
+
+    private fun ProfileObservationSourceDefinition.toDomain() = DeclaredObservationSource(
+        name = name,
+        kind = DeclaredObservationSourceKind.valueOf(kind.name),
+        endpoint = endpoint,
+        fields = fields,
+        queries = queries,
+        authProfile = authProfile,
     )
 
     private fun ProfileHttpCallDefinition.key(): String = "${method.uppercase()} $path"

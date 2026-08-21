@@ -14,6 +14,14 @@ interface AnalysisRunStore {
     fun findById(id: UUID): AnalysisRunRecord?
     fun findByExperimentAndIdempotencyKey(experimentRunId: UUID, idempotencyKey: String): AnalysisRunRecord?
     fun findByTargetTestBatchAndIdempotencyKey(targetTestBatchId: UUID, idempotencyKey: String): AnalysisRunRecord?
+
+    /**
+     * For an input that is identified by its dataset alone.
+     *
+     * The two lookups above key on denormalized copies of the dataset's source. A specification run does not get a
+     * third copy - the dataset has always been the real input - so its idempotency is answered here.
+     */
+    fun findByDatasetAndIdempotencyKey(analysisDatasetId: UUID, idempotencyKey: String): AnalysisRunRecord?
     fun findIdsByAgentTypeAndStatus(agentType: String, status: AnalysisRunStatus): List<UUID>
     fun findDetails(id: UUID): AnalysisRunDetails?
     fun create(run: NewAnalysisRun)

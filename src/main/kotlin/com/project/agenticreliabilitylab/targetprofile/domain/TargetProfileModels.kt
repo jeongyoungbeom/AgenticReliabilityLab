@@ -97,9 +97,26 @@ data class ProfileHttpCallDefinition(
     val authProfile: String? = null,
 )
 
+enum class ProfileObservationSourceKind {
+    HARNESS_STATE,
+    PROMETHEUS,
+    TRACE,
+}
+
 data class ProfileObservationSourceDefinition(
     val name: String,
+    val kind: ProfileObservationSourceKind,
+    /** Relative Target path for HARNESS_STATE, absolute base URL for PROMETHEUS and TRACE. */
+    val endpoint: String,
     val fields: Set<String>,
+    /**
+     * Profile-owned field to query mapping: PromQL for PROMETHEUS, TraceQL for TRACE.
+     *
+     * Specifications can name a field, never inject a query. A query is executable authority over the Target's
+     * telemetry store, so it stays where a human approved it rather than where a model wrote it.
+     */
+    val queries: Map<String, String> = emptyMap(),
+    val authProfile: String? = null,
 )
 
 data class ProfileResetDefinition(

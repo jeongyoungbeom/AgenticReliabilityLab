@@ -7,7 +7,9 @@ import com.project.agenticreliabilitylab.testspec.domain.Invariant
 import com.project.agenticreliabilitylab.testspec.domain.InvariantException
 import com.project.agenticreliabilitylab.testspec.domain.InvariantOutcome
 import com.project.agenticreliabilitylab.testspec.domain.NotEvaluatedReason
+import com.project.agenticreliabilitylab.testspec.domain.ObservedSpan
 import com.project.agenticreliabilitylab.testspec.domain.SpecCategory
+import com.project.agenticreliabilitylab.testspec.domain.SpecHttpCall
 import com.project.agenticreliabilitylab.testspec.domain.SpecRisk
 import com.project.agenticreliabilitylab.testspec.domain.SpecSource
 import com.project.agenticreliabilitylab.testspec.domain.TestSpecification
@@ -15,7 +17,6 @@ import com.project.agenticreliabilitylab.testspec.domain.TrialAggregation
 import com.project.agenticreliabilitylab.testspec.domain.TrialOutcome
 import com.project.agenticreliabilitylab.testspec.domain.TrialStopPolicy
 import com.project.agenticreliabilitylab.testspec.domain.UnmetRequirement
-import com.project.agenticreliabilitylab.testspec.domain.SpecHttpCall
 import com.project.agenticreliabilitylab.testspec.domain.WorkloadStep
 import com.project.agenticreliabilitylab.testspec.domain.WorkloadStepKind
 import tools.jackson.databind.ObjectMapper
@@ -92,6 +93,22 @@ class InvariantEvaluatorTests {
         assertEquals(InvariantOutcome.VIOLATED, result.verdicts[0].outcome)
         assertEquals(InvariantOutcome.NOT_EVALUATED, result.verdicts[1].outcome)
         assertEquals(TrialOutcome.VIOLATED, result.outcome)
+    }
+
+    @Test
+    fun `an unrelated missing observation does not disguise an expression failure`() {
+        val result = evaluator.judgeTrial(
+            specification(invariant("stock-never-negative", "dbStock >= 0")),
+            1,
+            mapOf(
+                "dbStock" to ObservedValue.of("not-a-number"),
+                "redisHold" to ObservedValue.missing("harness is unavailable"),
+            ),
+        )
+
+        val verdict = result.verdicts.single()
+        assertEquals(InvariantOutcome.NOT_EVALUATED, verdict.outcome)
+        assertEquals(NotEvaluatedReason.EXPRESSION_FAILED, verdict.notEvaluatedReason)
     }
 
     @Test
@@ -228,6 +245,62 @@ class InvariantEvaluatorTests {
         val verdict = result.verdicts.single()
         assertEquals(InvariantOutcome.PASSED, verdict.outcome)
         assertEquals("successQuantity + failedItemCount == 10", verdict.condition)
+    }
+
+    /**
+     * "The specification is wrong" and "the evidence is thin" send an operator to opposite places. A time-axis
+     * function that refused must not be reported as a broken expression.
+     */
+    @Test
+    fun `separates an unjudgeable observation from a broken expression`() {
+        val result = evaluator.judgeTrial(
+            specification(invariant("no-overlap", "noOverlap(reserveSpans, deductSpans)")),
+            1,
+            mapOf(
+                "reserveSpans" to ObservedValue.of(spans("t1" to 100L)),
+                "deductSpans" to ObservedValue.of(spans("t1" to 200L)),
+            ),
+        )
+
+        val verdict = result.verdicts.single()
+        assertEquals(InvariantOutcome.NOT_EVALUATED, verdict.outcome)
+        assertEquals(NotEvaluatedReason.OBSERVATION_INSUFFICIENT, verdict.notEvaluatedReason)
+        assertTrue(verdict.detail.orEmpty().contains("nothing could interleave"))
+    }
+
+    @Test
+    fun `still reports a genuinely broken expression as an expression failure`() {
+        val result = evaluator.judgeTrial(
+            specification(invariant("bad-condition", "dbStock >= ")),
+            1,
+            mapOf("dbStock" to ObservedValue.of(3L)),
+        )
+
+        val verdict = result.verdicts.single()
+        assertEquals(NotEvaluatedReason.EXPRESSION_FAILED, verdict.notEvaluatedReason)
+    }
+
+    /**
+     * How much evidence a judgement rested on is what truncation destroys first, and nothing else in the record
+     * can recover it.
+     */
+    @Test
+    fun `keeps the span and trace counts a judgement rested on`() {
+        val many = spans(*Array(12) { index -> "t${index % 3}" to index * 10L })
+
+        val result = evaluator.judgeTrial(
+            specification(invariant("counted", "traceCount(reserveSpans) == 3")),
+            1,
+            mapOf("reserveSpans" to ObservedValue.of(many)),
+        )
+
+        val shown = result.verdicts.single().observedValues.getValue("reserveSpans")
+        assertTrue(shown.contains("12 spans across 3 traces"), shown)
+        assertTrue(shown.contains("..."), shown)
+    }
+
+    private fun spans(vararg starts: Pair<String, Long>): List<Map<String, Any>> = starts.map { (trace, start) ->
+        ObservedSpan(traceId = trace, name = "inventory.reserve", startMs = start, endMs = start + 5L).asBinding()
     }
 
     private fun invariant(

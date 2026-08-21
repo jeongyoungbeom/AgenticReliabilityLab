@@ -138,7 +138,7 @@ data class SetupStep(
     val captures: Map<String, String>,
 )
 
-/** The kinds of step a workload can contain. Phase 17 executes CALL and WAIT; the rest are declared but rejected. */
+/** The kinds of step a workload can contain. This build executes CALL and WAIT; the rest are declared but rejected. */
 enum class WorkloadStepKind {
     CALL,
     WAIT,
@@ -293,7 +293,7 @@ data class TestSpecification(
         observations.filter { it.readTiming.unfoundedDeadline }.forEach { add(it.id) }
     }
 
-    /** Steps Phase 17 declares but cannot run yet. Kept visible instead of silently dropped. */
+    /** Steps the schema declares but this build cannot run yet. Kept visible instead of silently dropped. */
     fun unsupportedSteps(): List<WorkloadStepKind> =
         workload.map(WorkloadStep::kind).filterNot { it in SUPPORTED_STEPS }.distinct()
 

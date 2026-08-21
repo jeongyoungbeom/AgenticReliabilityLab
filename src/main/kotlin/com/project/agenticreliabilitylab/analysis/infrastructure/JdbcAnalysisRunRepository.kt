@@ -56,6 +56,16 @@ class JdbcAnalysisRunRepository(
             .optional()
             .orElse(null)
 
+    override fun findByDatasetAndIdempotencyKey(
+        analysisDatasetId: UUID,
+        idempotencyKey: String,
+    ): AnalysisRunRecord? =
+        jdbcClient.sql(AnalysisRunSql.FIND_BY_DATASET_AND_IDEMPOTENCY_KEY)
+            .params(mapOf("analysisDatasetId" to analysisDatasetId, "idempotencyKey" to idempotencyKey))
+            .query { resultSet, _ -> resultSet.toAnalysisRun() }
+            .optional()
+            .orElse(null)
+
     override fun findIdsByAgentTypeAndStatus(agentType: String, status: AnalysisRunStatus): List<UUID> =
         jdbcClient.sql(AnalysisRunSql.FIND_IDS_BY_AGENT_TYPE_AND_STATUS)
             .params(mapOf("agentType" to agentType, "status" to status.name))

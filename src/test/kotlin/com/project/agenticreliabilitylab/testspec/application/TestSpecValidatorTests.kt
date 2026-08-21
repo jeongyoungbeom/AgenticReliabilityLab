@@ -13,6 +13,7 @@ import com.project.agenticreliabilitylab.testspec.domain.SpecCategory
 import com.project.agenticreliabilitylab.testspec.domain.SpecHttpCall
 import com.project.agenticreliabilitylab.testspec.domain.SpecRisk
 import com.project.agenticreliabilitylab.testspec.domain.SpecSource
+import com.project.agenticreliabilitylab.testspec.domain.StabilityRule
 import com.project.agenticreliabilitylab.testspec.domain.TestSpecification
 import com.project.agenticreliabilitylab.testspec.domain.TrialAggregation
 import com.project.agenticreliabilitylab.testspec.domain.TrialStopPolicy
@@ -99,6 +100,21 @@ class TestSpecValidatorTests {
         val failure = assertFailsWith<SpecValidationException> { validator.validate(unsafe, capabilities()) }
 
         assertTrue(failure.violations.any { it.contains("authProfile") })
+        assertTrue(failure.violations.any { it.contains("managed by the Runner") })
+    }
+
+    /**
+     * Trace attribution rests entirely on this header appearing on workload requests and nowhere else. A
+     * specification that could set it would decide which spans are judged as its own.
+     */
+    @Test
+    fun `refuses a specification that sets the trial attribution header`() {
+        val unsafe = specification(
+            workload = listOf(callStep(orderCall().copy(headers = mapOf("X-ARL-Trial" to "someone-else/1")))),
+        )
+
+        val failure = assertFailsWith<SpecValidationException> { validator.validate(unsafe, capabilities()) }
+
         assertTrue(failure.violations.any { it.contains("managed by the Runner") })
     }
 
@@ -277,14 +293,53 @@ class TestSpecValidatorTests {
     }
 
     @Test
-    fun `refuses a declared source that phase 17 cannot read even when the profile declares it`() {
+    fun `accepts a declared source and field owned by the active profile`() {
         val spec = specification(
             observations = listOf(
                 observation("dbStock", ObservationSourceKind.DECLARED_SOURCE, "harness", "dbStock"),
             ),
         )
 
-        assertRejects(spec, "cannot read declared observation sources")
+        validator.validate(spec, capabilities())
+    }
+
+    @Test
+    fun `requires one read timing for fields from the same harness snapshot`() {
+        val settling = ReadTiming(
+            StabilityRule.TWO_CONSECUTIVE_EQUAL,
+            Duration.ofSeconds(1),
+            Duration.ofMillis(100),
+            null,
+        )
+        val spec = specification(
+            observations = listOf(
+                observation("dbStock", ObservationSourceKind.DECLARED_SOURCE, "harness", "dbStock"),
+                observation(
+                    "redisHold", ObservationSourceKind.DECLARED_SOURCE, "harness", "redisHoldCount", settling,
+                ),
+            ),
+        )
+
+        assertRejects(spec, "one shared read timing")
+    }
+
+    @Test
+    fun `requires positive settling wait and interval`() {
+        val invalidTiming = ReadTiming(
+            StabilityRule.TWO_CONSECUTIVE_EQUAL,
+            Duration.ZERO,
+            Duration.ZERO,
+            null,
+        )
+        val spec = specification(
+            observations = listOf(
+                observation(
+                    "dbStock", ObservationSourceKind.DECLARED_SOURCE, "harness", "dbStock", invalidTiming,
+                ),
+            ),
+        )
+
+        assertRejects(spec, "must be positive")
     }
 
     @Test
@@ -332,7 +387,16 @@ class TestSpecValidatorTests {
         environment = "LOCAL",
         allowedCalls = setOf("POST /products", "POST /orders", "GET /products/{id}"),
         authProfiles = setOf("seller", "buyer"),
-        observationSources = mapOf("harness" to setOf("dbStock", "redisHoldCount")),
+        observationSources = mapOf(
+            "harness" to DeclaredObservationSource(
+                name = "harness",
+                kind = DeclaredObservationSourceKind.HARNESS_STATE,
+                endpoint = "/harness/state",
+                fields = setOf("dbStock", "redisHoldCount"),
+                queries = emptyMap(),
+                authProfile = null,
+            ),
+        ),
         supportedFaults = setOf("PAYMENT_FAILURE"),
         infrastructureTargets = setOf("payment-service"),
         maxConcurrency = 50,
@@ -353,6 +417,7 @@ class TestSpecValidatorTests {
         kind: ObservationSourceKind = ObservationSourceKind.API,
         sourceName: String? = null,
         expression: String = "response.body.stock",
+        readTiming: ReadTiming = ReadTiming.IMMEDIATE,
     ) = Observation(
         id = id, label = id, sourceKind = kind, sourceName = sourceName,
         call = if (kind == ObservationSourceKind.API) {
@@ -360,7 +425,7 @@ class TestSpecValidatorTests {
         } else {
             null
         },
-        expression = expression, readTiming = ReadTiming.IMMEDIATE,
+        expression = expression, readTiming = readTiming,
     )
 
     private fun invariant(

@@ -61,7 +61,7 @@ JSON에서는 구조 키를 영문으로 쓴다. 이 문서의 한글 키와의 
 | 준비 / 워크로드 / 관측 / 불변식 | `setup` / `workload` / `observations` / `invariants` |
 | 이름 / 식 / 조건 / 설명 | `name` / `expr` / `condition` / `description` |
 | 요청수 / 동시성 / 시행 | `requestCount` / `concurrency` / `trials` |
-| 읽기시점 / 부가정보 / 선행조건 / 예외 | `readAt` / `extras` / `requires` / `exceptions` |
+| 읽기시점 / 선행조건 / 예외 | `readAt` / `requires` / `exceptions` |
 | 실행정책 / 정리 / 근거 | `policy` / `cleanup` / `evidence` |
 
 ### 참조 문법
@@ -128,18 +128,23 @@ HTTP 메타데이터와 본문 필드를 반드시 가른다.
 |---|---|
 | `sum(경로)` | 합 |
 | `count(경로)` | 개수 |
-| `max(경로)` / `최소(경로)` / `평균(경로)` | |
-| `구간목록` | 트레이스 스팬을 `[{시작, 끝, 속성}, ...]`으로 |
+| `max(경로)` / `min(경로)` | 최대 / 최소 |
+| `avg(경로)` | 평균 |
+
+집계 함수 이름은 영문 그대로다. 명세의 키워드는 한국어지만 식 안은 CEL이고, 여기만 번역하면
+평가기가 모르는 이름이 된다. `sum`·`min`·`avg`가 빈 목록을 만나면 판정 불가이지 0이 아니다 —
+`count`만 빈 목록에서 0을 돌려준다.
+
+트레이스에는 별도의 `구간목록` 함수를 두지 않았다. `TRACE` 소스의 field 자체가 스팬 목록을 돌려주며,
+각 스팬은 `{traceId, name, startMs, endMs, durationMs}` 형태다. 목록을 만드는 것은 관측이고
+그 목록을 판정하는 것은 아래 시간축 함수라는 구분은 그대로다.
 
 ### 관측 메타 — 값에 딸린 정보
 
-`부가정보`로 선언한 것을 함수로 읽는다. 점 표기는 값 자체의 필드 접근과 헷갈려서 쓰지 않는다.
-
-| 함수 | 뜻 |
-|---|---|
-| `converged(관측id)` | 제한 시간 안에 값이 안정됐는가 |
-| `convergedMs(관측id)` | 안정되기까지 걸린 시간 |
-| `observed(관측id)` | 값을 읽는 데 성공했는가 |
+**관측의 성공 여부를 식으로 묻지 않는다.** 값을 읽지 못했거나 제한 시간 안에 안정되지 않으면
+엔진이 그 관측을 미관측으로 표시하고, 그 관측을 참조하는 불변식을 자동으로 `NOT_EVALUATED`로 내린다.
+`observed(...)`나 `converged(...)` 같은 함수를 두면 같은 판정을 두 곳에서 하게 되고, 명세 작성자가
+그 함수를 빠뜨렸을 때 조용히 통과가 나온다. 안정 조건은 관측의 `읽기시점`에서 선언한다.
 
 ### 비교·논리
 
@@ -150,10 +155,35 @@ CEL 기본 연산자를 쓴다. `==` `!=` `>` `>=` `<` `<=` `&&` `||` `!` `in`
 
 ### 시간축
 
+스팬은 **`traceId`로 짝짓는다.** 위치나 시각으로 짝지으면 트레이스가 주장한 적 없는 관계를 지어내게 된다.
+
 | 함수 | 뜻 |
 |---|---|
-| `noOverlap(spansA, spansB)` | A의 한 구간 안에 B의 다른 구간이 끼어들지 않았는가 |
-| `ordered(spansA, spansB)` | 대응하는 A가 항상 B보다 먼저인가 |
+| `noOverlap(spansA, spansB)` | 한 트레이스가 자기 A와 B 사이에 있는 동안 다른 트레이스가 A를 시작하지 않았는가 |
+| `ordered(spansA, spansB)` | 모든 B에 같은 트레이스의 A가 있고 그 A가 더 늦게 시작하지 않았는가 |
+| `maxStartLagMs(spansA, spansB)` | 한 트레이스의 A 시작과 B 시작 사이의 가장 큰 간격(ms) |
+| `traceCount(spans)` | 관측이 담고 있는 서로 다른 트레이스의 수 |
+
+**같은 밀리초의 시작은 끼어든 것으로 센다.** 두 요청이 같은 시각에 같은 값을 읽는 것이 바로 찾으려는
+경쟁 상태이지 봐줄 우연이 아니다.
+
+**한 트레이스 안의 재시도는 구간을 하나 더 연다.** 예약을 두 번, 차감을 두 번 한 트레이스는 임계 구간이
+둘이다. 각 A는 그 뒤의 첫 B와 짝지어진다. 트레이스마다 가장 이른 시각만 쓰면 검사 구간이 첫 시도로
+줄어들고, 재시도 중에 일어난 끼어듦을 놓친다 — 경쟁이 가장 일어나기 쉬운 곳이 바로 거기다.
+
+**판정을 거부하는 자리는 다음과 같다.** 전부 "결함을 못 봤다"와 "결함이 없는 것을 봤다"를 구분하기 위한
+것이다. 계측이 없거나 뒤처진 Target이 아무도 측정하지 않은 속성에 깨끗한 통과를 받는 일을 막는다.
+
+| 상황 | 함수 | 이유 |
+|---|---|---|
+| 짝지을 트레이스가 하나도 없음 | 셋 다 | 아무것도 비교하지 않았다 |
+| 트레이스가 하나뿐임 | `noOverlap` | 끼어듦은 두 트레이스에 대한 질문이다. 하나로는 답할 수 없다 |
+| A는 있는데 B가 없는 트레이스 | `maxStartLagMs` | 완료된 것만 재고 그걸 답이라고 하면, 차감이 아예 없는 쪽이 통과가 된다 |
+
+`ordered`에서 A 없이 B만 있는 트레이스는 무시가 아니라 **위반**이다. 선행 단계가 기록되지 않았는데
+후속 단계가 끝난 것은 늦은 것보다 강한 발견이다. 이 규칙은 쿼리가 `${trial}`로 좁혀져 있다는 것에
+기대고 있다 — 남의 트레이스가 섞여 들어오면 같은 모양이 되기 때문이다. 그래서 자리 표시자를 Profile
+검증에서 강제한다.
 
 ### 읽기시점의 안정 판정
 
@@ -205,6 +235,111 @@ CEL 기본 연산자를 쓴다. `==` `!=` `>` `>=` `<` `<=` `&&` `||` `!` `in`
   최대요청수: 1000
   최대시행: 100
 ```
+
+### 실행 Profile 형식
+
+현재 구현은 `test-spec-execution.observation-sources`에 다음 영문 키를 사용한다.
+
+```yaml
+observation-sources:
+  - name: harness
+    kind: HARNESS_STATE
+    endpoint: /harness/state
+    fields: [dbStock, redisStock, redisHoldCount, orderCount]
+    auth-profile: seller                    # 선택
+  - name: metrics
+    kind: PROMETHEUS
+    endpoint: http://prometheus:9090
+    fields: [httpErrorRate]
+    queries:
+      httpErrorRate: 'sum(rate(http_server_requests_seconds_count{status=~"5.."}[1m]))'
+  - name: traces                            # Phase 19
+    kind: TRACE
+    endpoint: http://tempo:3200
+    fields: [reserveSpans, deductSpans]
+    queries:
+      reserveSpans: '{name="inventory.reserve"}'
+      deductSpans: '{name="db.query" && span.db.table="products"}'
+```
+
+명세의 `DECLARED_SOURCE` 관측은 `sourceName`과 `expr`에 각각 Profile의 source 이름과 field 이름만 쓴다.
+PromQL과 TraceQL은 Profile만 소유하며 명세 문서에서 직접 전달할 수 없다. 쿼리는 그 자체가 텔레메트리
+저장소에 대한 실행 권한이므로, 모델이 쓴 자리가 아니라 사람이 승인한 자리에 있어야 한다.
+
+`HARNESS_STATE` endpoint는 다음 읽기 전용 계약을 반환한다. `fields`는 런타임 capability이고,
+Profile 허용 목록과 이 목록의 교집합만 실제로 읽힌다. 같은 source에서 여러 field를 관측하면 한 응답의
+snapshot에서 함께 추출한다. 따라서 같은 Harness source의 관측들은 `readAt`의 rule, maxWait, interval을
+동일하게 선언해야 한다.
+
+```json
+{
+  "contractVersion": "HARNESS_STATE_V1",
+  "fields": ["dbStock", "redisStock", "redisHoldCount", "orderCount"],
+  "state": {
+    "dbStock": 10,
+    "redisStock": 10,
+    "redisHoldCount": 0,
+    "orderCount": 0
+  }
+}
+```
+
+endpoint 부재, 비정상 HTTP 상태, 계약 불일치, 필드 누락, Prometheus 빈/다중 series는 그 관측값만
+`not observed`로 만든다. 그 값을 참조하는 불변식은 `NOT_EVALUATED`이고 다른 불변식은 계속 판정한다.
+
+판정 불가에는 사유가 함께 남는다. 특히 **`OBSERVATION_INSUFFICIENT`와 `EXPRESSION_FAILED`는 다르다.**
+전자는 관측을 읽기는 했지만 판정을 받칠 만큼이 아니었다는 뜻이고(짝지을 트레이스가 없음, 트레이스가
+하나뿐, 차감에 도달하지 못한 예약이 있음), 후자는 식 자체가 평가되지 않았다는 뜻이다. 둘을 같은
+사유로 묶으면 운영자가 **맞는 명세를 고치러 간다.** 시간축 함수가 거부한 이유 문장은 그대로 verdict의
+`detail`에 남는다 — "no trace carries both spans"는 수집기를 보라는 말이고, "3 traces started the first
+span without ever reaching the second"는 코드를 보라는 말이라 서로 다른 곳을 가리킨다.
+settling 중 실패한 read는 연속 동일 횟수를 초기화하며, 요청 timeout과 polling sleep 모두 Runner가 허용한
+남은 observation deadline을 넘을 수 없다.
+외부 Prometheus·Tempo 주소는 Target Profile의 CIDR allowlist를 그대로 통과해야 한다.
+
+`TRACE` 소스는 Tempo의 `GET /api/search`를 호출하고 `traces[].spanSets[].spans[]`을 읽는다.
+`spanSet` 단수형 응답도 함께 받아들인다. 시각 범위는 명세가 아니라 **엔진이 정한다.** 시행의
+워크로드 구간에서 시작해 **관측을 읽는 시점**에서 끝나는 창을 쿼리에 넣고, 창 밖에서 시작한 스팬은
+응답에서 다시 걸러낸다. 창이 워크로드 종료가 아니라 읽는 시점에서 끝나는 이유는, 관측이 트레이스
+저장소가 따라잡기를 최대 1분까지 기다리기 때문이다. 워크로드 직후에 닫는 창은 기다려서 얻은 스팬을
+정확히 다시 버리게 되고, 그것도 늦은 정도에 비례해서 버린다 — 전파가 느려질수록 더 준수해 보이게 된다.
+준비 단계는 창에서 뺀다. 준비도 Target을 호출하고 계측된 Target은 그 스팬을 남기지만, 그것은 판정
+대상이 아니다.
+
+### 트레이스는 Target이 계측해야 쓸 수 있다
+
+시간 창만으로는 부족하다. 스팬 이름만으로 맞추는 쿼리는 다른 개발자의 요청, 이전 시행, 그리고
+**이 시행 자신의 준비 단계**에도 걸린다. 준비의 `POST /products`가 `{name="db.query" &&
+span.db.table="products"}`에 걸리는 것은 가정이 아니라 샘플 Profile에 실제로 있던 일이다. 그렇게 들어온
+트레이스는 짝의 한쪽만 가지고 있어서, 아무도 저지르지 않은 위반으로 보고된다.
+
+그래서 Target이 협조해야 한다. ARL은 **판정 대상인 워크로드 요청에만** `X-ARL-Trial` 헤더를 보내고,
+트레이스 기반 불변식을 쓰려는 Target은 그 값을 스팬 속성으로 남긴다. 준비 단계에는 이 헤더가 붙지
+않는다 — 준비도 같은 run과 같은 시행에 속하므로, run 단위로만 좁히면 준비가 "시작만 하고 끝내지 않은
+워크로드 요청"처럼 보인다.
+
+Profile의 TraceQL은 `${trial}` 자리 표시자를 **반드시** 포함해야 하고, 엔진이 질의 직전에 이 시행의
+식별자로 채운다. 명세는 이 문자열에 닿지 못하므로 치환이 Profile이 허용한 범위를 넓히지 않는다.
+자리 표시자가 없는 TRACE 쿼리는 Profile 검증에서 거부된다. 사람이 승인하는 것은 Profile이고,
+명세가 스코프를 **넣을 수 없다면 뺄 수도 없어야** 하기 때문이다.
+
+이것은 `HARNESS_STATE`가 `/harness/state`를 요구하는 것과 같은 거래다. 소스 종류는 Target이 자기 몫을
+했을 때 쓸 수 있다.
+
+### 덜 읽은 것은 다 읽은 것이 아니다
+
+트레이스 저장소는 요청한 만큼만 돌려주고 무엇을 뺐는지는 말하지 않는다. 그래서 엔진은 `limit`과
+`spss`를 **명시적으로** 보내고, 응답이 그 수에 닿으면 잘린 것으로 보아 관측을 미관측으로 내린다.
+Tempo가 `matched`로 "맞은 것은 더 많다"고 말한 span set도 마찬가지다. 상한을 스스로 정해야 거기에
+닿았다는 사실이 의미를 갖는다. 요청 200건 중 50건만 보고 "경쟁이 없었다"고 말하는 것이 이 도구가
+낼 수 있는 최악의 답이다.
+
+부분 인제스트는 이것만으로 막을 수 없다. 저장소가 아직 3개만 보여주고 두 번 연속 같은 값을 주면
+안정 판정이 나기 때문이다. 그래서 **완전성은 명세가 단언한다** — `traceCount(reserveSpans) ==
+{{워크로드.orders.요청수}}`처럼. 몇 개가 있어야 하는지는 엔진이 알 수 없고 워크로드를 선언한 명세가 안다.
+
+빈 스팬 목록은 실패가 아니라 **관측된 결과**다. 그 침묵이 괜찮은지는 판정의 문제이며, 시간축 함수가
+빈 시간축을 통과가 아니라 판정 불가로 처리한다.
 
 ---
 
@@ -280,7 +415,7 @@ risk: MODERATE
   - id: no-dangling-hold
     설명: 테스트가 끝나면 예약이 남아 있으면 안 된다
     조건: redisHold == 0
-    선행조건: observed(redisHold)                   # /state 없는 Target에서는 판정 불가로 내려간다
+    # /state 없는 Target에서는 redisHold가 미관측이 되고, 엔진이 이 불변식을 판정 불가로 내린다
 
 실행정책:
   시행: 20
@@ -417,38 +552,26 @@ risk: MODERATE
       근거: 없음                                 # 문서에 없는 값. 승인 화면에서 강조
       간격: 500ms
       안정판정: 연속2회_동일
-    부가정보: [수렴여부, 수렴시간]
 
   - 이름: observedPaymentCount
     소스: harness
     식: paymentCount
     읽기시점: { 방식: 안정될때까지, 최대대기: 10s, 근거: 없음, 간격: 500ms, 안정판정: 연속2회_동일 }
-    부가정보: [수렴여부]
 
   - 이름: orderSettlementTotal
     소스: RESPONSES
     식: sum(responses[*].본문.totalSettlementAmount)
 
 불변식:
-  - id: converged
-    설명: 전파가 제한 시간 안에 안정되어야 한다
-    조건: converged(settlementTotal) and converged(observedPaymentCount)
-    미충족시: 판정불가                            # 위반이 아니라 아직 모르는 것이다
-
+  # 전파가 10초 안에 안정되지 않으면 두 관측이 미관측이 되고, 아래 두 불변식은
+  # 엔진이 판정 불가로 내린다. "아직 전파 중"이 위반으로 보고되지 않는다.
   - id: settlement-matches-order
     설명: 정산 서비스가 집계한 금액이 주문이 계산한 금액과 같아야 한다
     조건: settlementTotal == orderSettlementTotal
-    선행조건: converged
 
   - id: payment-per-order
     설명: 주문 수만큼 결제가 생성되어야 한다
     조건: observedPaymentCount == {{워크로드.orders.요청수}}
-    선행조건: converged
-
-  - id: converges-in-time
-    설명: 전파는 10초 안에 끝나야 한다
-    조건: convergedMs(settlementTotal) <= 10s
-    근거: 없음
 
 실행정책: { 시행: 3, 정리시점: 전체후 }
 정리: 환경리셋
@@ -502,7 +625,6 @@ risk: MODERATE
     호출: GET /products/{{준비.product.productId}}
     식: 응답.본문.stock
     읽기시점: { 방식: 안정될때까지, 최대대기: 15s, 근거: 없음, 간격: 500ms, 안정판정: 연속2회_동일 }
-    부가정보: [수렴여부]
 
   - 이름: remainingHold
     소스: harness
@@ -514,11 +636,8 @@ risk: MODERATE
     식: order.본문.status
 
 불변식:
-  - id: recovery-settled
-    설명: 보상 처리가 제한 시간 안에 안정되어야 한다
-    조건: converged(finalStock)
-    미충족시: 판정불가
-
+  # 보상 처리가 15초 안에 안정되지 않으면 finalStock이 미관측이 되고,
+  # 아래 재고 불변식은 판정 불가로 내려간다.
   - id: stock-restored
     설명: 결제가 실패했으면 재고가 원래대로 돌아와야 한다
     조건: finalStock == {{준비.product.stock}}
@@ -552,41 +671,47 @@ risk: MODERATE
 스냅샷으로는 "재고가 -3"까지만 안다. **왜 그랬는지**는 시간축이 있어야 한다.
 4절 동시성 명세의 `관측`에 다음을 더한다.
 
+관측은 Profile이 선언한 source 이름과 field 이름만 쓴다. 스팬 선택자와 시각범위는 명세에 없다.
+
 ```yaml
 관측:
   - 이름: reserveSpans
-    소스: traces
-    선택:
-      스팬: "inventory.reserve"
-      시각범위: ["{{워크로드.orders.시작시각}}", "{{워크로드.orders.종료시각}}"]
-    식: 구간목록
+    소스: traces                                 # Profile의 TRACE source 이름
+    식: reserveSpans                             # Profile의 field 이름. TraceQL은 Profile이 소유
+    읽기시점: { 방식: 안정될때까지, 최대대기: 10s, 근거: 없음, 간격: 500ms, 안정판정: 연속2회_동일 }
 
   - 이름: deductSpans
     소스: traces
-    선택:
-      스팬: "db.query"
-      속성: { table: "products", operation: "UPDATE" }
-      시각범위: ["{{워크로드.orders.시작시각}}", "{{워크로드.orders.종료시각}}"]
-    식: 구간목록
-
-  - 이름: maxDeductLagMs
-    소스: traces
-    식: max(deductSpans[*].시작 - reserveSpans[*].시작)
+    식: deductSpans
+    읽기시점: { 방식: 안정될때까지, 최대대기: 10s, 근거: 없음, 간격: 500ms, 안정판정: 연속2회_동일 }
 
 불변식:
   - id: no-overlapping-reservation
     설명: 한 주문의 예약과 차감 사이에 다른 주문의 예약이 끼어들면 안 된다
     조건: noOverlap(reserveSpans, deductSpans)
-    선행조건: observed(reserveSpans)
 
   - id: deduction-follows-promptly
     설명: 예약 후 DB 반영이 지나치게 늦으면 안 된다
-    조건: maxDeductLagMs <= 100ms
+    조건: maxStartLagMs(reserveSpans, deductSpans) <= 100
     근거: 없음
-    선행조건: observed(deductSpans)
+
+  - id: every-order-traced
+    설명: 보낸 주문 수만큼 예약 트레이스가 관측되어야 한다
+    조건: traceCount(reserveSpans) == {{워크로드.orders.요청수}}
+    미충족시: 판정불가                            # 저장소가 아직 못 따라온 것이지 결함이 아니다
 ```
 
-`시각범위`는 엔진이 워크로드 시작·종료 시각을 기록해 채운다.
+### 문서 초안과 달라진 것, 그리고 이유
+
+| 초안 | 구현 | 왜 |
+|---|---|---|
+| 명세의 `선택.스팬`·`속성` | Profile의 TraceQL | 쿼리는 실행 권한이다. 명세가 임의 쿼리를 보내면 Profile이 경계인 이유가 없어진다 |
+| 명세의 `시각범위: {{워크로드...}}` | 엔진이 계산 | 시행마다 달라지는 참조라 조건에서 금지된 값과 충돌한다. 창은 시행이 실제로 돈 구간이다 |
+| `식: 구간목록` | `식: <field 이름>` | field가 곧 스팬 목록이다. 별도 함수를 둘 이유가 없다 |
+| `max(deductSpans[*].시작 - reserveSpans[*].시작)` | `maxStartLagMs(a, b)` | 두 목록을 원소끼리 빼려면 어느 예약이 어느 차감과 짝인지 정해야 한다. `traceId`가 그 답이다 |
+| `선행조건: observed(...)` | 불필요 | 읽지 못한 관측을 참조하는 불변식은 엔진이 이미 `NOT_EVALUATED`로 내린다 |
+| `<= 100ms` | `<= 100` | CEL 리터럴에 단위가 없다. 함수가 ms를 돌려주므로 비교값도 ms다 |
+
 **트레이스가 없으면** 이 불변식들은 판정 불가로 내려가고 나머지는 정상 판정된다.
 트레이스는 **정밀도를 올리는 선택지**지 전제가 아니다.
 
@@ -635,16 +760,13 @@ risk: DESTRUCTIVE                                # 최고 위험도. 승인 수�
     호출: GET /products/{{준비.product.productId}}
     식: 응답.본문.stock
     읽기시점: { 방식: 안정될때까지, 최대대기: 30s, 근거: 없음, 간격: 1s, 안정판정: 연속2회_동일 }
-    부가정보: [수렴여부]
   - 이름: remainingHold
     소스: harness
     식: redisHoldCount
 
 불변식:
-  - id: recovery-settled
-    설명: 복구가 제한 시간 안에 안정되어야 한다
-    조건: converged(finalStock)
-    미충족시: 판정불가
+  # 복구가 제한 시간 안에 안정되지 않으면 finalStock이 미관측이 되고,
+  # 아래 재고 불변식은 판정 불가로 내려간다.
   - id: stock-restored-after-outage
     설명: 결제 서비스 복구 후 재고가 원래대로 돌아와야 한다
     조건: finalStock == {{준비.product.stock}}
@@ -827,3 +949,9 @@ LLM이 예외 조건 초안을 만든다
 - 역할 기반이 아닌 인증(API 키, OAuth 스코프)이 `인증프로필`에 들어가는가
 - 단일 서비스(MSA가 아닌) 프로젝트에서 `관측소스`가 과한 구조는 아닌가
 - REST가 아닌 인터페이스를 만났을 때 `프로토콜` 자리로 충분한가
+
+**안정되기까지 걸린 시간을 판정할 수 없다.** `읽기시점`은 "10초 안에 안정되지 않으면 미관측"까지
+표현하고, 그 경우 해당 불변식은 판정 불가로 내려간다. 하지만 "전파가 10초를 넘었다"를 **위반**으로
+보고할 방법은 없다. 지연 자체가 SLO인 경우에는 필요한 구분이다. 관측이 안정되기까지 걸린 시간을
+값으로 노출하는 방식이 자연스럽지만, 그러면 불변식이 관측의 메타데이터를 읽게 되어 지금의
+"관측은 값을 만들고 불변식은 값을 판정한다"는 경계가 흐려진다. 경계를 어떻게 지킬지 정하기 전까지 두지 않는다.

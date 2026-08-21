@@ -5,6 +5,8 @@ import com.project.agenticreliabilitylab.testspec.domain.RecordedResponse
 import com.project.agenticreliabilitylab.testspec.domain.SetupStep
 import com.project.agenticreliabilitylab.testspec.domain.SpecExecutionException
 import com.project.agenticreliabilitylab.testspec.domain.SpecHttpCall
+import com.project.agenticreliabilitylab.testspec.domain.StepRole
+import com.project.agenticreliabilitylab.testspec.domain.TraceScope
 import com.project.agenticreliabilitylab.testspec.domain.StepTiming
 import com.project.agenticreliabilitylab.testspec.domain.TestSpecification
 import com.project.agenticreliabilitylab.testspec.domain.TrialExecution
@@ -48,7 +50,9 @@ class SpecWorkloadExecutor(
         state.bindings["trialNumber"] = trialNumber.toString()
         return try {
             specification.setup.forEach { step -> runSetupStep(step, target, state, runId) }
-            specification.workload.forEach { step -> runWorkloadStep(step, target, state, runId) }
+            specification.workload.forEach { step ->
+                runWorkloadStep(step, target, state, runId, TraceScope.of(runId, trialNumber))
+            }
             state.toExecution(null)
         } catch (exception: Exception) {
             if (exception is InterruptedException) Thread.currentThread().interrupt()
@@ -71,7 +75,7 @@ class SpecWorkloadExecutor(
 
         val startedAt = clock.instant()
         val response = caller.send(target, step.call, state.bindings.toMap(), FIRST_REQUEST, runId)
-        state.timings.add(StepTiming(step.name, startedAt, clock.instant()))
+        state.timings.add(StepTiming(step.name, startedAt, clock.instant(), StepRole.SETUP))
         if (!response.delivered || response.statusCode !in SUCCESS_STATUS) {
             throw SpecExecutionException(
                 "Setup step '${step.name}' did not succeed: ${response.failure ?: "HTTP ${response.statusCode}"}",
@@ -85,20 +89,27 @@ class SpecWorkloadExecutor(
     }
 
     @Suppress("ThrowsCount") // Each missing piece names itself rather than sharing one vague message.
-    private fun runWorkloadStep(step: WorkloadStep, target: RegisteredTarget, state: TrialState, runId: String) {
+    private fun runWorkloadStep(
+        step: WorkloadStep,
+        target: RegisteredTarget,
+        state: TrialState,
+        runId: String,
+        trialScope: String,
+    ) {
         val startedAt = clock.instant()
         when (step.kind) {
             WorkloadStepKind.CALL -> {
                 val call = step.call ?: throw SpecExecutionException("Step '${step.name}' declares no call")
                 state.markStateChange(call)
-                state.responses[step.captureAs ?: step.name] = runCall(step, call, target, state, runId)
+                state.responses[step.captureAs ?: step.name] =
+                    runCall(step, call, target, state, runId, trialScope)
             }
             WorkloadStepKind.WAIT -> Thread.sleep(
                 (step.wait ?: throw SpecExecutionException("Step '${step.name}' declares no duration")).toMillis(),
             )
             else -> throw SpecExecutionException("Step kind '${step.kind}' cannot be executed by this build")
         }
-        state.timings.add(StepTiming(step.name, startedAt, clock.instant()))
+        state.timings.add(StepTiming(step.name, startedAt, clock.instant(), StepRole.WORKLOAD))
     }
 
     /**
@@ -108,12 +119,14 @@ class SpecWorkloadExecutor(
      * threads one after another spreads them out enough that a real race can go unobserved - which would report
      * a passing verdict for a test that never actually ran concurrently.
      */
+    @Suppress("LongParameterList") // The trial scope has to reach the request itself; nothing closer holds it.
     private fun runCall(
         step: WorkloadStep,
         call: SpecHttpCall,
         target: RegisteredTarget,
         state: TrialState,
         runId: String,
+        trialScope: String,
     ): List<RecordedResponse> {
         val gate = CountDownLatch(1)
         val started = CountDownLatch(step.requestCount)
@@ -131,7 +144,14 @@ class SpecWorkloadExecutor(
                             permits.acquire()
                             try {
                                 gate.await()
-                                caller.send(target, call, bindings + ("requestNumber" to "$number"), number, runId)
+                                caller.send(
+                                    target,
+                                    call,
+                                    bindings + ("requestNumber" to "$number"),
+                                    number,
+                                    runId,
+                                    trialScope,
+                                )
                             } finally {
                                 permits.release()
                             }

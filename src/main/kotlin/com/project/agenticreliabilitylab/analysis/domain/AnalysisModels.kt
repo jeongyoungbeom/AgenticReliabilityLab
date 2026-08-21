@@ -137,6 +137,7 @@ data class AnalysisDatasetRecord(
     val id: UUID,
     val experimentRunId: UUID?,
     val targetTestBatchId: UUID?,
+    val testSpecRunId: UUID? = null,
     val contractVersion: String,
     val evidenceBundleJson: String,
     val evidenceIds: List<String>,

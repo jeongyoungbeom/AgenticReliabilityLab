@@ -6,17 +6,18 @@
 
 ## 먼저 알아둘 현재 범위
 
-현재 구현 범위는 `DESIGN.md`의 Phase 0–10.7, `DESIGN2.md`의 Phase 11–15, `DESIGN3.md`의 Phase 17입니다. `DESIGN2.md`의 Phase 16 실제 파일럿은 후속 Phase 구현 뒤 마지막에 수행합니다.
+현재 구현 범위는 `DESIGN.md`의 Phase 0–10.7, `DESIGN2.md`의 Phase 11–15, `DESIGN3.md`의 Phase 17–19입니다. `DESIGN2.md`의 Phase 16 실제 파일럿은 후속 Phase 구현 뒤 마지막에 수행합니다.
 
 | 할 수 있는 일 | 아직 할 수 없는 일 |
 | --- | --- |
 | Target의 health와 등록한 읽기 전용 HTTP endpoint를 여러 개 선택해 점검 | Target 저장소를 직접 읽어 코드·DB 구조를 자동 이해 |
-| 제공한 OpenAPI·README·설명에서 Target 이해 모델(Knowledge Snapshot)을 만들기 | `/harness/state`, Prometheus, trace를 관측 소스로 사용 |
+| 제공한 OpenAPI·README·설명에서 Target 이해 모델(Knowledge Snapshot)을 만들기 | LLM이 테스트 명세를 제안 (Phase 20) |
 | 이해 모델을 근거로 테스트 후보를 생성하고 Test Plan으로 묶어 승인·실행 | POST/PUT/PATCH/DELETE, DB, Docker, 셸 명령으로 Target을 임의 변경 |
 | Test Harness 또는 허용된 선언형 명세로 상태 변경 실험을 실행하고 불변식으로 판정 | AI가 스스로 테스트를 설계해 승인 없이 실행 |
+| Tempo trace를 관측 소스로 읽고 시간축 불변식으로 끼어듦·순서·지연을 판정 | 장애 주입과 인프라 제어 (Phase 21) |
 | 점검 결과를 단일/멀티 에이전트와 선택한 로컬 모델로 분석·비교 | `STAGING`·`PRODUCTION` 환경에서 실행 |
 
-일반 HTTP Batch는 여전히 **Profile에 등록한 읽기 전용 `GET`만** 실행합니다. 별도 Phase 17 경로는 활성 Profile의 `test-spec-execution` 권한 안에서 승인된 JSON 명세만 실행하고, 상태를 바꾸는 각 시행 뒤 환경 reset과 reset 검증을 요구합니다. 후보 생성은 규칙 기반이며 LLM이 판정을 내리지 않습니다.
+일반 HTTP Batch는 여전히 **Profile에 등록한 읽기 전용 `GET`만** 실행합니다. 선언형 명세 경로는 활성 Profile의 `test-spec-execution` 권한 안에서 승인된 JSON 명세만 실행하고, 상태를 바꾸는 각 시행 뒤 환경 reset과 reset 검증을 요구합니다. 후보 생성은 규칙 기반이며 LLM이 판정을 내리지 않습니다.
 
 ## 주요 특징
 
@@ -26,6 +27,8 @@
 - Test Plan: 여러 후보를 하나의 계획으로 묶어 승인하고, 승인된 계획만 기존 실행 엔진으로 넘깁니다.
 - Test Harness 연동: 표준 capability 계약을 공개한 Target에 한해 동시성 실험을 실행하고, 판정은 ARL의 결정적 불변식이 수행합니다.
 - 선언형 테스트 명세: JSON Schema·의미 검증을 통과한 명세를 사람이 위험도별 문구로 승인한 뒤, 멱등 키로 실행하고 결정적 판정·reset 검증·결과 저장까지 수행합니다.
+- 내부 상태 관측: Profile이 허용한 `/harness/state` 필드와 필드별 Prometheus query를 읽으며, 읽지 못한 값에 의존하는 불변식만 `NOT_EVALUATED`로 국소화합니다.
+- 시간축 관측: Profile이 소유한 TraceQL로 Tempo에서 스팬을 읽고, `noOverlap`·`ordered`·`maxStartLagMs`로 "재고가 -3"이 아니라 "세 요청이 같은 밀리초에 예약을 읽었고 반영이 340ms 늦었다"를 판정 근거로 남깁니다.
 - 안전한 HTTP Batch: health와 선언한 `GET` endpoint만 후보가 되며, 여러 후보를 한 Batch로 묶어 사람이 승인한 뒤 실행합니다.
 - 선택형 AI 분석: `SINGLE` 또는 `MULTI`, `GPT_OSS` 또는 `QWEN` 중 원하는 조합만 골라 분석합니다.
 - 분석 비교: 선택한 2–4개 조합이 같은 불변 Dataset을 분석하므로 결과·토큰·시간을 비교할 수 있습니다.
@@ -293,6 +296,10 @@ Target Profile 탭의 초안 기능에 OpenAPI 문서나 README 내용을 붙여
 
 선언형 명세의 전체 형식은 `TEST_SPEC.md`, 기계 검증 계약은 `src/main/resources/schema/test-spec.schema.json`, Profile 예시는 `target-profile.sample.yaml`을 참고하세요. 인증값은 명세나 DB에 저장하지 않고 Runner 환경 변수 `ARL_SPEC_AUTH_<TARGET>_<PROFILE>`에서 실행 직전에 읽습니다. 기본 헤더는 `Authorization`이며 `<변수명>_HEADER`로 바꿀 수 있습니다.
 
+관측 소스도 활성 Profile이 권한을 소유합니다. `HARNESS_STATE`는 Target 상대 경로만 허용하고 응답의 `HARNESS_STATE_V1` 계약과 제공 필드를 매번 확인합니다. 같은 Harness source의 여러 필드는 한 snapshot에서 읽고 같은 `readAt` timing을 사용합니다. `PROMETHEUS`는 Profile에 등록한 절대 주소와 필드별 PromQL만 실행하며, 명세가 임의 query를 제공할 수 없습니다. 외부 Prometheus 주소도 Target과 같은 CIDR allowlist 안에서만 연결됩니다. 소스가 없거나 읽기에 실패해도 run 전체를 중단하지 않으며, 그 값을 사용하는 불변식만 `NOT_EVALUATED`가 됩니다. polling 요청과 대기는 Runner observation deadline 안으로 제한됩니다.
+
+`TRACE` 소스도 같은 규칙을 따릅니다. Profile이 절대 주소와 필드별 TraceQL을 소유하고, 명세는 field 이름만 씁니다. 조회 시각 범위는 명세가 아니라 엔진이 정합니다. 시행이 실제로 실행된 워크로드 구간에 clock skew용 여유를 더한 창만 조회하고, 창 밖에서 시작한 스팬은 응답에서 다시 걸러냅니다. 그래서 이전 시행이나 다른 사람이 만든 트레이스가 이번 판정에 섞이지 않습니다. 스팬은 `traceId`로 짝지어 판정하며, 짝지을 트레이스가 하나도 없으면 시간축 함수는 통과가 아니라 **판정 불가**를 돌려줍니다. 계측이 없는 Target이 아무도 측정하지 않은 속성에 대해 깨끗한 통과를 보고하지 않도록 하기 위해서입니다.
+
 ### Test Harness 계약
 
 Harness 경로에서는 Target이 자기 쪽에 Test Harness를 구현해 공개해야 합니다. fixture 준비, workload, 관측, cleanup은 모두 Target 안에서 일어나고 ARL은 관측값을 받아 판정합니다.
@@ -439,7 +446,7 @@ start.ps1         로컬 통합 기동 스크립트
 
 ## 다음 핵심 개발 방향
 
-Phase 17까지 선언형 명세 등록·승인·멱등 실행·관측·결정적 판정·reset 검증·영속화를 구현했습니다. 다음은 Phase 18의 `/harness/state`, Prometheus 관측과 관측 실패 국소화입니다. 이후 Phase 19–22를 진행하고, 실제 프로젝트 파일럿은 마지막에 수행합니다.
+Phase 19까지 `/harness/state` capability 협상, Prometheus 관측, 관측 실패 국소화, Tempo trace 조회와 시간축 판정을 구현했습니다. 다음은 Phase 20의 LLM 명세 제안입니다. 완료 조건은 **규칙 생성기가 찾지 못한 유효한 테스트를 LLM이 하나 이상 찾아내는 것**이며, 찾지 못하면 붙이지 않습니다. 이후 Phase 21–22를 진행하고, 실제 프로젝트 파일럿은 마지막에 수행합니다.
 
 아직 없는 기능과 검증되지 않은 부분은 다음과 같습니다.
 

@@ -4,17 +4,17 @@ package com.project.agenticreliabilitylab.analysis.infrastructure.sql
 object AnalysisDatasetSql {
     val INSERT_DATASET = """
         insert into analysis_dataset (
-            id, experiment_run_id, target_test_batch_id, contract_version, evidence_bundle_json, evidence_ids_json,
-            checksum, evidence_count, created_at
+            id, experiment_run_id, target_test_batch_id, test_spec_run_id, contract_version,
+            evidence_bundle_json, evidence_ids_json, checksum, evidence_count, created_at
         ) values (
-            :id, :experimentRunId, :targetTestBatchId, :contractVersion, :evidenceBundleJson, :evidenceIdsJson,
-            :checksum, :evidenceCount, :createdAt
+            :id, :experimentRunId, :targetTestBatchId, :testSpecRunId, :contractVersion,
+            :evidenceBundleJson, :evidenceIdsJson, :checksum, :evidenceCount, :createdAt
         )
     """.trimIndent()
 
     val SELECT_DATASET_BASE = """
-        select id, experiment_run_id, target_test_batch_id, contract_version, evidence_bundle_json, evidence_ids_json,
-               checksum, evidence_count, created_at
+        select id, experiment_run_id, target_test_batch_id, test_spec_run_id, contract_version,
+               evidence_bundle_json, evidence_ids_json, checksum, evidence_count, created_at
         from analysis_dataset
     """.trimIndent()
 

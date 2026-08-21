@@ -19,11 +19,24 @@ data class RecordedResponse(
     val delivered: Boolean = failure == null
 }
 
-/** When a step started and finished, kept for the time-axis functions a later phase adds. */
+/**
+ * Whether a step prepared the trial or was the behaviour being judged.
+ *
+ * Setup work is real work: it calls the Target, and a traced Target records spans for it like any other request.
+ * Those spans are not what the invariants are about, though, and letting them into the observation window makes a
+ * fixture-creating call look like an unmatched half of the workload - which reads as a violation nobody committed.
+ */
+enum class StepRole {
+    SETUP,
+    WORKLOAD,
+}
+
+/** When a step started and finished, and whether it was setup or the workload under test. */
 data class StepTiming(
     val name: String,
     val startedAt: Instant,
     val endedAt: Instant,
+    val role: StepRole = StepRole.WORKLOAD,
 )
 
 /**

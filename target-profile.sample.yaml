@@ -60,7 +60,28 @@ arl:
         auth-profiles: [seller, buyer]
         observation-sources:
           - name: harness
+            kind: HARNESS_STATE
+            endpoint: /harness/state
             fields: [dbStock, redisStock, redisHoldCount, orderCount]
+          - name: metrics
+            kind: PROMETHEUS
+            endpoint: http://127.0.0.1:9090
+            fields: [httpErrorRate]
+            queries:
+              httpErrorRate: 'sum(rate(http_server_requests_seconds_count{status=~"5.."}[1m]))'
+          # Phase 19: the Profile owns the TraceQL, exactly as it owns the PromQL above.
+          # A specification names a field; it can never send a query of its own to the trace store.
+          # The time range is not configured here: the engine bounds every trace read to the window
+          # the trial actually ran in, so one trial can never be judged on another trial's traces.
+          - name: traces
+            kind: TRACE
+            endpoint: http://127.0.0.1:3200
+            fields: [reserveSpans, deductSpans]
+            queries:
+              # ${trial}는 엔진이 이 시행의 식별자로 채운다. 명세는 이 문자열에 닿지 못한다.
+              # Target은 워크로드 요청의 X-ARL-Trial 헤더를 span.arl.trial 속성으로 남겨야 한다.
+              reserveSpans: '{name="inventory.reserve" && span.arl.trial="${trial}"}'
+              deductSpans: '{name="db.query" && span.db.table="products" && span.arl.trial="${trial}"}'
         supported-faults: [PAYMENT_FAILURE]
         infrastructure-targets: [payment-service]
         max-concurrency: 50

@@ -177,7 +177,13 @@ class TestSpecRunnerTests {
                 evaluator = paths,
                 clock = Clock.fixed(Instant.EPOCH, ZoneOffset.UTC),
             ),
-            observations = SpecObservationReader(values, paths),
+            observations = SpecObservationReader(
+                values,
+                paths,
+                StubDeclaredObservationSourceClient(),
+                FixedSpecExecutionSettings(),
+                Clock.fixed(Instant.EPOCH, ZoneOffset.UTC),
+            ),
             evaluator = InvariantEvaluator(expressions, references),
             reset = EnvironmentResetService(caller, values, expressions),
         )

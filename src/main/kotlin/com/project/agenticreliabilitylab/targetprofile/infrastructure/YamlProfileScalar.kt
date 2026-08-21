@@ -13,6 +13,18 @@ internal fun Map<String, Any?>.optionalStringList(key: String): List<String>? =
         value as? String ?: throw TargetProfileDocumentException("'$key[$index]' must be a string")
     }
 
+internal fun Map<String, Any?>.optionalStringMap(key: String): Map<String, String>? = when (val value = get(key)) {
+    null -> null
+    is Map<*, *> -> value.entries.associate { (name, entryValue) ->
+        val stringName = name as? String
+            ?: throw TargetProfileDocumentException("'$key' keys must be strings")
+        val stringValue = entryValue as? String
+            ?: throw TargetProfileDocumentException("'$key.$stringName' must be a string")
+        stringName to stringValue
+    }
+    else -> throw TargetProfileDocumentException("'$key' must be an object")
+}
+
 internal fun Map<String, Any?>.optionalIntList(key: String): List<Int>? =
     optionalList(key)?.mapIndexed { index, value -> value.yamlInt("$key[$index]") }
 

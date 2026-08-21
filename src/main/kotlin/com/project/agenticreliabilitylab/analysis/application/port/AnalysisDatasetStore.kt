@@ -18,6 +18,7 @@ data class NewAnalysisDataset(
     val id: UUID,
     val experimentRunId: UUID? = null,
     val targetTestBatchId: UUID? = null,
+    val testSpecRunId: UUID? = null,
     val contractVersion: String,
     val evidenceBundleJson: String,
     val evidenceIds: List<String>,
@@ -25,7 +26,7 @@ data class NewAnalysisDataset(
     val createdAt: Instant,
 ) {
     init {
-        require((experimentRunId == null) != (targetTestBatchId == null)) {
+        require(listOfNotNull(experimentRunId, targetTestBatchId, testSpecRunId).size == 1) {
             "An analysis dataset must belong to exactly one source"
         }
     }

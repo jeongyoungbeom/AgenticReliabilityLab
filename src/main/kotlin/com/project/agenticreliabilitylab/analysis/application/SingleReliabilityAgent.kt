@@ -71,6 +71,18 @@ class SingleReliabilityAgent(
         return startForDataset(dataset.id, idempotencyKey, model.key)
     }
 
+    @Transactional
+    fun startForTestSpecRun(
+        testSpecRunId: UUID,
+        idempotencyKey: String,
+        requestedModelKey: String? = null,
+    ): AnalysisRunRecord {
+        requireIdempotencyKey(idempotencyKey)
+        val model = modelRegistry.resolve(requestedModelKey, properties.defaultModelKey)
+        val dataset = datasetService.createForTestSpecRun(testSpecRunId)
+        return startForDataset(dataset.id, idempotencyKey, model.key)
+    }
+
     /** Used by a comparison transaction to start several registered models on one immutable dataset. */
     @Transactional
     fun startForDataset(analysisDatasetId: UUID, idempotencyKey: String, requestedModelKey: String): AnalysisRunRecord {
@@ -133,7 +145,7 @@ class SingleReliabilityAgent(
     ): AnalysisRunRecord? = when {
         dataset.experimentRunId != null -> analysisRepository.findByExperimentAndIdempotencyKey(dataset.experimentRunId, idempotencyKey)
         dataset.targetTestBatchId != null -> analysisRepository.findByTargetTestBatchAndIdempotencyKey(dataset.targetTestBatchId, idempotencyKey)
-        else -> throw AnalysisInputException("Analysis dataset '${dataset.id}' has no source")
+        else -> analysisRepository.findByDatasetAndIdempotencyKey(dataset.id, idempotencyKey)
     }
 
     private fun requireIdempotencyKey(idempotencyKey: String) {

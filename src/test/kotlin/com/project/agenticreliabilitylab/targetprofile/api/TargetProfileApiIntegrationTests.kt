@@ -69,6 +69,14 @@ class TargetProfileApiIntegrationTests {
             ),
         )
         assertEquals(2, executionProfile.capabilities.maxConcurrency)
+        assertEquals(
+            "PROMETHEUS",
+            executionProfile.capabilities.observationSources.getValue("metrics").kind.name,
+        )
+        assertEquals(
+            "up",
+            executionProfile.capabilities.observationSources.getValue("metrics").queries["httpUp"],
+        )
         assertEquals(CleanupMethod.NOT_REQUIRED, executionProfile.resetPlan.method)
 
         val candidates = get("/api/targets/$targetId/test-candidates")
@@ -138,6 +146,25 @@ class TargetProfileApiIntegrationTests {
         assertEquals(400, originValidation.statusCode(), originValidation.body())
         assertContains(originValidation.body(), "only an HTTP(S) origin")
 
+        val mismatchedQuery = validProfile(targetId).replace("httpUp: up", "otherField: up")
+        val sourceValidation = post(
+            "/api/target-profiles/validate",
+            profileJson(mismatchedQuery),
+            authorizationHeader(),
+        )
+        assertEquals(400, sourceValidation.statusCode(), sourceValidation.body())
+        assertContains(sourceValidation.body(), "exactly one query for every field")
+
+        val malformedPrometheus = validProfile(targetId)
+            .replace("http://127.0.0.1:19090/prometheus", "http://[")
+        val malformedSourceValidation = post(
+            "/api/target-profiles/validate",
+            profileJson(malformedPrometheus),
+            authorizationHeader(),
+        )
+        assertEquals(400, malformedSourceValidation.statusCode(), malformedSourceValidation.body())
+        assertContains(malformedSourceValidation.body(), "not a valid URI")
+
         val oversized = post("/api/target-profiles/validate", profileJson("x".repeat(262_144)))
         assertEquals(413, oversized.statusCode())
     }
@@ -185,6 +212,18 @@ class TargetProfileApiIntegrationTests {
                     path: /api/read-only
                     auth-profile: reader
                 auth-profiles: [reader]
+                observation-sources:
+                  - name: harness
+                    kind: HARNESS_STATE
+                    endpoint: /harness/state
+                    fields: [dbStock]
+                    auth-profile: reader
+                  - name: metrics
+                    kind: PROMETHEUS
+                    endpoint: http://127.0.0.1:19090/prometheus
+                    fields: [httpUp]
+                    queries:
+                      httpUp: up
                 max-concurrency: 2
                 max-request-count: 20
                 max-trials: 5

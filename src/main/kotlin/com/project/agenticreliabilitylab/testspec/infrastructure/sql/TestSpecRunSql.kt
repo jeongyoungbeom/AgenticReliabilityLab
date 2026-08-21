@@ -68,9 +68,11 @@ object TestSpecRunSql {
 
     val INSERT_TRIAL = """
         insert into test_spec_trial_result (
-            run_id, trial_number, outcome, state_changed, completed, failure, verdicts_json, timings_json
+            run_id, trial_number, outcome, state_changed, completed, failure, verdicts_json, timings_json,
+            observations_json
         ) values (
-            :runId, :trialNumber, :outcome, :stateChanged, :completed, :failure, :verdictsJson, :timingsJson
+            :runId, :trialNumber, :outcome, :stateChanged, :completed, :failure, :verdictsJson, :timingsJson,
+            :observationsJson
         )
     """.trimIndent()
 
@@ -83,7 +85,8 @@ object TestSpecRunSql {
     """.trimIndent()
 
     val FIND_TRIALS = """
-        select run_id, trial_number, outcome, state_changed, completed, failure, verdicts_json, timings_json
+        select run_id, trial_number, outcome, state_changed, completed, failure, verdicts_json, timings_json,
+               observations_json
         from test_spec_trial_result
         where run_id = :runId
         order by trial_number

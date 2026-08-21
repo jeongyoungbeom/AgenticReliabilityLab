@@ -5,6 +5,7 @@ import com.project.agenticreliabilitylab.testspec.application.port.TestSpecRunSt
 import com.project.agenticreliabilitylab.testspec.application.port.TestSpecificationStore
 import com.project.agenticreliabilitylab.testspec.domain.InvariantOutcome
 import com.project.agenticreliabilitylab.testspec.domain.InvariantVerdict
+import com.project.agenticreliabilitylab.testspec.domain.ObservedEvidence
 import com.project.agenticreliabilitylab.testspec.domain.RecordedResponse
 import com.project.agenticreliabilitylab.testspec.domain.ResetCheck
 import com.project.agenticreliabilitylab.testspec.domain.ResetOutcome
@@ -33,6 +34,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Replays the Phase 17 persistence contract on H2 and, through the subclass, PostgreSQL. */
@@ -101,6 +103,11 @@ open class JdbcTestSpecPersistenceTests {
         assertTrue(trial.stateChanged)
         assertEquals("stock_never_negative", trial.verdicts.single().invariantId)
         assertEquals("workload", trial.timings.single().name)
+        // The timeline a verdict was judged on has to survive the row, or an improvement suggestion has only the
+        // sentence about the evidence and not the evidence.
+        val spans = assertNotNull(trial.observations["reserveSpans"]).value as List<*>
+        assertEquals("t1", (spans.single() as Map<*, *>)["traceId"])
+        assertNull(trial.observations.getValue("reserveSpans").omitted)
 
         val reset = runStore.findResets(run.id).single()
         assertTrue(reset.performed)
@@ -110,6 +117,12 @@ open class JdbcTestSpecPersistenceTests {
         assertEquals(
             0L,
             sensitiveValuesStored("test_spec_trial_result", "verdicts_json", "timings_json", sensitiveValue),
+        )
+        // The new column carries observed values, so it gets the same guarantee: what the engine manages -
+        // bindings and response bodies - never reaches it.
+        assertEquals(
+            0L,
+            sensitiveValuesStored("test_spec_trial_result", "observations_json", null, sensitiveValue),
         )
         assertEquals(0L, sensitiveValuesStored("test_spec_reset_result", "checks_json", null, sensitiveValue))
     }
@@ -238,7 +251,19 @@ open class JdbcTestSpecPersistenceTests {
             condition = "stock >= 0",
             observedValues = mapOf("stock" to "4"),
         )
-        val trial = TrialResult(1, TrialOutcome.PASSED, listOf(verdict))
+        val trial = TrialResult(
+            1,
+            TrialOutcome.PASSED,
+            listOf(verdict),
+            mapOf(
+                "stock" to ObservedEvidence(present = true, display = "4", value = 4L),
+                "reserveSpans" to ObservedEvidence(
+                    present = true,
+                    display = "[...] (1 spans across 1 traces)",
+                    value = listOf(mapOf("traceId" to "t1", "startMs" to 100L, "endMs" to 105L)),
+                ),
+            ),
+        )
         val result = SpecificationResult(TrialOutcome.PASSED, 1, 0, 0, listOf(trial))
         val execution = TrialExecution(
             trialNumber = 1,

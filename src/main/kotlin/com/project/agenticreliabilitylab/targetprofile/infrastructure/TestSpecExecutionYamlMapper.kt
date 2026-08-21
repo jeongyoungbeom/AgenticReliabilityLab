@@ -2,6 +2,7 @@ package com.project.agenticreliabilitylab.targetprofile.infrastructure
 
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileHttpCallDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileObservationSourceDefinition
+import com.project.agenticreliabilitylab.targetprofile.domain.ProfileObservationSourceKind
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileReadTimingDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileResetDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileResetVerificationDefinition
@@ -51,7 +52,11 @@ class TestSpecExecutionYamlMapper {
 
     private fun Map<String, Any?>.toObservationSource() = ProfileObservationSourceDefinition(
         name = requiredString("name"),
+        kind = enumValue<ProfileObservationSourceKind>("kind"),
+        endpoint = requiredString("endpoint"),
         fields = requiredStringList("fields").toSet(),
+        queries = optionalStringMap("queries") ?: emptyMap(),
+        authProfile = optionalString("auth-profile"),
     )
 
     private fun Map<String, Any?>.toReset(): ProfileResetDefinition {

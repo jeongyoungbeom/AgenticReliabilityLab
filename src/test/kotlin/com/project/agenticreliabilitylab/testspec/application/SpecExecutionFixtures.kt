@@ -8,6 +8,9 @@ import com.project.agenticreliabilitylab.target.domain.TargetEnvironment
 import com.project.agenticreliabilitylab.target.domain.TargetReadResponse
 import com.project.agenticreliabilitylab.target.domain.TargetReadTransport
 import com.project.agenticreliabilitylab.testspec.application.port.SpecAuthProvider
+import com.project.agenticreliabilitylab.testspec.application.port.DeclaredObservationRead
+import com.project.agenticreliabilitylab.testspec.application.port.DeclaredObservationRequest
+import com.project.agenticreliabilitylab.testspec.application.port.DeclaredObservationSourceClient
 import com.project.agenticreliabilitylab.testspec.application.port.SpecExecutionSettings
 import java.net.URI
 import java.nio.charset.StandardCharsets
@@ -21,6 +24,7 @@ data class SentRequest(
     val method: String,
     val headers: Map<String, String>,
     val body: String,
+    val timeout: Duration,
 )
 
 /** A stand-in Target that answers from a handler and remembers everything it was asked. */
@@ -37,7 +41,7 @@ class RecordingTransport(
         body: ByteArray,
         timeout: Duration,
     ): TargetReadResponse {
-        val request = SentRequest(uri, method, headers, String(body, StandardCharsets.UTF_8))
+        val request = SentRequest(uri, method, headers, String(body, StandardCharsets.UTF_8), timeout)
         requests.add(request)
         return handler(request)
     }
@@ -75,4 +79,21 @@ class FixedSpecExecutionSettings(
 class StubAuthProvider(private val headers: Map<String, Map<String, String>>) : SpecAuthProvider {
     override fun headersFor(targetSystemId: String, authProfile: String): Map<String, String> =
         headers[authProfile] ?: emptyMap()
+}
+
+class StubDeclaredObservationSourceClient(
+    private val handler: (
+        DeclaredObservationSource,
+        Set<String>,
+        Duration,
+    ) -> Map<String, DeclaredObservationRead> = { source, fields, _ ->
+        fields.associateWith { DeclaredObservationRead.missing("source '${source.name}' is unavailable") }
+    },
+) : DeclaredObservationSourceClient {
+    val requests: MutableList<DeclaredObservationRequest> = CopyOnWriteArrayList()
+
+    override fun read(request: DeclaredObservationRequest): Map<String, DeclaredObservationRead> {
+        requests.add(request)
+        return handler(request.source, request.fields, request.timeout)
+    }
 }

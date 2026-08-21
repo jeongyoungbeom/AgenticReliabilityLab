@@ -2,6 +2,21 @@ package com.project.agenticreliabilitylab.testspec.application
 
 import com.project.agenticreliabilitylab.testspec.domain.SpecHttpCall
 
+enum class DeclaredObservationSourceKind {
+    HARNESS_STATE,
+    PROMETHEUS,
+    TRACE,
+}
+
+data class DeclaredObservationSource(
+    val name: String,
+    val kind: DeclaredObservationSourceKind,
+    val endpoint: String,
+    val fields: Set<String>,
+    val queries: Map<String, String>,
+    val authProfile: String?,
+)
+
 /**
  * What the active Profile allows a specification to do.
  *
@@ -17,8 +32,8 @@ data class TargetSpecCapabilities(
     val authProfiles: Set<String>,
     /** Required auth profile for each registered call. A present null value explicitly means no auth. */
     val authProfilesByCall: Map<String, String?> = emptyMap(),
-    /** Observation source name to the fields it provides. */
-    val observationSources: Map<String, Set<String>>,
+    /** Profile-owned executable observation source definitions, keyed by source name. */
+    val observationSources: Map<String, DeclaredObservationSource>,
     val supportedFaults: Set<String>,
     val infrastructureTargets: Set<String>,
     val maxConcurrency: Int,
@@ -40,5 +55,5 @@ data class TargetSpecCapabilities(
     fun allows(call: SpecHttpCall): Boolean = matchingCall(call) != null
 
     fun providesField(sourceName: String, field: String): Boolean =
-        observationSources[sourceName]?.contains(field) == true
+        observationSources[sourceName]?.fields?.contains(field) == true
 }

@@ -4,6 +4,8 @@ import com.project.agenticreliabilitylab.testspec.domain.Invariant
 import com.project.agenticreliabilitylab.testspec.domain.InvariantOutcome
 import com.project.agenticreliabilitylab.testspec.domain.InvariantVerdict
 import com.project.agenticreliabilitylab.testspec.domain.NotEvaluatedReason
+import com.project.agenticreliabilitylab.testspec.domain.ObservedEvidence
+import com.project.agenticreliabilitylab.testspec.domain.ObservedSpan
 import com.project.agenticreliabilitylab.testspec.domain.SpecExecutionException
 import com.project.agenticreliabilitylab.testspec.domain.SpecificationResult
 import com.project.agenticreliabilitylab.testspec.domain.TestSpecification
@@ -46,7 +48,14 @@ class InvariantEvaluator(
             decided[invariant.id] = verdict.outcome
             verdicts.add(verdict)
         }
-        return TrialResult(trialNumber, outcomeOf(verdicts), verdicts)
+        return TrialResult(
+            trialNumber,
+            outcomeOf(verdicts),
+            verdicts,
+            // Carried whole, not as the verdict's rendered summary. This is what an improvement suggestion has
+            // to reason from, and it is the part a five-element render throws away first.
+            observed.mapValues { (_, value) -> ObservedEvidence(value.present, value.display, value.value) },
+        )
     }
 
     /**
@@ -88,6 +97,7 @@ class InvariantEvaluator(
         return SpecificationResult(outcome, trials.size, violated, inconclusive, trials)
     }
 
+    @Suppress("ReturnCount") // Requirement, resolution, compilation and missing evidence are distinct verdicts.
     private fun judge(
         invariant: Invariant,
         observed: Map<String, ObservedValue>,
@@ -103,21 +113,46 @@ class InvariantEvaluator(
             }
         }
 
-        val missing = observed.filterValues { !it.present }.keys
         val bindings = observed.filterValues { it.present }.mapValues { (_, value) -> value.value!! }
+        val condition = try {
+            references.resolve(invariant.condition, staticBindings)
+        } catch (exception: SpecExecutionException) {
+            return notEvaluated(
+                invariant, invariant.condition, observed, NotEvaluatedReason.EXPRESSION_FAILED, exception.message,
+            )
+        }
+        val compiled = try {
+            expressions.compile(condition, observed.keys)
+        } catch (exception: SpecExpressionException) {
+            return notEvaluated(
+                invariant, condition, observed, NotEvaluatedReason.EXPRESSION_FAILED, exception.message,
+            )
+        }
+        val missingDependencies = compiled.referencedIdentifiers
+            .filter { identifier -> observed[identifier]?.present == false }
+        if (missingDependencies.isNotEmpty()) {
+            return notEvaluated(
+                invariant,
+                condition,
+                observed,
+                NotEvaluatedReason.OBSERVATION_MISSING,
+                "Required observation(s) were not read: ${missingDependencies.sorted().joinToString()}",
+            )
+        }
 
         return try {
-            evaluate(invariant, bindings, observed, staticBindings)
+            evaluate(invariant, condition, compiled, bindings, observed, staticBindings)
+        } catch (exception: UnjudgeableObservationException) {
+            // The specification is fine; the evidence is not. Saying "expression failed" here would send an
+            // operator to rewrite a correct condition instead of looking at the collector.
+            notEvaluated(
+                invariant, condition, observed, NotEvaluatedReason.OBSERVATION_INSUFFICIENT, exception.message,
+            )
         } catch (exception: SpecExpressionException) {
-            val reason = if (missing.isEmpty()) {
-                NotEvaluatedReason.EXPRESSION_FAILED
-            } else {
-                NotEvaluatedReason.OBSERVATION_MISSING
-            }
-            notEvaluated(invariant, invariant.condition, observed, reason, exception.message)
+            notEvaluated(invariant, condition, observed, NotEvaluatedReason.EXPRESSION_FAILED, exception.message)
         } catch (exception: SpecExecutionException) {
             notEvaluated(
-                invariant, invariant.condition, observed, NotEvaluatedReason.EXPRESSION_FAILED, exception.message,
+                invariant, condition, observed, NotEvaluatedReason.EXPRESSION_FAILED, exception.message,
             )
         }
     }
@@ -131,13 +166,14 @@ class InvariantEvaluator(
      */
     private fun evaluate(
         invariant: Invariant,
+        condition: String,
+        compiled: CompiledExpression,
         bindings: Map<String, Any>,
         observed: Map<String, ObservedValue>,
         staticBindings: Map<String, String>,
     ): InvariantVerdict {
         val identifiers = bindings.keys
-        val condition = references.resolve(invariant.condition, staticBindings)
-        val holds = expressions.compile(condition, identifiers).evaluateBoolean(bindings)
+        val holds = compiled.evaluateBoolean(bindings)
         if (holds) return verdict(invariant, condition, InvariantOutcome.PASSED, observed)
 
         // A reviewer already decided these cases are correct behaviour, so they are not violations.
@@ -204,7 +240,43 @@ data class ObservedValue(
     val display: String,
 ) {
     companion object {
-        fun of(value: Any): ObservedValue = ObservedValue(true, value, value.toString())
+        fun of(value: Any): ObservedValue = ObservedValue(true, value, describe(value))
         fun missing(reason: String): ObservedValue = ObservedValue(false, null, "not observed ($reason)")
+
+        /**
+         * What a verdict shows for this value.
+         *
+         * A trace observation can hold hundreds of spans, and the verdict has to stay something an operator can
+         * read and a database can store, so only the first few are rendered. **The rest are not kept anywhere** -
+         * a trial record holds these display strings and its step timings, and nothing else. Until the run record
+         * carries the timeline itself, whatever this string omits is gone.
+         *
+         * That is why the summary is not optional. How much evidence a judgement rested on is the part an
+         * operator most needs and the part truncation destroys first: "24 spans across 20 traces" and "24 spans
+         * across 3 traces" describe completely different runs, and every time-axis judgement is made per trace.
+         * A pass over three traces when twenty requests were sent is not a pass, and the count is the only thing
+         * in the record that can say so.
+         */
+        private fun describe(value: Any): String =
+            if (value is List<*>) "${rendered(value)} ${summary(value)}" else value.toString()
+
+        private fun rendered(value: List<*>): String =
+            if (value.size > MAX_RENDERED_ELEMENTS) {
+                value.take(MAX_RENDERED_ELEMENTS).joinToString(prefix = "[", postfix = ", ...]")
+            } else {
+                value.toString()
+            }
+
+        /** Counted as spans when every element carries a trace id, and as plain entries otherwise. */
+        private fun summary(value: List<*>): String {
+            val traces = value.mapNotNull { element -> (element as? Map<*, *>)?.get(ObservedSpan.TRACE_ID) }
+            return if (value.isNotEmpty() && traces.size == value.size) {
+                "(${value.size} spans across ${traces.distinct().size} traces)"
+            } else {
+                "(${value.size} entries)"
+            }
+        }
+
+        private const val MAX_RENDERED_ELEMENTS = 5
     }
 }

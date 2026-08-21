@@ -18,6 +18,8 @@ class Phase17FixtureTarget private constructor(
     private val orderRequests = AtomicInteger()
     private val paymentRequests = AtomicInteger()
     private val transferRequests = AtomicInteger()
+    private val harnessStateRequests = AtomicInteger()
+    private val prometheusRequests = AtomicInteger()
     private val resetRequests = AtomicInteger()
 
     val origin: String = "http://127.0.0.1:${server.address.port}"
@@ -27,6 +29,8 @@ class Phase17FixtureTarget private constructor(
         orderRequests.set(0)
         paymentRequests.set(0)
         transferRequests.set(0)
+        harnessStateRequests.set(0)
+        prometheusRequests.set(0)
         resetRequests.set(0)
     }
 
@@ -34,6 +38,8 @@ class Phase17FixtureTarget private constructor(
         orderRequests = orderRequests.get(),
         paymentRequests = paymentRequests.get(),
         transferRequests = transferRequests.get(),
+        harnessStateRequests = harnessStateRequests.get(),
+        prometheusRequests = prometheusRequests.get(),
         resetRequests = resetRequests.get(),
     )
 
@@ -55,6 +61,8 @@ class Phase17FixtureTarget private constructor(
                 "POST /transfers" -> createTransfer(exchange)
                 "POST /reset" -> resetEnvironment(exchange)
                 "GET /state" -> exchange.respond(200, state.json())
+                "GET /harness/state" -> missingHarnessState(exchange)
+                "GET /api/v1/query" -> prometheusQuery(exchange)
                 else -> exchange.respond(404, """{"error":"not-found"}""")
             }
         } catch (_: Exception) {
@@ -104,6 +112,19 @@ class Phase17FixtureTarget private constructor(
         resetRequests.incrementAndGet()
         state.resetEnvironment()
         exchange.respond(204, "")
+    }
+
+    private fun prometheusQuery(exchange: HttpExchange) {
+        prometheusRequests.incrementAndGet()
+        exchange.respond(
+            200,
+            """{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1,"1"]}]}}""",
+        )
+    }
+
+    private fun missingHarnessState(exchange: HttpExchange) {
+        harnessStateRequests.incrementAndGet()
+        exchange.respond(404, """{"error":"not-found"}""")
     }
 
     private fun HttpExchange.respond(status: Int, body: String) {
@@ -215,4 +236,6 @@ data class FixtureAudit(
     val paymentRequests: Int,
     val transferRequests: Int,
     val resetRequests: Int,
+    val harnessStateRequests: Int = 0,
+    val prometheusRequests: Int = 0,
 )

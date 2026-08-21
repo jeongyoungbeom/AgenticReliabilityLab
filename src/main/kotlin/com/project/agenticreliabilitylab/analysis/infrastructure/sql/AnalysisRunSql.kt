@@ -15,6 +15,8 @@ object AnalysisRunSql {
         "$SELECT_ANALYSIS_RUN where experiment_run_id = :experimentRunId and idempotency_key = :idempotencyKey"
     val FIND_BY_BATCH_AND_IDEMPOTENCY_KEY =
         "$SELECT_ANALYSIS_RUN where target_test_batch_id = :targetTestBatchId and idempotency_key = :idempotencyKey"
+    val FIND_BY_DATASET_AND_IDEMPOTENCY_KEY =
+        "$SELECT_ANALYSIS_RUN where analysis_dataset_id = :analysisDatasetId and idempotency_key = :idempotencyKey"
     const val FIND_IDS_BY_AGENT_TYPE_AND_STATUS =
         "select id from analysis_run where agent_type = :agentType and status = :status order by requested_at, id"
 

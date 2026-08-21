@@ -2,14 +2,18 @@ package com.project.agenticreliabilitylab.targetprofile.application
 
 import com.project.agenticreliabilitylab.target.domain.TargetEnvironment
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileHttpCallDefinition
+import com.project.agenticreliabilitylab.targetprofile.domain.ProfileObservationSourceDefinition
+import com.project.agenticreliabilitylab.targetprofile.domain.ProfileObservationSourceKind
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileResetDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileResetVerificationDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.TargetRegistrationDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.TestSpecExecutionProfileDefinition
 import com.project.agenticreliabilitylab.testspec.domain.CleanupMethod
 import com.project.agenticreliabilitylab.testspec.domain.StabilityRule
+import com.project.agenticreliabilitylab.testspec.domain.TraceScope
 import org.springframework.stereotype.Component
 import java.net.URI
+import java.net.URISyntaxException
 import java.time.Duration
 
 /** Validates the Profile-owned authority for declarative specification execution. */
@@ -61,6 +65,12 @@ class TestSpecExecutionProfileValidator {
             require(source.fields.isNotEmpty() && source.fields.all(IDENTIFIER_PATTERN::matches)) {
                 "Observation source '${source.name}' must declare valid fields"
             }
+            source.authProfile?.let { authProfile ->
+                require(authProfile in profile.authProfiles) {
+                    "Observation source '${source.name}' uses undeclared auth profile '$authProfile'"
+                }
+            }
+            source.validateEndpoint()
         }
         profile.supportedFaults.forEach { fault ->
             require(UPPER_IDENTIFIER_PATTERN.matches(fault)) { "Supported fault '$fault' is invalid" }
@@ -116,10 +126,67 @@ class TestSpecExecutionProfileValidator {
 
     private fun ProfileHttpCallDefinition.key(): String = "${method.uppercase()} $path"
 
+    private fun ProfileObservationSourceDefinition.validateEndpoint() {
+        when (kind) {
+            ProfileObservationSourceKind.HARNESS_STATE -> validateHarnessEndpoint()
+            ProfileObservationSourceKind.PROMETHEUS -> validateQueriedEndpoint("Prometheus")
+            ProfileObservationSourceKind.TRACE -> {
+                validateQueriedEndpoint("Trace")
+                validateTraceScoping()
+            }
+        }
+    }
+
+    private fun ProfileObservationSourceDefinition.validateHarnessEndpoint() {
+        endpoint.validateTemplatePath("Observation source '$name' endpoint")
+        require('{' !in endpoint && '}' !in endpoint) {
+            "Observation source '$name' endpoint must not contain placeholders"
+        }
+        require(queries.isEmpty()) { "HARNESS_STATE source '$name' must not declare Prometheus queries" }
+    }
+
+    /**
+     * A telemetry store ARL queries directly by absolute address.
+     *
+     * The query itself is the authority here, so the Profile has to own one per field. Letting a specification
+     * supply the query would hand a model an arbitrary read against the metric or trace store, which is exactly
+     * the scope the Profile exists to bound. The address still has to pass the Target's CIDR allowlist at
+     * connection time; this only refuses an address that could never be checked.
+     */
+    private fun ProfileObservationSourceDefinition.validateQueriedEndpoint(label: String) {
+        val uri = endpoint.validUri("$label source '$name' endpoint")
+        require(
+            uri.isAbsolute && uri.scheme.lowercase() in HTTP_SCHEMES && !uri.host.isNullOrBlank() &&
+                uri.userInfo == null && uri.query == null && uri.fragment == null,
+        ) { "$label source '$name' endpoint must be an absolute HTTP URL without credentials or query" }
+        require(queries.keys == fields) {
+            "$label source '$name' must declare exactly one query for every field"
+        }
+        require(queries.values.all { query -> query.isNotBlank() && query.length <= MAX_QUERY_LENGTH }) {
+            "$label source '$name' queries must contain 1 to $MAX_QUERY_LENGTH characters"
+        }
+    }
+
+    /**
+     * A trace query has to name the trial it is asking about.
+     *
+     * Without it the query also matches another developer's request, an earlier trial, and this trial's own setup
+     * work - and a trace carrying one half of a pair only because it belongs to someone else is reported as a
+     * violation nobody committed. The Profile is where this is enforced because the Profile is what a human
+     * approved: a specification cannot add the scope, and must not be able to leave it out.
+     */
+    private fun ProfileObservationSourceDefinition.validateTraceScoping() {
+        val unscoped = queries.filterValues { query -> TraceScope.PLACEHOLDER !in query }.keys
+        require(unscoped.isEmpty()) {
+            "Trace source '$name' queries must contain ${TraceScope.PLACEHOLDER} so spans can be attributed to " +
+                "one trial; missing in ${unscoped.sorted()}"
+        }
+    }
+
     private fun String.validateTemplatePath(label: String) {
         require(length <= MAX_PATH_LENGTH) { "$label exceeds $MAX_PATH_LENGTH characters" }
         val resolved = DOUBLE_PLACEHOLDER.replace(this, "value").let { SINGLE_PLACEHOLDER.replace(it, "value") }
-        val uri = URI(resolved)
+        val uri = resolved.validUri(label)
         require(
             !uri.isAbsolute && uri.host == null && uri.userInfo == null && uri.query == null && uri.fragment == null,
         ) { "$label must be a relative HTTP path without query, fragment, or user info" }
@@ -129,16 +196,24 @@ class TestSpecExecutionProfileValidator {
         require(uri.path.split('/').none { segment -> segment == ".." }) { "$label must not contain path traversal" }
     }
 
+    private fun String.validUri(label: String): URI = try {
+        URI(this)
+    } catch (exception: URISyntaxException) {
+        throw IllegalArgumentException("$label is not a valid URI", exception)
+    }
+
     private companion object {
         const val MAX_ALLOWED_CALLS = 100
         const val MAX_CONCURRENCY = 1_000
         const val MAX_OBSERVATION_SOURCES = 20
         const val MAX_PATH_LENGTH = 1_000
+        const val MAX_QUERY_LENGTH = 4_000
         const val MAX_REQUEST_COUNT = 100_000
         const val MAX_TRIALS = 1_000
         val DOUBLE_PLACEHOLDER = Regex("\\{\\{[A-Za-z0-9_.-]+}}")
         val SINGLE_PLACEHOLDER = Regex("\\{[A-Za-z0-9_.-]+}")
         val HTTP_METHODS = setOf("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE")
+        val HTTP_SCHEMES = setOf("http", "https")
         val IDENTIFIER_PATTERN = Regex("[A-Za-z][A-Za-z0-9_-]{0,99}")
         val UPPER_IDENTIFIER_PATTERN = Regex("[A-Z][A-Z0-9_]{1,99}")
         val TARGET_NAME_PATTERN = Regex("[A-Za-z0-9][A-Za-z0-9_.-]{0,119}")

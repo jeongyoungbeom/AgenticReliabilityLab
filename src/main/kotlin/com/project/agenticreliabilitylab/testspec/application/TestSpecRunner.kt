@@ -34,6 +34,7 @@ class TestSpecRunner(
         target: RegisteredTarget,
         plan: ResetPlan,
         runId: String,
+        observationSources: Map<String, DeclaredObservationSource> = emptyMap(),
     ): SpecRunOutcome {
         requireSafeEnvironment(specification, target)
         val trials = mutableListOf<TrialResult>()
@@ -42,7 +43,9 @@ class TestSpecRunner(
         val cleanup = PendingCleanup()
 
         try {
-            runTrials(specification, target, plan, runId, trials, executions, resets, cleanup)
+            runTrials(
+                specification, target, plan, runId, observationSources, trials, executions, resets, cleanup,
+            )
         } finally {
             if (cleanup.owed) resets.add(safeReset(plan, target, runId))
         }
@@ -62,6 +65,7 @@ class TestSpecRunner(
         target: RegisteredTarget,
         plan: ResetPlan,
         runId: String,
+        observationSources: Map<String, DeclaredObservationSource>,
         trials: MutableList<TrialResult>,
         executions: MutableList<TrialExecution>,
         resets: MutableList<ResetOutcome>,
@@ -71,7 +75,7 @@ class TestSpecRunner(
             val execution = executor.execute(specification, target, runId, number)
             executions.add(execution)
             if (execution.stateChanged) cleanup.owed = true
-            trials.add(judge(specification, target, execution, runId))
+            trials.add(judge(specification, target, execution, runId, observationSources))
 
             if (specification.policy.cleanupTiming == CleanupTiming.EACH_TRIAL && cleanup.owed) {
                 val outcome = safeReset(plan, target, runId)
@@ -89,8 +93,9 @@ class TestSpecRunner(
         target: RegisteredTarget,
         execution: TrialExecution,
         runId: String,
+        observationSources: Map<String, DeclaredObservationSource>,
     ): TrialResult = if (execution.completed) {
-        val observed = observations.read(specification, target, execution, runId)
+        val observed = observations.read(specification, target, execution, runId, observationSources)
         evaluator.judgeTrial(specification, execution.trialNumber, observed)
     } else {
         evaluator.unrunnable(specification, execution.trialNumber, execution.failure ?: "the trial did not complete")
