@@ -1,5 +1,6 @@
 package com.project.agenticreliabilitylab.testspec.infrastructure
 
+import com.project.agenticreliabilitylab.testspec.application.TestSpecGenerationService
 import com.project.agenticreliabilitylab.testspec.application.port.TestSpecRunStore
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
@@ -16,4 +17,8 @@ class TestSpecExecutionConfiguration {
     @Order(Ordered.HIGHEST_PRECEDENCE)
     fun testSpecRecoveryRunner(runStore: TestSpecRunStore, clock: Clock): ApplicationRunner =
         ApplicationRunner { _: ApplicationArguments -> runStore.recoverIncompleteRuns(clock.instant()) }
+
+    @Bean
+    fun testSpecGenerationRecoveryRunner(generationService: TestSpecGenerationService): ApplicationRunner =
+        ApplicationRunner { _: ApplicationArguments -> generationService.recoverIncompleteRuns() }
 }

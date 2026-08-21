@@ -12,6 +12,7 @@ enum class OutboxJobType {
     MULTI_ANALYSIS,
     FOLLOW_UP_SUGGESTION,
     ROOT_CAUSE_REPORT,
+    TEST_SPEC_GENERATION,
 }
 
 enum class OutboxJobStatus {
