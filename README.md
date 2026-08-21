@@ -437,6 +437,8 @@ DESIGN.md         Phase 0-10.7 설계 계약과 안전 경계
 DESIGN2.md        Phase 11-16 설계 계약
 DESIGN3.md        Phase 17 이후 선언형 명세·관측·피드백 설계
 TEST_SPEC.md      Phase 17 선언형 테스트 명세 계약
+TARGET_REQUIREMENTS.md  Target이 준비해야 할 관측·인증·리셋 요구사항
+UI_BACKLOG.md     명세 엔진 화면에 아직 없는 것
 HANDOFF.md        현재 완료 상태와 다음 Phase 인수인계
 compose.yaml      로컬 Docker Compose 구성
 start.ps1         로컬 통합 기동 스크립트

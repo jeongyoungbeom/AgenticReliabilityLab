@@ -1,6 +1,6 @@
 # HANDOFF — 다음 세션 인수인계
 
-작성: 2026-08-22 / 기준 커밋: `1b939c8` (Phase 18·19 작업은 미커밋)
+작성: 2026-08-22 / 기준 커밋: `abafb97` (Phase 18·19 커밋 완료)
 
 ---
 
@@ -79,9 +79,9 @@ CEL 커스텀 함수 등록은 `SpanTimelineTests`의
 
 ## 3. 다음 작업
 
-**(1) 커밋.** Phase 18·19 전체가 아직 한 번도 커밋되지 않았다.
+**(1) 커밋 완료.** Phase 18·19 전체가 `abafb97`로 커밋됐다.
 
-**(2) Phase 20(LLM 제안)으로 이동.** 완료 기준은 `DESIGN3.md` 기준
+**(2) Phase 20(LLM 제안).** 완료 기준은 `DESIGN3.md` 기준
 "규칙 생성기가 못 찾은 유효한 테스트를 LLM이 1개 이상 찾을 것"이고, 못 찾으면 넣지 않는다.
 
 Target 작업과 UI는 **여기 있는 항목이 아니다.** 둘 다 의도적으로 맨 뒤로 미뤘고
@@ -253,8 +253,8 @@ Target에 레코드 단위 삭제를 요구하지 않는다. **환경 리셋 + �
 - 프런트엔드: Phase 11–15 Workbench 화면/API 모듈과 46개 테스트
 - 문서: 현재 구현 범위와 다음 Phase를 반영한 `README.md`, 이 인수인계 문서
 
-위 Phase 17 범위는 `1b939c8`에 커밋됐다. 현재 미커밋 변경은 Phase 18(observation source Profile 계약,
-HTTP reader, 완료 기준 테스트)과 Phase 19다.
+위 Phase 17 범위는 `1b939c8`에, Phase 18(observation source Profile 계약, HTTP reader, 완료 기준 테스트)과
+Phase 19 범위는 `abafb97`에 커밋됐다.
 
 Phase 19가 건드린 파일:
 
