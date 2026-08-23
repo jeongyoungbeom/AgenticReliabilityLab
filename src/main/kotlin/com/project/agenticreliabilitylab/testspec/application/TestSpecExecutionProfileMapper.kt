@@ -1,6 +1,7 @@
 package com.project.agenticreliabilitylab.testspec.application
 
 import com.project.agenticreliabilitylab.target.domain.TargetEnvironment
+import com.project.agenticreliabilitylab.targetprofile.domain.ProfileFaultInjectionDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileHttpCallDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileObservationSourceDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileReadTimingDefinition
@@ -8,11 +9,13 @@ import com.project.agenticreliabilitylab.targetprofile.domain.ProfileResetDefini
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileResetVerificationDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.TargetProfileVersion
 import com.project.agenticreliabilitylab.testspec.application.port.ActiveTestSpecExecutionProfile
+import com.project.agenticreliabilitylab.testspec.domain.FaultInjectionPlan
 import com.project.agenticreliabilitylab.testspec.domain.ReadTiming
 import com.project.agenticreliabilitylab.testspec.domain.ResetPlan
 import com.project.agenticreliabilitylab.testspec.domain.ResetVerification
 import com.project.agenticreliabilitylab.testspec.domain.SpecHttpCall
 import org.springframework.stereotype.Component
+import java.time.Duration
 
 /** Converts a validated immutable Profile Version into the Runner's executable authority. */
 @Component
@@ -38,6 +41,7 @@ class TestSpecExecutionProfileMapper {
             observationSources = profile.observationSources.associate { source -> source.name to source.toDomain() },
             supportedFaults = profile.supportedFaults,
             infrastructureTargets = profile.infrastructureTargets,
+            maxFaultTtl = profile.faultInjection?.maxTtl ?: Duration.ZERO,
             maxConcurrency = minOf(profile.maxConcurrency, targetLimits?.maxConcurrency ?: Int.MAX_VALUE),
             maxRequestCount = minOf(profile.maxRequestCount, targetLimits?.maxRequestCount ?: Int.MAX_VALUE),
             maxTrials = profile.maxTrials,
@@ -48,8 +52,15 @@ class TestSpecExecutionProfileMapper {
             profileVersionId = version.id,
             capabilities = capabilities,
             resetPlan = profile.reset?.toDomain() ?: ResetPlan.NOT_REQUIRED,
+            faultInjectionPlan = profile.faultInjection?.toDomain(),
         )
     }
+
+    private fun ProfileFaultInjectionDefinition.toDomain() = FaultInjectionPlan(
+        injectHook = injectEndpoint.toDomain(),
+        releaseHook = releaseEndpoint.toDomain(),
+        maxTtl = maxTtl,
+    )
 
     private fun ProfileResetDefinition.toDomain() = ResetPlan(
         method = method,

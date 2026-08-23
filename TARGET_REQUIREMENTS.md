@@ -124,10 +124,21 @@ sideProject 기준 리셋 1회가 약 120초다. `시행: 20`에 `정리시점: 
 ## 4. 아직 쓰이지 않는 것 (Phase 21 이후)
 
 아래는 `TEST_SPEC.md`에 설계가 있고 검증기도 통과시키지만, **실행기가 아직 수행하지 않는다**
-(`SpecWorkloadExecutor`가 `CALL`과 `WAIT` 외의 단계 종류를 거부한다).
+(`SpecWorkloadExecutor`가 `INFRA_ACTION`/`INFRA_RESTORE`를 거부한다. `INJECT_FAULT`/`RELEASE_FAULT`는
+Phase 21에서 구현되어 아래 5절로 옮겼다).
 지금 Target에 만들 필요는 없다.
 
-### 결함 주입 (`INFRA_ACTION` / 주입)
+### 인프라 제어 (`INFRA_ACTION` / `INFRA_RESTORE`)
+
+Profile의 `infrastructure-targets`에 선언한 대상을 멈추고 되살리는 제어면. Docker/K8s 소켓 접근처럼
+ARL 배포 자체에 영향을 주는 별도 어댑터가 필요해서, 결함 주입과 분리된 채 남아 있다
+(장애 주입만 우선 구현하기로 한 결정 — Phase 21 범위 확정 시 논의됨).
+
+---
+
+## 5. 결함 주입 (Phase 21, 구현됨)
+
+`SpecWorkloadExecutor`가 `INJECT_FAULT`/`RELEASE_FAULT`를 실행한다. Target 쪽에 필요한 것:
 
 ```yaml
 - 이름: 결제장애
@@ -138,20 +149,22 @@ sideProject 기준 리셋 1회가 약 120초다. `시행: 20`에 `정리시점: 
   저장: faultId
 ```
 
-Target 쪽 요구사항이 될 것:
+- Profile의 `supported-faults`에 선언한 종류를 주입하는 API 하나, 해제하는 API 하나
+  (Profile의 `test-spec-execution.fault-injection.inject-endpoint` / `release-endpoint`에 등록)
+- 주입 호출은 `{"runId","faultType","ttlMs","scope"}`를 받고 `{"faultId": "..."}`로 응답해야 한다
+  (`scope`는 명세가 선언하지 않으면 빈 문자열로 온다)
+- 해제 호출은 `{"runId","faultId"}`를 받는다
+- **TTL 자동 만료는 여전히 Target의 책임이다.** ARL은 워크로드가 명시적으로 `RELEASE_FAULT`를 실행하지
+  않았거나 실행 도중 죽은 경우 실행이 끝나는 즉시 해제를 시도하지만(`TestSpecRunner`의 `finally`), 이
+  해제 요청 자체가 실패하거나 도달하지 못할 가능성은 항상 남는다. TTL 자동 만료가 마지막 안전망이다.
+- 해제가 확인되지 않으면(`FaultInjectionOutcome.succeeded == false`) 그 실행은 `cleanupVerified: false`가
+  되고, 기존 리셋 미검증과 같은 방식으로 **다음 실행이 차단된다** (`test_spec_run.active_slot`).
 
-- Profile의 `supported-faults`에 선언한 종류를 주입하는 API
-- 주입마다 `faultId`를 돌려줄 것
-- **TTL 자동 만료** — 엔진이 죽어도 결함이 풀려야 한다. 이게 이 설계에서 가장 중요한 부분이다.
-- 해제 API (선택 — 안 써도 엔진이 실행 끝에 전부 해제한다)
-
-### 인프라 제어 (`INFRA_ACTION` / `INFRA_RESTORE`)
-
-Profile의 `infrastructure-targets`에 선언한 대상을 멈추고 되살리는 제어면.
+인프라 제어(`INFRA_ACTION`/`INFRA_RESTORE`, 4절)는 이번 Phase에 포함되지 않았다.
 
 ---
 
-## 5. 요약 — sideProject에 지금 추가할 것
+## 6. 요약 — sideProject에 지금 추가할 것
 
 | 항목 | 필요한 이유 | 없으면 |
 |---|---|---|

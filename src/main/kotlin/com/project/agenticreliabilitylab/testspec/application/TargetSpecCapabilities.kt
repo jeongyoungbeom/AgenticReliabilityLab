@@ -1,6 +1,7 @@
 package com.project.agenticreliabilitylab.testspec.application
 
 import com.project.agenticreliabilitylab.testspec.domain.SpecHttpCall
+import java.time.Duration
 
 enum class DeclaredObservationSourceKind {
     HARNESS_STATE,
@@ -36,6 +37,8 @@ data class TargetSpecCapabilities(
     val observationSources: Map<String, DeclaredObservationSource>,
     val supportedFaults: Set<String>,
     val infrastructureTargets: Set<String>,
+    /** The longest TTL a fault injection step may declare. Zero when the Profile declares no fault injection. */
+    val maxFaultTtl: Duration,
     val maxConcurrency: Int,
     val maxRequestCount: Int,
     val maxTrials: Int,

@@ -4,6 +4,7 @@ import com.project.agenticreliabilitylab.target.domain.TargetEnvironment
 import com.project.agenticreliabilitylab.testspec.domain.CleanupMethod
 import com.project.agenticreliabilitylab.testspec.domain.CleanupTiming
 import com.project.agenticreliabilitylab.testspec.domain.ExecutionPolicy
+import com.project.agenticreliabilitylab.testspec.domain.FaultInjectionPlan
 import com.project.agenticreliabilitylab.testspec.domain.Invariant
 import com.project.agenticreliabilitylab.testspec.domain.Observation
 import com.project.agenticreliabilitylab.testspec.domain.ObservationSourceKind
@@ -21,6 +22,8 @@ import com.project.agenticreliabilitylab.testspec.domain.TrialAggregation
 import com.project.agenticreliabilitylab.testspec.domain.TrialOutcome
 import com.project.agenticreliabilitylab.testspec.domain.TrialStopPolicy
 import com.project.agenticreliabilitylab.testspec.domain.UnmetRequirement
+import com.project.agenticreliabilitylab.testspec.domain.WorkloadStep
+import com.project.agenticreliabilitylab.testspec.domain.WorkloadStepKind
 import tools.jackson.databind.ObjectMapper
 import java.time.Clock
 import java.time.Duration
@@ -126,6 +129,67 @@ class TestSpecRunnerTests {
     }
 
     @Test
+    fun `blocks the next run when a trial leaves an injected fault unreleased`() {
+        val transport = RecordingTransport { request ->
+            when (request.uri.path) {
+                "/harness/fault" -> jsonResponse(200, """{"faultId":"f-1"}""")
+                "/harness/fault/release" -> jsonResponse(500, "{}")
+                else -> error("Unexpected request to ${request.uri.path}")
+            }
+        }
+        val faulted = specification().copy(
+            workload = listOf(
+                WorkloadStep(
+                    kind = WorkloadStepKind.INJECT_FAULT,
+                    name = "payment-down",
+                    faultType = "PAYMENT_FAILURE",
+                    faultTtl = Duration.ofSeconds(30),
+                ),
+            ),
+        )
+
+        val outcome = runner(transport).run(
+            faulted, testTarget(), ResetPlan.NOT_REQUIRED, "run-fault-stuck",
+            faultInjectionPlan = faultPlan(),
+        )
+
+        assertFalse(outcome.cleanupVerified)
+    }
+
+    @Test
+    fun `does not block the next run when the trial itself releases the fault it injected`() {
+        val transport = RecordingTransport { request ->
+            when (request.uri.path) {
+                "/harness/fault" -> jsonResponse(200, """{"faultId":"f-1"}""")
+                "/harness/fault/release" -> jsonResponse(200, "{}")
+                else -> error("Unexpected request to ${request.uri.path}")
+            }
+        }
+        val faulted = specification().copy(
+            workload = listOf(
+                WorkloadStep(
+                    kind = WorkloadStepKind.INJECT_FAULT,
+                    name = "payment-down",
+                    faultType = "PAYMENT_FAILURE",
+                    faultTtl = Duration.ofSeconds(30),
+                ),
+                WorkloadStep(
+                    kind = WorkloadStepKind.RELEASE_FAULT,
+                    name = "release-payment",
+                    handleReference = "{{workload.payment-down.faultId}}",
+                ),
+            ),
+        )
+
+        val outcome = runner(transport).run(
+            faulted, testTarget(), ResetPlan.NOT_REQUIRED, "run-fault-clean",
+            faultInjectionPlan = faultPlan(),
+        )
+
+        assertTrue(outcome.cleanupVerified)
+    }
+
+    @Test
     fun `refuses a production write before sending any request`() {
         val transport = RecordingTransport { error("A production request must never be sent") }
         val production = testTarget().copy(environment = TargetEnvironment.PRODUCTION)
@@ -170,11 +234,13 @@ class TestSpecRunnerTests {
             settings = FixedSpecExecutionSettings(),
         )
         val values = SpecValueReader(caller, paths, FixedSpecExecutionSettings())
+        val faultInjection = FaultInjectionService(caller, paths)
         return TestSpecRunner(
             executor = SpecWorkloadExecutor(
                 caller = caller,
                 references = references,
                 evaluator = paths,
+                faultInjection = faultInjection,
                 clock = Clock.fixed(Instant.EPOCH, ZoneOffset.UTC),
             ),
             observations = SpecObservationReader(
@@ -186,8 +252,15 @@ class TestSpecRunnerTests {
             ),
             evaluator = InvariantEvaluator(expressions, references),
             reset = EnvironmentResetService(caller, values, expressions),
+            faultInjection = faultInjection,
         )
     }
+
+    private fun faultPlan() = FaultInjectionPlan(
+        injectHook = SpecHttpCall("POST", "/harness/fault", null, emptyMap(), null),
+        releaseHook = SpecHttpCall("POST", "/harness/fault/release", null, emptyMap(), null),
+        maxTtl = Duration.ofMinutes(5),
+    )
 
     private fun specification(
         trials: Int = 1,

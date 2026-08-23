@@ -1,6 +1,7 @@
 package com.project.agenticreliabilitylab.testspec.application
 
 import com.project.agenticreliabilitylab.target.domain.RegisteredTarget
+import com.project.agenticreliabilitylab.testspec.domain.FaultInjectionPlan
 import com.project.agenticreliabilitylab.testspec.domain.RecordedResponse
 import com.project.agenticreliabilitylab.testspec.domain.SetupStep
 import com.project.agenticreliabilitylab.testspec.domain.SpecExecutionException
@@ -35,6 +36,7 @@ class SpecWorkloadExecutor(
     private val caller: SpecHttpCaller,
     private val references: SpecReferenceResolver,
     private val evaluator: ResponsePathEvaluator,
+    private val faultInjection: FaultInjectionService,
     private val clock: Clock,
 ) {
     @Suppress("TooGenericExceptionCaught") // Every failure below ends the trial the same way: nothing to judge.
@@ -43,6 +45,7 @@ class SpecWorkloadExecutor(
         target: RegisteredTarget,
         runId: String,
         trialNumber: Int,
+        faultInjectionPlan: FaultInjectionPlan? = null,
     ): TrialExecution {
         val state = TrialState(trialNumber)
         state.bindings.putAll(references.staticBindings(specification))
@@ -51,7 +54,7 @@ class SpecWorkloadExecutor(
         return try {
             specification.setup.forEach { step -> runSetupStep(step, target, state, runId) }
             specification.workload.forEach { step ->
-                runWorkloadStep(step, target, state, runId, TraceScope.of(runId, trialNumber))
+                runWorkloadStep(step, target, state, runId, TraceScope.of(runId, trialNumber), faultInjectionPlan)
             }
             state.toExecution(null)
         } catch (exception: Exception) {
@@ -88,13 +91,14 @@ class SpecWorkloadExecutor(
         }
     }
 
-    @Suppress("ThrowsCount") // Each missing piece names itself rather than sharing one vague message.
+    @Suppress("ThrowsCount", "LongParameterList") // Each missing piece names itself; the plan travels per call.
     private fun runWorkloadStep(
         step: WorkloadStep,
         target: RegisteredTarget,
         state: TrialState,
         runId: String,
         trialScope: String,
+        faultInjectionPlan: FaultInjectionPlan?,
     ) {
         val startedAt = clock.instant()
         when (step.kind) {
@@ -107,9 +111,67 @@ class SpecWorkloadExecutor(
             WorkloadStepKind.WAIT -> Thread.sleep(
                 (step.wait ?: throw SpecExecutionException("Step '${step.name}' declares no duration")).toMillis(),
             )
+            WorkloadStepKind.INJECT_FAULT -> runInjectFault(step, target, state, runId, faultInjectionPlan)
+            WorkloadStepKind.RELEASE_FAULT -> runReleaseFault(step, target, state, runId, faultInjectionPlan)
             else -> throw SpecExecutionException("Step kind '${step.kind}' cannot be executed by this build")
         }
         state.timings.add(StepTiming(step.name, startedAt, clock.instant(), StepRole.WORKLOAD))
+    }
+
+    /**
+     * Injects one fault and remembers its handle.
+     *
+     * The handle is kept even when the step never gets released explicitly: [TrialState.toExecution] reports
+     * every handle still outstanding, and the Runner releases whatever a trial - successful or not - left behind.
+     */
+    // Same reason as runWorkloadStep: each missing piece names itself, and the plan is per-call, not
+    // per-executor.
+    @Suppress("ThrowsCount", "LongParameterList")
+    private fun runInjectFault(
+        step: WorkloadStep,
+        target: RegisteredTarget,
+        state: TrialState,
+        runId: String,
+        faultInjectionPlan: FaultInjectionPlan?,
+    ) {
+        val plan = faultInjectionPlan
+            ?: throw SpecExecutionException("Step '${step.name}' injects a fault but none is configured")
+        val faultType = step.faultType ?: throw SpecExecutionException("Step '${step.name}' declares no fault type")
+        val ttl = step.faultTtl ?: throw SpecExecutionException("Step '${step.name}' declares no TTL")
+        state.markMutation()
+        val outcome = faultInjection.inject(plan, target, runId, faultType, step.faultScope, ttl.toMillis())
+        val faultId = outcome.faultId
+        if (!outcome.succeeded || faultId == null) {
+            throw SpecExecutionException(
+                "Fault step '${step.name}' did not succeed: ${outcome.failure ?: "no faultId returned"}",
+            )
+        }
+        state.bindings["workload.${step.name}.faultId"] = faultId
+        state.activeFaultHandles.add(faultId)
+    }
+
+    /** Releases one fault by the handle the specification names, and only then forgets it was outstanding. */
+    // Same reason as runWorkloadStep: each missing piece names itself, and the plan is per-call, not
+    // per-executor.
+    @Suppress("ThrowsCount", "LongParameterList")
+    private fun runReleaseFault(
+        step: WorkloadStep,
+        target: RegisteredTarget,
+        state: TrialState,
+        runId: String,
+        faultInjectionPlan: FaultInjectionPlan?,
+    ) {
+        val plan = faultInjectionPlan
+            ?: throw SpecExecutionException("Step '${step.name}' releases a fault but none is configured")
+        val handleReference = step.handleReference
+            ?: throw SpecExecutionException("Step '${step.name}' declares no handle")
+        val faultId = references.resolve(handleReference, state.bindings)
+        state.markMutation()
+        val outcome = faultInjection.release(plan, target, runId, faultId)
+        if (!outcome.succeeded) {
+            throw SpecExecutionException("Fault step '${step.name}' did not release: ${outcome.failure}")
+        }
+        state.activeFaultHandles.remove(faultId)
     }
 
     /**
@@ -217,11 +279,17 @@ class SpecWorkloadExecutor(
         val bindings = linkedMapOf<String, String>()
         val responses = linkedMapOf<String, List<RecordedResponse>>()
         val timings = mutableListOf<StepTiming>()
+        val activeFaultHandles = mutableListOf<String>()
         private var stateChanged = false
 
         /** A request is counted as changing state when it is about to be sent, not when it succeeds. */
         fun markStateChange(call: SpecHttpCall) {
             if (call.method.uppercase() !in READ_METHODS) stateChanged = true
+        }
+
+        /** For state changes that are not one HTTP call the caller controls, such as a fault inject or release. */
+        fun markMutation() {
+            stateChanged = true
         }
 
         fun toExecution(failure: String?) = TrialExecution(
@@ -230,6 +298,7 @@ class SpecWorkloadExecutor(
             responses = responses.toMap(),
             timings = timings.toList(),
             stateChanged = stateChanged,
+            pendingFaultHandles = activeFaultHandles.toList(),
             failure = failure,
         )
     }

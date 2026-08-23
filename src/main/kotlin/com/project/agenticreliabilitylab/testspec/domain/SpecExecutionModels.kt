@@ -55,6 +55,8 @@ data class TrialExecution(
     val responses: Map<String, List<RecordedResponse>>,
     val timings: List<StepTiming>,
     val stateChanged: Boolean,
+    /** Fault handles this trial injected but never released. The Runner must release these before the run ends. */
+    val pendingFaultHandles: List<String> = emptyList(),
     val failure: String? = null,
 ) {
     val completed: Boolean = failure == null

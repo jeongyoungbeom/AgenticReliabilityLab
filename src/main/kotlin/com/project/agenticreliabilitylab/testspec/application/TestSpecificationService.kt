@@ -165,6 +165,7 @@ class TestSpecificationService(
                 profile.resetPlan,
                 run.id.toString(),
                 profile.capabilities.observationSources,
+                profile.faultInjectionPlan,
             )
             runStore.complete(run.id, outcome, clock.instant())
         } catch (exception: Exception) {

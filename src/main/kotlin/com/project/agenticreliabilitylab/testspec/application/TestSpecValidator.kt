@@ -270,7 +270,12 @@ class TestSpecValidator(
                     if (step.faultType !in capabilities.supportedFaults) {
                         add("Fault '${step.faultType}' is not supported by this Target")
                     }
-                    if (step.faultTtl == null) add("Fault step '${step.name}' must declare a TTL")
+                    val ttl = step.faultTtl
+                    if (ttl == null) {
+                        add("Fault step '${step.name}' must declare a TTL")
+                    } else if (ttl > capabilities.maxFaultTtl) {
+                        add("Fault step '${step.name}' TTL exceeds the allowed ${capabilities.maxFaultTtl}")
+                    }
                 }
                 WorkloadStepKind.INFRA_ACTION -> {
                     if (step.infraTarget !in capabilities.infrastructureTargets) {

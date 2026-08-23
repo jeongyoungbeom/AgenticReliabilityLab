@@ -84,6 +84,17 @@ arl:
               deductSpans: '{name="db.query" && span.db.table="products" && span.arl.trial="${trial}"}'
         supported-faults: [PAYMENT_FAILURE]
         infrastructure-targets: [payment-service]
+        # Phase 21: required whenever supported-faults is non-empty. release-endpoint receives {"runId","faultId"};
+        # inject-endpoint receives {"runId","faultType","ttlMs","scope"} and must answer with {"faultId": "..."}.
+        # The Target itself expires the fault after ttlMs; ARL only ever asks for release, it never assumes expiry.
+        fault-injection:
+          inject-endpoint:
+            method: POST
+            path: /harness/fault
+          release-endpoint:
+            method: POST
+            path: /harness/fault/release
+          max-ttl: 120s
         max-concurrency: 50
         max-request-count: 1000
         max-trials: 100

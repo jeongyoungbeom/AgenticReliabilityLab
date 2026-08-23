@@ -11,11 +11,12 @@
 | 할 수 있는 일 | 아직 할 수 없는 일 |
 | --- | --- |
 | Target의 health와 등록한 읽기 전용 HTTP endpoint를 여러 개 선택해 점검 | Target 저장소를 직접 읽어 코드·DB 구조를 자동 이해 |
-| 제공한 OpenAPI·README·설명에서 Target 이해 모델(Knowledge Snapshot)을 만들기 | LLM이 테스트 명세를 제안 (Phase 20) |
+| 제공한 OpenAPI·README·설명에서 Target 이해 모델(Knowledge Snapshot)을 만들기 | AI가 스스로 테스트를 설계해 승인 없이 실행 |
 | 이해 모델을 근거로 테스트 후보를 생성하고 Test Plan으로 묶어 승인·실행 | POST/PUT/PATCH/DELETE, DB, Docker, 셸 명령으로 Target을 임의 변경 |
-| Test Harness 또는 허용된 선언형 명세로 상태 변경 실험을 실행하고 불변식으로 판정 | AI가 스스로 테스트를 설계해 승인 없이 실행 |
-| Tempo trace를 관측 소스로 읽고 시간축 불변식으로 끼어듦·순서·지연을 판정 | 장애 주입과 인프라 제어 (Phase 21) |
-| 점검 결과를 단일/멀티 에이전트와 선택한 로컬 모델로 분석·비교 | `STAGING`·`PRODUCTION` 환경에서 실행 |
+| 규칙 기반 후보가 놓친 유효한 테스트를 LLM이 제안 — 기존 검증기를 그대로 통과해야 저장 (Phase 20) | 인프라 제어 - 정지·재시작 (Phase 21에서 장애 주입만 구현, 인프라 제어는 별도 어댑터로 계속 보류) |
+| Test Harness 또는 허용된 선언형 명세로 상태 변경 실험을 실행하고 불변식으로 판정 | `STAGING`·`PRODUCTION` 환경에서 실행 |
+| Tempo trace를 관측 소스로 읽고 시간축 불변식으로 끼어듦·순서·지연을 판정 | |
+| 선언형 명세로 결함을 주입·해제하고 해제 실패 시 다음 실행을 차단 (Phase 21) | |
 
 일반 HTTP Batch는 여전히 **Profile에 등록한 읽기 전용 `GET`만** 실행합니다. 선언형 명세 경로는 활성 Profile의 `test-spec-execution` 권한 안에서 승인된 JSON 명세만 실행하고, 상태를 바꾸는 각 시행 뒤 환경 reset과 reset 검증을 요구합니다. 후보 생성은 규칙 기반이며 LLM이 판정을 내리지 않습니다.
 

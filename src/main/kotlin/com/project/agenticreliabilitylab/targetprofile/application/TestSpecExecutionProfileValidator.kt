@@ -1,6 +1,7 @@
 package com.project.agenticreliabilitylab.targetprofile.application
 
 import com.project.agenticreliabilitylab.target.domain.TargetEnvironment
+import com.project.agenticreliabilitylab.targetprofile.domain.ProfileFaultInjectionDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileHttpCallDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileObservationSourceDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileObservationSourceKind
@@ -17,6 +18,9 @@ import java.net.URISyntaxException
 import java.time.Duration
 
 /** Validates the Profile-owned authority for declarative specification execution. */
+// One check is added per Profile-declared capability; splitting further would separate a check from the field it
+// validates.
+@Suppress("TooManyFunctions")
 @Component
 class TestSpecExecutionProfileValidator {
     fun validate(profile: TestSpecExecutionProfileDefinition, target: TargetRegistrationDefinition) {
@@ -72,13 +76,29 @@ class TestSpecExecutionProfileValidator {
             }
             source.validateEndpoint()
         }
-        profile.supportedFaults.forEach { fault ->
+        profile.validateFaultInjectionDeclaration()
+        profile.reset?.validate(profile.authProfiles)
+    }
+
+    private fun TestSpecExecutionProfileDefinition.validateFaultInjectionDeclaration() {
+        supportedFaults.forEach { fault ->
             require(UPPER_IDENTIFIER_PATTERN.matches(fault)) { "Supported fault '$fault' is invalid" }
         }
-        profile.infrastructureTargets.forEach { targetName ->
+        infrastructureTargets.forEach { targetName ->
             require(TARGET_NAME_PATTERN.matches(targetName)) { "Infrastructure target '$targetName' is invalid" }
         }
-        profile.reset?.validate(profile.authProfiles)
+        require(supportedFaults.isEmpty() || faultInjection != null) {
+            "Supported faults require a fault-injection endpoint declaration"
+        }
+        faultInjection?.validate(authProfiles)
+    }
+
+    private fun ProfileFaultInjectionDefinition.validate(authProfiles: Set<String>) {
+        injectEndpoint.validate(authProfiles, "fault inject endpoint")
+        releaseEndpoint.validate(authProfiles, "fault release endpoint")
+        require(maxTtl in MIN_FAULT_TTL..MAX_FAULT_TTL) {
+            "Fault injection max TTL must be between $MIN_FAULT_TTL and $MAX_FAULT_TTL"
+        }
     }
 
     private fun ProfileResetDefinition.validate(authProfiles: Set<String>) {
@@ -221,5 +241,7 @@ class TestSpecExecutionProfileValidator {
         val WRITABLE_ENVIRONMENTS = setOf(TargetEnvironment.LOCAL, TargetEnvironment.TEST)
         val MIN_RESET_DURATION: Duration = Duration.ofMillis(100)
         val MAX_RESET_DURATION: Duration = Duration.ofMinutes(30)
+        val MIN_FAULT_TTL: Duration = Duration.ofSeconds(1)
+        val MAX_FAULT_TTL: Duration = Duration.ofMinutes(30)
     }
 }

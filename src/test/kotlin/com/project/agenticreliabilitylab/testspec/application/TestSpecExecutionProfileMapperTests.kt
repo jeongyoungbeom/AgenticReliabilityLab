@@ -6,6 +6,7 @@ import com.project.agenticreliabilitylab.target.domain.TargetCapability
 import com.project.agenticreliabilitylab.target.domain.TargetEnvironment
 import com.project.agenticreliabilitylab.targetprofile.application.TestSpecExecutionProfileValidator
 import com.project.agenticreliabilitylab.targetprofile.domain.ExperimentProfileDefinition
+import com.project.agenticreliabilitylab.targetprofile.domain.ProfileFaultInjectionDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileHttpCallDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileObservationSourceDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileObservationSourceKind
@@ -26,6 +27,7 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class TestSpecExecutionProfileMapperTests {
@@ -47,6 +49,53 @@ class TestSpecExecutionProfileMapperTests {
         )
         assertEquals("/harness/reset", mapped.resetPlan.hook?.path)
         assertEquals("orderCount", mapped.resetPlan.verifications.single().id)
+    }
+
+    @Test
+    fun `maps fault injection endpoints and the max ttl cap`() {
+        val withFaults = executionProfile().copy(
+            supportedFaults = setOf("PAYMENT_FAILURE"),
+            faultInjection = ProfileFaultInjectionDefinition(
+                injectEndpoint = ProfileHttpCallDefinition("POST", "/harness/fault"),
+                releaseEndpoint = ProfileHttpCallDefinition("POST", "/harness/fault/release"),
+                maxTtl = Duration.ofMinutes(2),
+            ),
+        )
+
+        val mapped = mapper.map(version(profile = withFaults))
+
+        assertEquals(Duration.ofMinutes(2), mapped.capabilities.maxFaultTtl)
+        assertEquals("/harness/fault", mapped.faultInjectionPlan?.injectHook?.path)
+        assertEquals("/harness/fault/release", mapped.faultInjectionPlan?.releaseHook?.path)
+    }
+
+    @Test
+    fun `defaults the fault ttl cap to zero when the profile declares no fault injection`() {
+        val mapped = mapper.map(version(profile = executionProfile()))
+
+        assertEquals(Duration.ZERO, mapped.capabilities.maxFaultTtl)
+        assertNull(mapped.faultInjectionPlan)
+    }
+
+    @Test
+    fun `refuses supported faults without a fault injection declaration`() {
+        val unsafe = executionProfile().copy(supportedFaults = setOf("PAYMENT_FAILURE"), faultInjection = null)
+
+        assertFailsWith<IllegalArgumentException> { validator.validate(unsafe, target()) }
+    }
+
+    @Test
+    fun `refuses a fault injection max ttl outside the allowed bounds`() {
+        val unsafe = executionProfile().copy(
+            supportedFaults = setOf("PAYMENT_FAILURE"),
+            faultInjection = ProfileFaultInjectionDefinition(
+                injectEndpoint = ProfileHttpCallDefinition("POST", "/harness/fault"),
+                releaseEndpoint = ProfileHttpCallDefinition("POST", "/harness/fault/release"),
+                maxTtl = Duration.ofHours(1),
+            ),
+        )
+
+        assertFailsWith<IllegalArgumentException> { validator.validate(unsafe, target()) }
     }
 
     @Test

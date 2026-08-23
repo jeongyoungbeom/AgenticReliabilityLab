@@ -26,11 +26,12 @@ internal object TargetProfileYamlSchema {
     val TEST_SPEC_EXECUTION_FIELDS = setOf(
         "target-system-id", "execution-enabled", "allowed-calls", "auth-profiles", "observation-sources",
         "supported-faults", "infrastructure-targets", "max-concurrency", "max-request-count", "max-trials",
-        "state-changing-allowed", "reset",
+        "state-changing-allowed", "reset", "fault-injection",
     )
     val SPEC_CALL_FIELDS = setOf("method", "path", "auth-profile")
     val OBSERVATION_SOURCE_FIELDS = setOf("name", "kind", "endpoint", "fields", "queries", "auth-profile")
     val RESET_FIELDS = setOf("method", "hook", "expected-duration", "verifications")
+    val FAULT_INJECTION_FIELDS = setOf("inject-endpoint", "release-endpoint", "max-ttl")
     val RESET_VERIFICATION_FIELDS = setOf("id", "call", "expr", "condition", "read-at")
     val READ_TIMING_FIELDS = setOf("rule", "max-wait", "interval")
     val ALL_REGISTRATION_FIELDS =

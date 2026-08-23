@@ -298,6 +298,13 @@ data class TestSpecification(
         workload.map(WorkloadStep::kind).filterNot { it in SUPPORTED_STEPS }.distinct()
 
     private companion object {
-        val SUPPORTED_STEPS = setOf(WorkloadStepKind.CALL, WorkloadStepKind.WAIT)
+        // Phase 21 added fault injection/release. Infrastructure control (INFRA_ACTION/INFRA_RESTORE) stays
+        // unsupported: it is a separate, higher-risk decision (direct Docker/K8s control) deferred past this phase.
+        val SUPPORTED_STEPS = setOf(
+            WorkloadStepKind.CALL,
+            WorkloadStepKind.WAIT,
+            WorkloadStepKind.INJECT_FAULT,
+            WorkloadStepKind.RELEASE_FAULT,
+        )
     }
 }

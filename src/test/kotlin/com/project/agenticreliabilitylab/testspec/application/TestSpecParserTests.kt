@@ -69,9 +69,12 @@ class TestSpecParserTests {
 
     @Test
     fun `reports a step it declares but cannot run yet`() {
-        val specification = parse(FAULT_SPEC)
+        // Phase 21 made INJECT_FAULT/RELEASE_FAULT executable, so this "unsupported kind" example moved to
+        // INFRA_ACTION - same rationale as SpecWorkloadExecutorTests's
+        // "refuses to run a step kind this build still cannot execute".
+        val specification = parse(UNSUPPORTED_STEP_SPEC)
 
-        assertEquals(listOf(WorkloadStepKind.INJECT_FAULT), specification.unsupportedSteps())
+        assertEquals(listOf(WorkloadStepKind.INFRA_ACTION), specification.unsupportedSteps())
     }
 
     @Test
@@ -211,15 +214,15 @@ class TestSpecParserTests {
         }
         """.trimIndent()
 
-        val FAULT_SPEC = """
+        val UNSUPPORTED_STEP_SPEC = """
         {
-          "specKey": "payment-failure-stock-recovery",
-          "title": "결제 실패 시 재고 복구",
+          "specKey": "payment-service-outage-recovery",
+          "title": "결제 서비스 중단 후 재고 복구",
           "category": "RETRY_RECOVERY",
           "risk": "MODERATE",
           "workload": [
-            { "kind": "INJECT_FAULT", "name": "payment-failure",
-              "faultType": "PAYMENT_FAILURE", "scope": "next-1", "ttl": 60000 }
+            { "kind": "INFRA_ACTION", "name": "stop-payment-service",
+              "action": "STOP", "target": "payment-service", "maxHold": 30000 }
           ],
           "observations": [
             { "id": "finalStock", "source": "API",

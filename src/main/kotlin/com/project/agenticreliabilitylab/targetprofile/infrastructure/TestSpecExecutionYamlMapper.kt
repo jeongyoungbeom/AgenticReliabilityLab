@@ -1,5 +1,6 @@
 package com.project.agenticreliabilitylab.targetprofile.infrastructure
 
+import com.project.agenticreliabilitylab.targetprofile.domain.ProfileFaultInjectionDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileHttpCallDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileObservationSourceDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileObservationSourceKind
@@ -41,6 +42,10 @@ class TestSpecExecutionYamlMapper {
             maxTrials = registration.optionalInt("max-trials") ?: DEFAULT_MAX_TRIALS,
             stateChangingAllowed = registration.optionalBoolean("state-changing-allowed") ?: false,
             reset = registration.optionalMap("reset", TargetProfileYamlSchema.RESET_FIELDS)?.toReset(),
+            faultInjection = registration.optionalMap(
+                "fault-injection",
+                TargetProfileYamlSchema.FAULT_INJECTION_FIELDS,
+            )?.toFaultInjection(),
         )
     }
 
@@ -57,6 +62,12 @@ class TestSpecExecutionYamlMapper {
         fields = requiredStringList("fields").toSet(),
         queries = optionalStringMap("queries") ?: emptyMap(),
         authProfile = optionalString("auth-profile"),
+    )
+
+    private fun Map<String, Any?>.toFaultInjection() = ProfileFaultInjectionDefinition(
+        injectEndpoint = requiredMap("inject-endpoint", TargetProfileYamlSchema.SPEC_CALL_FIELDS).toCall(),
+        releaseEndpoint = requiredMap("release-endpoint", TargetProfileYamlSchema.SPEC_CALL_FIELDS).toCall(),
+        maxTtl = optionalDuration("max-ttl") ?: DEFAULT_MAX_FAULT_TTL,
     )
 
     private fun Map<String, Any?>.toReset(): ProfileResetDefinition {
@@ -104,5 +115,6 @@ class TestSpecExecutionYamlMapper {
         const val DEFAULT_MAX_TRIALS = 20
         val DEFAULT_READ_INTERVAL: Duration = Duration.ofMillis(500)
         val DEFAULT_RESET_DURATION: Duration = Duration.ofMinutes(2)
+        val DEFAULT_MAX_FAULT_TTL: Duration = Duration.ofMinutes(5)
     }
 }

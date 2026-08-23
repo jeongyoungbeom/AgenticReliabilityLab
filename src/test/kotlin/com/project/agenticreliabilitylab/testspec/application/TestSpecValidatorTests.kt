@@ -277,7 +277,7 @@ class TestSpecValidatorTests {
     }
 
     @Test
-    fun `refuses a fault step that phase 17 cannot execute even when the profile supports it`() {
+    fun `accepts a fault step this build now executes, within the profile's ttl cap`() {
         val spec = specification(
             workload = listOf(
                 WorkloadStep(
@@ -285,6 +285,39 @@ class TestSpecValidatorTests {
                     name = "payment-failure",
                     faultType = "PAYMENT_FAILURE",
                     faultTtl = Duration.ofSeconds(30),
+                ),
+            ),
+        )
+
+        validator.validate(spec, capabilities())
+    }
+
+    @Test
+    fun `refuses a fault ttl above the profile's cap`() {
+        val spec = specification(
+            workload = listOf(
+                WorkloadStep(
+                    kind = WorkloadStepKind.INJECT_FAULT,
+                    name = "payment-failure",
+                    faultType = "PAYMENT_FAILURE",
+                    faultTtl = Duration.ofSeconds(90),
+                ),
+            ),
+        )
+
+        assertRejects(spec, "TTL exceeds the allowed")
+    }
+
+    @Test
+    fun `refuses an infrastructure step this build still cannot execute`() {
+        val spec = specification(
+            workload = listOf(
+                WorkloadStep(
+                    kind = WorkloadStepKind.INFRA_ACTION,
+                    name = "stop-payment-service",
+                    infraAction = "STOP",
+                    infraTarget = "payment-service",
+                    infraMaxHold = Duration.ofSeconds(30),
                 ),
             ),
         )
@@ -399,6 +432,7 @@ class TestSpecValidatorTests {
         ),
         supportedFaults = setOf("PAYMENT_FAILURE"),
         infrastructureTargets = setOf("payment-service"),
+        maxFaultTtl = Duration.ofSeconds(60),
         maxConcurrency = 50,
         maxRequestCount = 1000,
         maxTrials = 100,

@@ -262,6 +262,22 @@ observation-sources:
       deductSpans: '{name="db.query" && span.db.table="products"}'
 ```
 
+`test-spec-execution.supported-faults`가 비어 있지 않으면 `fault-injection`도 함께 선언해야 한다
+(Profile 검증에서 거부됨). `inject-endpoint`는 `{"runId","faultType","ttlMs","scope"}`를 받고
+`{"faultId": "..."}`로 응답해야 하며, `release-endpoint`는 `{"runId","faultId"}`를 받는다. `max-ttl`은
+워크로드의 `주입.TTL`이 넘을 수 없는 상한이다 (Phase 21).
+
+```yaml
+fault-injection:                            # Phase 21
+  inject-endpoint:
+    method: POST
+    path: /harness/fault
+  release-endpoint:
+    method: POST
+    path: /harness/fault/release
+  max-ttl: 120s
+```
+
 명세의 `DECLARED_SOURCE` 관측은 `sourceName`과 `expr`에 각각 Profile의 source 이름과 field 이름만 쓴다.
 PromQL과 TraceQL은 Profile만 소유하며 명세 문서에서 직접 전달할 수 없다. 쿼리는 그 자체가 텔레메트리
 저장소에 대한 실행 권한이므로, 모델이 쓴 자리가 아니라 사람이 승인한 자리에 있어야 한다.

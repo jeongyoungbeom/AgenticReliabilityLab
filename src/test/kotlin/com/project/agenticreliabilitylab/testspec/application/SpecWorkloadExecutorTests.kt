@@ -4,6 +4,7 @@ import com.project.agenticreliabilitylab.target.domain.TargetReadTransportExcept
 import com.project.agenticreliabilitylab.testspec.domain.CleanupMethod
 import com.project.agenticreliabilitylab.testspec.domain.CleanupTiming
 import com.project.agenticreliabilitylab.testspec.domain.ExecutionPolicy
+import com.project.agenticreliabilitylab.testspec.domain.FaultInjectionPlan
 import com.project.agenticreliabilitylab.testspec.domain.SetupStep
 import com.project.agenticreliabilitylab.testspec.domain.SpecCategory
 import com.project.agenticreliabilitylab.testspec.domain.SpecHttpCall
@@ -149,8 +150,75 @@ class SpecWorkloadExecutorTests {
     }
 
     @Test
-    fun `refuses to run a step kind this build cannot execute`() {
+    fun `refuses to run a step kind this build still cannot execute`() {
+        // Phase 21 made INJECT_FAULT/RELEASE_FAULT executable (see the tests below), so this "unsupported kind"
+        // assertion moves to INFRA_ACTION, which stays deferred - infrastructure control is a separate,
+        // higher-risk decision the user chose not to build this phase.
         val transport = RecordingTransport { jsonResponse(201, """{"id":"p-9"}""") }
+        val faulted = specification().let { spec ->
+            spec.copy(
+                workload = spec.workload + WorkloadStep(
+                    kind = WorkloadStepKind.INFRA_ACTION,
+                    name = "stop-payment-service",
+                    infraAction = "STOP",
+                    infraTarget = "payment-service",
+                    infraMaxHold = Duration.ofSeconds(30),
+                ),
+            )
+        }
+
+        val execution = executor(transport).execute(faulted, testTarget(), "run-1", 1)
+
+        assertFalse(execution.completed)
+        assertTrue(execution.failure!!.contains("INFRA_ACTION"))
+    }
+
+    @Test
+    fun `injects a fault, captures its handle, and releases it`() {
+        val transport = RecordingTransport { request ->
+            when (request.uri.path) {
+                "/products" -> jsonResponse(201, """{"id":"p-9"}""")
+                "/harness/fault" -> jsonResponse(200, """{"faultId":"f-1"}""")
+                "/harness/fault/release" -> jsonResponse(200, "{}")
+                else -> jsonResponse(201, "{}")
+            }
+        }
+        val faulted = specification().let { spec ->
+            spec.copy(
+                workload = spec.workload + listOf(
+                    WorkloadStep(
+                        kind = WorkloadStepKind.INJECT_FAULT,
+                        name = "payment-down",
+                        faultType = "PAYMENT_FAILURE",
+                        faultTtl = Duration.ofSeconds(30),
+                    ),
+                    WorkloadStep(
+                        kind = WorkloadStepKind.RELEASE_FAULT,
+                        name = "release-payment",
+                        handleReference = "{{workload.payment-down.faultId}}",
+                    ),
+                ),
+            )
+        }
+
+        val execution = executor(transport).execute(faulted, testTarget(), "run-1", 1, faultPlan())
+
+        assertTrue(execution.completed)
+        assertEquals("f-1", execution.bindings["workload.payment-down.faultId"])
+        assertTrue(execution.pendingFaultHandles.isEmpty())
+        val faultRequests = transport.requests.filter { it.uri.path.startsWith("/harness/fault") }
+        assertEquals(2, faultRequests.size)
+    }
+
+    @Test
+    fun `reports an injected fault as still pending when the trial never releases it`() {
+        val transport = RecordingTransport { request ->
+            when (request.uri.path) {
+                "/products" -> jsonResponse(201, """{"id":"p-9"}""")
+                "/harness/fault" -> jsonResponse(200, """{"faultId":"f-2"}""")
+                else -> jsonResponse(201, "{}")
+            }
+        }
         val faulted = specification().let { spec ->
             spec.copy(
                 workload = spec.workload + WorkloadStep(
@@ -162,10 +230,36 @@ class SpecWorkloadExecutorTests {
             )
         }
 
-        val execution = executor(transport).execute(faulted, testTarget(), "run-1", 1)
+        val execution = executor(transport).execute(faulted, testTarget(), "run-1", 1, faultPlan())
+
+        assertTrue(execution.completed)
+        assertEquals(listOf("f-2"), execution.pendingFaultHandles)
+    }
+
+    @Test
+    fun `fails the trial when the inject hook does not return a faultId`() {
+        val transport = RecordingTransport { request ->
+            when (request.uri.path) {
+                "/products" -> jsonResponse(201, """{"id":"p-9"}""")
+                "/harness/fault" -> jsonResponse(200, "{}")
+                else -> jsonResponse(201, "{}")
+            }
+        }
+        val faulted = specification().copy(
+            workload = listOf(
+                WorkloadStep(
+                    kind = WorkloadStepKind.INJECT_FAULT,
+                    name = "payment-down",
+                    faultType = "PAYMENT_FAILURE",
+                    faultTtl = Duration.ofSeconds(30),
+                ),
+            ),
+        )
+
+        val execution = executor(transport).execute(faulted, testTarget(), "run-1", 1, faultPlan())
 
         assertFalse(execution.completed)
-        assertTrue(execution.failure!!.contains("INJECT_FAULT"))
+        assertTrue(execution.failure!!.contains("faultId"))
     }
 
     @Test
@@ -186,16 +280,26 @@ class SpecWorkloadExecutorTests {
         assertEquals(1, responses.count { !it.delivered })
     }
 
-    private fun executor(transport: RecordingTransport) = SpecWorkloadExecutor(
-        caller = SpecHttpCaller(
+    private fun executor(transport: RecordingTransport): SpecWorkloadExecutor {
+        val caller = SpecHttpCaller(
             transport = transport,
             references = references,
             authProvider = StubAuthProvider(mapOf("seller" to mapOf("Authorization" to "Bearer seller-token"))),
             settings = FixedSpecExecutionSettings(),
-        ),
-        references = references,
-        evaluator = evaluator,
-        clock = clock,
+        )
+        return SpecWorkloadExecutor(
+            caller = caller,
+            references = references,
+            evaluator = evaluator,
+            faultInjection = FaultInjectionService(caller, evaluator),
+            clock = clock,
+        )
+    }
+
+    private fun faultPlan() = FaultInjectionPlan(
+        injectHook = SpecHttpCall("POST", "/harness/fault", null, emptyMap(), null),
+        releaseHook = SpecHttpCall("POST", "/harness/fault/release", null, emptyMap(), null),
+        maxTtl = Duration.ofMinutes(5),
     )
 
     private fun specification(requestCount: Int = 2, concurrency: Int = 2) = TestSpecification(

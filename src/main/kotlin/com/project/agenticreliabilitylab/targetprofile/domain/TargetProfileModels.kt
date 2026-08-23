@@ -88,6 +88,8 @@ data class TestSpecExecutionProfileDefinition(
     val maxTrials: Int,
     val stateChangingAllowed: Boolean,
     val reset: ProfileResetDefinition?,
+    /** Phase 21: required whenever [supportedFaults] is not empty; null otherwise. */
+    val faultInjection: ProfileFaultInjectionDefinition? = null,
 )
 
 /** A call template contains no credential value; [authProfile] is resolved only by the Runner. */
@@ -117,6 +119,13 @@ data class ProfileObservationSourceDefinition(
      */
     val queries: Map<String, String> = emptyMap(),
     val authProfile: String? = null,
+)
+
+/** How this Target injects and releases a declared fault. A call template, not a per-fault-type endpoint. */
+data class ProfileFaultInjectionDefinition(
+    val injectEndpoint: ProfileHttpCallDefinition,
+    val releaseEndpoint: ProfileHttpCallDefinition,
+    val maxTtl: Duration,
 )
 
 data class ProfileResetDefinition(
