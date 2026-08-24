@@ -13,6 +13,7 @@ import com.project.agenticreliabilitylab.execution.domain.OutboxJobType
 import com.project.agenticreliabilitylab.experiment.application.StockConcurrencyExperimentService
 import com.project.agenticreliabilitylab.targetspec.application.TargetTestBatchService
 import com.project.agenticreliabilitylab.testspec.application.TestSpecGenerationService
+import com.project.agenticreliabilitylab.testspec.application.TestSpecMisjudgmentReportService
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
@@ -69,6 +70,13 @@ class OutboxJobHandlerConfiguration {
     fun testSpecGenerationOutboxJobHandler(generationService: TestSpecGenerationService): OutboxJobHandler =
         TypedOutboxJobHandler(OutboxJobType.TEST_SPEC_GENERATION) {
             generationService.executeOutboxJob(it)
+            OutboxJobExecutionResult.Completed
+        }
+
+    @Bean
+    fun testSpecMisjudgmentOutboxJobHandler(misjudgmentService: TestSpecMisjudgmentReportService): OutboxJobHandler =
+        TypedOutboxJobHandler(OutboxJobType.MISJUDGMENT_EXCEPTION_DRAFT) {
+            misjudgmentService.executeOutboxJob(it)
             OutboxJobExecutionResult.Completed
         }
 

@@ -3,6 +3,7 @@ package com.project.agenticreliabilitylab.testspec.api
 import com.project.agenticreliabilitylab.access.OperatorAccessService
 import com.project.agenticreliabilitylab.testspec.api.dto.ApproveTestSpecificationRequest
 import com.project.agenticreliabilitylab.testspec.api.dto.CreateTestSpecificationRequest
+import com.project.agenticreliabilitylab.testspec.api.dto.TestSpecRegressionRunsResponse
 import com.project.agenticreliabilitylab.testspec.api.dto.TestSpecRunResponse
 import com.project.agenticreliabilitylab.testspec.api.dto.TestSpecificationResponse
 import com.project.agenticreliabilitylab.testspec.application.TestSpecificationService
@@ -59,6 +60,18 @@ class TestSpecificationController(
         val actor = operatorAccessService.requireExecutor(authorization)
         val view = service.execute(specificationId, idempotencyKey, actor, correlationId())
         return ResponseEntity.status(HttpStatus.CREATED).body(TestSpecRunResponse.from(view))
+    }
+
+    @PostMapping("/targets/{targetSystemId}/test-specifications/regression-runs")
+    fun triggerRegressionRuns(
+        @PathVariable targetSystemId: String,
+        @RequestHeader("Authorization", required = false) authorization: String?,
+        @RequestHeader("Idempotency-Key", required = false) idempotencyKey: String?,
+    ): TestSpecRegressionRunsResponse {
+        require(!idempotencyKey.isNullOrBlank()) { "Idempotency-Key header is required" }
+        val actor = operatorAccessService.requireExecutor(authorization)
+        val outcomes = service.triggerRegressionRuns(targetSystemId, idempotencyKey, actor, correlationId())
+        return TestSpecRegressionRunsResponse.from(targetSystemId, outcomes)
     }
 
     @GetMapping("/test-specifications/{specificationId}")

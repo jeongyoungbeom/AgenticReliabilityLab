@@ -125,10 +125,13 @@ open class TestSpecificationApiIntegrationTests {
     }
 
     @Test
-    fun `supersedes and blocks a specification when its Profile Version is no longer active`() {
+    fun `supersedes and blocks a specification when a Profile Version bump breaks a reference it relies on`() {
         val specificationId = field(createSpecification().body(), "id")
         approve(specificationId)
-        val replacement = executionProfileFrom(executionProfile)
+        // maxTrials = 0 genuinely breaks this fixture's policy.trials = 1 - the only Profile-derived
+        // constraint this WAIT-only specification actually depends on. A capability-identical bump must
+        // NOT supersede (see the test below); only a bump that breaks a reference should.
+        val replacement = executionProfileFrom(executionProfile, maxTrials = 0)
         assertTrue(profileRepository.createIfAbsent(replacement))
         assertTrue(profileRepository.activate(TARGET_ID, replacement.id, "phase17-test", Instant.now()))
 
@@ -139,6 +142,30 @@ open class TestSpecificationApiIntegrationTests {
         val stored = get("/api/test-specifications/$specificationId")
         assertContains(stored.body(), "\"status\":\"SUPERSEDED\"")
         assertContains(stored.body(), "\"profileVersionActive\":false")
+    }
+
+    @Test
+    fun `keeps a specification approved and executable across a compatible Profile Version bump`() {
+        val specificationId = field(createSpecification().body(), "id")
+        approve(specificationId)
+        val approvedView = get("/api/test-specifications/$specificationId")
+        val originalProfileVersionId = field(approvedView.body(), "profileVersionId")
+
+        // Same capabilities as the currently active profile - nothing this specification references changed.
+        val compatibleBump = executionProfileFrom(executionProfile)
+        assertTrue(profileRepository.createIfAbsent(compatibleBump))
+        assertTrue(profileRepository.activate(TARGET_ID, compatibleBump.id, "phase17-test", Instant.now()))
+
+        val response = execute(specificationId, "phase17-compatible-bump")
+
+        assertEquals(201, response.statusCode(), response.body())
+        assertContains(response.body(), "\"status\":\"COMPLETED\"")
+        val stored = get("/api/test-specifications/$specificationId")
+        assertContains(stored.body(), "\"status\":\"APPROVED\"")
+        assertContains(stored.body(), "\"profileVersionActive\":true")
+        val revisedProfileVersionId = field(stored.body(), "profileVersionId")
+        assertEquals(compatibleBump.id.toString(), revisedProfileVersionId)
+        assertTrue(revisedProfileVersionId != originalProfileVersionId)
     }
 
     @Test
@@ -259,7 +286,10 @@ open class TestSpecificationApiIntegrationTests {
         "cleanup" to mapOf("method" to "NOT_REQUIRED"),
     )
 
-    private fun executionProfileFrom(base: TargetProfileVersion): TargetProfileVersion = base.copy(
+    private fun executionProfileFrom(
+        base: TargetProfileVersion,
+        maxTrials: Int = 3,
+    ): TargetProfileVersion = base.copy(
         id = UUID.randomUUID(),
         status = TargetProfileStatus.DRAFT,
         checksum = UUID.randomUUID().toString().replace("-", "") +
@@ -274,7 +304,7 @@ open class TestSpecificationApiIntegrationTests {
                 infrastructureTargets = emptySet(),
                 maxConcurrency = 4,
                 maxRequestCount = 10,
-                maxTrials = 3,
+                maxTrials = maxTrials,
                 stateChangingAllowed = false,
                 reset = null,
             ),

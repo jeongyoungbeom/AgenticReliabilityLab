@@ -28,11 +28,24 @@ object TestSpecificationSql {
         order by version desc
     """.trimIndent()
 
+    val FIND_APPROVED_BY_TARGET = """
+        $SELECT_SPECIFICATION
+        where target_system_id = :targetSystemId and status = :approved
+        order by spec_key, version
+    """.trimIndent()
+
     val APPROVE = """
         update test_specification
         set status = :approved, approved_by = :actor, approved_correlation_id = :correlationId,
             approved_at = :approvedAt
         where id = :id and status = :pending
+    """.trimIndent()
+
+    val REVISE_PROFILE_VERSION = """
+        update test_specification
+        set profile_version_id = :profileVersionId
+        where id = :id and profile_version_id = :expectedProfileVersionId
+          and status in (:draft, :pending, :approved)
     """.trimIndent()
 
     val SUPERSEDE = """

@@ -88,8 +88,7 @@ class TestSpecificationService(
             "confirmation must equal ${requiredConfirmation(specification.risk)}"
         }
         val profile = requireExecutionProfile(specification.targetSystemId)
-        if (profile.profileVersionId != specification.profileVersionId) {
-            specificationStore.supersede(specification.id, PROFILE_VERSION_INACTIVE)
+        if (!reconcileProfileVersion(specification, profile)) {
             return view(requireSpecification(specification.id))
         }
         specificationStore.approve(specification.id, actor, correlationId, clock.instant())
@@ -115,8 +114,13 @@ class TestSpecificationService(
         }
         requireApproved(specification)
         val profile = requireExecutionProfile(specification.targetSystemId)
-        requireCurrentProfile(specification, profile)
-        val parsed = parseAndValidate(specification, profile)
+        if (!reconcileProfileVersion(specification, profile)) {
+            throw ClientRequestException(
+                "TEST_SPECIFICATION_PROFILE_VERSION_INACTIVE",
+                "Test specification '${specification.id}' is bound to an inactive Profile Version",
+            )
+        }
+        val parsed = parseAndValidate(requireSpecification(specification.id), profile)
         runStore.findByTargetAndIdempotencyKey(specification.targetSystemId, idempotencyKey)?.let { existing ->
             ensureSameRunRequest(existing, requestHash)
             return runView(existing)
@@ -127,7 +131,7 @@ class TestSpecificationService(
             id = identifiers.next(),
             specificationId = specification.id,
             targetSystemId = specification.targetSystemId,
-            profileVersionId = specification.profileVersionId,
+            profileVersionId = profile.profileVersionId,
             status = TestSpecRunStatus.PENDING,
             idempotencyKey = idempotencyKey,
             requestHash = requestHash,
@@ -145,6 +149,91 @@ class TestSpecificationService(
         executeClaimedRun(run, parsed, target, profile, correlationId)
         return runView(requireRun(run.id))
     }
+
+    /**
+     * Executes every currently APPROVED specification for [targetSystemId] as one regression batch.
+     *
+     * Reuses [execute] unchanged - each specification's run gets a derived idempotency key so retries of the
+     * whole batch are as idempotent as an individual run already is. When the same specKey has more than one
+     * APPROVED version (approving a new version does not by itself supersede an older approved one - see the
+     * [com.project.agenticreliabilitylab.testspec.application.port.TestSpecificationStore.supersede] call sites),
+     * only the highest version is run, so a batch cannot execute a specKey twice or resurrect a version the
+     * Target has moved on from.
+     *
+     * One specification's rejection (for example a recovery-required run still blocking the Target) does not
+     * abort the batch - it is captured as a failed [TestSpecRegressionRunOutcome] alongside the other
+     * specifications' results, mirroring the "one item's failure must not lose the rest" discipline already used
+     * for misjudgment drafting and Target test candidate generation elsewhere in this codebase.
+     */
+    fun triggerRegressionRuns(
+        targetSystemId: String,
+        idempotencyKey: String,
+        actor: String,
+        correlationId: String,
+    ): List<TestSpecRegressionRunOutcome> {
+        require(REGRESSION_IDEMPOTENCY_KEY_PATTERN.matches(idempotencyKey)) {
+            "Idempotency-Key must contain 1 to $MAX_REGRESSION_IDEMPOTENCY_KEY_LENGTH letters, numbers, '.', " +
+                "'_', ':' or '-'"
+        }
+        return specificationStore.findApprovedByTarget(targetSystemId)
+            .groupBy(StoredTestSpecification::specKey)
+            .values
+            .map { versions -> versions.maxBy(StoredTestSpecification::version) }
+            .sortedBy(StoredTestSpecification::specKey)
+            .map { specification -> runOne(specification, idempotencyKey, actor, correlationId) }
+    }
+
+    // execute() can also let a raw DuplicateKeyException escape (see recoverConcurrentRun()'s final `throw
+    // exception`) when two batch calls race on the same derived per-specification idempotency key - that must
+    // become a failed outcome too, not a 500 that discards every other specification's already-computed result.
+    // Any other escaped execute() failure must still become a per-item outcome, not abort the whole batch.
+    @Suppress("TooGenericExceptionCaught")
+    private fun runOne(
+        specification: StoredTestSpecification,
+        idempotencyKey: String,
+        actor: String,
+        correlationId: String,
+    ): TestSpecRegressionRunOutcome {
+        val runIdempotencyKey = "$idempotencyKey:${specification.id}"
+        return try {
+            val view = execute(specification.id, runIdempotencyKey, actor, correlationId)
+            regressionOutcome(specification, run = view, failureCode = null, failureMessage = null)
+        } catch (exception: ClientRequestException) {
+            regressionOutcome(
+                specification,
+                run = null,
+                failureCode = exception.code,
+                failureMessage = exception.message,
+            )
+        } catch (exception: Exception) {
+            log.error(
+                "Regression run for specification {} failed unexpectedly; correlationId={}, exceptionType={}",
+                specification.id,
+                correlationId,
+                exception.javaClass.name,
+            )
+            regressionOutcome(
+                specification,
+                run = null,
+                failureCode = REGRESSION_RUN_FAILURE_CODE,
+                failureMessage = exception.message ?: exception.javaClass.simpleName,
+            )
+        }
+    }
+
+    private fun regressionOutcome(
+        specification: StoredTestSpecification,
+        run: TestSpecRunView?,
+        failureCode: String?,
+        failureMessage: String?,
+    ) = TestSpecRegressionRunOutcome(
+        specificationId = specification.id,
+        specKey = specification.specKey,
+        version = specification.version,
+        run = run,
+        failureCode = failureCode,
+        failureMessage = failureMessage,
+    )
 
     fun findSpecification(specificationId: UUID): TestSpecificationView = view(requireSpecification(specificationId))
 
@@ -204,17 +293,54 @@ class TestSpecificationService(
         }
     }
 
-    private fun requireCurrentProfile(
+    /**
+     * Reconciles [specification] against [profile]'s Version, if they differ.
+     *
+     * A Profile Version bump does not by itself invalidate a specification - only a bump that breaks a reference
+     * the specification actually uses does. Revalidating the stored document against the new Profile's
+     * capabilities answers that the same way initial validation did: references still hold -> only the
+     * profileVersionId pointer moves and no re-approval is required; a reference broke -> the specification is
+     * superseded exactly as before.
+     *
+     * The pointer move is a compare-and-swap (see [TestSpecificationStore.reviseProfileVersion]) so a concurrent
+     * reconciliation of the same row cannot be silently lost - a failed swap is resolved by re-reading the row
+     * rather than assumed to mean this reconciliation failed.
+     *
+     * Returns true when [specification] is (now) bound to [profile]'s Version, false when it was superseded.
+     */
+    @Suppress("ReturnCount") // Same-version, broken-reference, and a lost compare-and-swap are distinct exits.
+    private fun reconcileProfileVersion(
         specification: StoredTestSpecification,
         profile: ActiveTestSpecExecutionProfile,
-    ) {
-        if (specification.profileVersionId != profile.profileVersionId) {
-            specificationStore.supersede(specification.id, PROFILE_VERSION_INACTIVE)
-            throw ClientRequestException(
-                "TEST_SPECIFICATION_PROFILE_VERSION_INACTIVE",
-                "Test specification '${specification.id}' is bound to an inactive Profile Version",
+    ): Boolean {
+        if (specification.profileVersionId == profile.profileVersionId) return true
+        val stillValid = try {
+            val parsed = parser.parse(
+                specification.documentJson,
+                specification.id,
+                specification.targetSystemId,
+                profile.profileVersionId,
+                specification.source,
             )
+            validator.validate(parsed, profile.capabilities)
+            true
+        } catch (_: SpecParseException) {
+            false
+        } catch (_: SpecValidationException) {
+            false
         }
+        if (!stillValid) {
+            specificationStore.supersede(specification.id, PROFILE_VERSION_INACTIVE)
+            return false
+        }
+        val revised = specificationStore.reviseProfileVersion(
+            specification.id,
+            specification.profileVersionId,
+            profile.profileVersionId,
+        )
+        // A false result means a concurrent request already moved (or superseded) this same row - re-read it
+        // instead of assuming failure, since that request may have reached the same, equally valid, Version first.
+        return revised || requireSpecification(specification.id).profileVersionId == profile.profileVersionId
     }
 
     private fun requireExecutionSlot(targetSystemId: String) {
@@ -333,5 +459,11 @@ class TestSpecificationService(
     private companion object {
         const val PROFILE_VERSION_INACTIVE = "Target Profile Version is no longer active"
         val IDEMPOTENCY_KEY_PATTERN = Regex("[A-Za-z0-9._:-]{1,200}")
+
+        // A regression run's own key gets ":" plus a 36-character specification UUID appended before it reaches
+        // execute()'s 200-character idempotency_key column, so the caller-supplied key is capped well under that.
+        const val MAX_REGRESSION_IDEMPOTENCY_KEY_LENGTH = 160
+        val REGRESSION_IDEMPOTENCY_KEY_PATTERN = Regex("[A-Za-z0-9._:-]{1,$MAX_REGRESSION_IDEMPOTENCY_KEY_LENGTH}")
+        const val REGRESSION_RUN_FAILURE_CODE = "TEST_SPECIFICATION_REGRESSION_RUN_FAILED"
     }
 }

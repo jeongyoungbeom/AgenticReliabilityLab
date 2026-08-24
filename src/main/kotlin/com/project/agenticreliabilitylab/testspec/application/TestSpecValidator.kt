@@ -147,9 +147,8 @@ class TestSpecValidator(
             }
             invariant.exceptions.forEach { exception ->
                 addAll(referenceViolations(invariant.id, exception.condition, known))
-                compileOrDescribe(references.resolveOrKeep(exception.condition, known), identifiers)?.let {
-                    add("Exception on '${invariant.id}': $it")
-                }
+                val resolved = references.resolveOrKeep(exception.condition, known)
+                addAll(exceptionViolations(invariant.id, resolved, identifiers))
             }
         }
         val duplicates = specification.invariants.groupBy { it.id }.filterValues { it.size > 1 }.keys
@@ -175,6 +174,32 @@ class TestSpecValidator(
         null
     } catch (exception: SpecExpressionException) {
         exception.message
+    }
+
+    /**
+     * Compiles an exception's condition and refuses it if it could not have judged anything.
+     *
+     * A condition that is the literal `true`, or that names none of the specification's own observations, holds
+     * regardless of what a trial observed - approving it would be indistinguishable from deleting the invariant it
+     * guards (TEST_SPEC.md 14: exceptions must stay narrow, never nullify the invariant they qualify).
+     */
+    private fun exceptionViolations(
+        invariantId: String,
+        resolvedCondition: String,
+        identifiers: Set<String>,
+    ): List<String> {
+        val compiled = try {
+            expressions.compile(resolvedCondition, identifiers)
+        } catch (exception: SpecExpressionException) {
+            return listOf("Exception on '$invariantId': ${exception.message}")
+        }
+        return when {
+            resolvedCondition.trim() == "true" ->
+                listOf("Exception on '$invariantId' is the literal 'true', which would nullify the invariant")
+            compiled.referencedIdentifiers.isEmpty() ->
+                listOf("Exception on '$invariantId' references no observed value, which would nullify the invariant")
+            else -> emptyList()
+        }
     }
 
     /** A requirement is useful only when its verdict already exists and no requirement chain loops back. */

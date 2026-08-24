@@ -54,6 +54,17 @@ class JdbcTestSpecificationRepository(
             .query { resultSet, _ -> resultSet.toSpecification() }
             .list()
 
+    override fun findApprovedByTarget(targetSystemId: String): List<StoredTestSpecification> =
+        jdbcClient.sql(TestSpecificationSql.FIND_APPROVED_BY_TARGET)
+            .params(
+                mapOf(
+                    "targetSystemId" to targetSystemId,
+                    "approved" to TestSpecificationStatus.APPROVED.name,
+                ),
+            )
+            .query { resultSet, _ -> resultSet.toSpecification() }
+            .list()
+
     override fun approve(id: UUID, actor: String, correlationId: String, approvedAt: Instant): Boolean =
         jdbcClient.sql(TestSpecificationSql.APPROVE)
             .params(
@@ -64,6 +75,20 @@ class JdbcTestSpecificationRepository(
                     "approvedAt" to Timestamp.from(approvedAt),
                     "approved" to TestSpecificationStatus.APPROVED.name,
                     "pending" to TestSpecificationStatus.PENDING_APPROVAL.name,
+                ),
+            )
+            .update() == 1
+
+    override fun reviseProfileVersion(id: UUID, expectedProfileVersionId: UUID, profileVersionId: UUID): Boolean =
+        jdbcClient.sql(TestSpecificationSql.REVISE_PROFILE_VERSION)
+            .params(
+                mapOf(
+                    "id" to id,
+                    "expectedProfileVersionId" to expectedProfileVersionId,
+                    "profileVersionId" to profileVersionId,
+                    "draft" to TestSpecificationStatus.DRAFT.name,
+                    "pending" to TestSpecificationStatus.PENDING_APPROVAL.name,
+                    "approved" to TestSpecificationStatus.APPROVED.name,
                 ),
             )
             .update() == 1

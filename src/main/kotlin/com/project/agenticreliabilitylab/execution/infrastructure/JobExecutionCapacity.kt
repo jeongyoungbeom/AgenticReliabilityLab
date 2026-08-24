@@ -43,6 +43,7 @@ class JobExecutionCapacity(properties: OutboxJobProperties) {
         OutboxJobType.FOLLOW_UP_SUGGESTION,
         OutboxJobType.ROOT_CAUSE_REPORT,
         OutboxJobType.TEST_SPEC_GENERATION,
+        OutboxJobType.MISJUDGMENT_EXCEPTION_DRAFT,
         -> analysisPermits
     }
 }

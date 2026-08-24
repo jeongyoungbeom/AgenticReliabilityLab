@@ -1,10 +1,375 @@
 # HANDOFF — 다음 세션 인수인계
 
-작성: 2026-08-21 / 기준 커밋: `082b4ec` (Phase 20 커밋 완료) + **Phase 21 작업, 아직 커밋 안 됨**
+작성: 2026-08-23, 갱신: 2026-08-24 / 기준 커밋: `6abeb87` (Phase 21 커밋 완료) + **Phase 22-A/22-B/22-C/22-D + 독립 리뷰 발견사항 6건 수정, `.\gradlew.bat clean check` BUILD SUCCESSFUL 확인됨, 아직 커밋 안 됨**
+
+## 0. Phase 22 독립 리뷰 + 발견사항 수정 (6건) — 구현 완료, 빌드 검증 완료(BUILD SUCCESSFUL), 커밋 대기 (가장 최근 작업, 읽고 시작할 것)
+
+사용자가 "D까지 다하고 독립 리뷰 검토 ㄱㄱ"라고 승인해서, 22-D 구현을 마친 뒤 22-D/22-C에 대한
+독립 리뷰를 진행했다. 22-A/22-B는 이전 세션에서 이미 리뷰를 마쳤다(각 절 참고).
+
+**리뷰 방법:** `Agent` 도구로 이 대화와 무관한 완전히 새 컨텍스트의 서브에이전트 2개를
+띄웠다(22-D용 1개, 22-C용 1개, `subagent_type: general-purpose`). 두 에이전트 모두 "리뷰만
+하고 어떤 파일도 편집/수정하지 말 것"이라고 명시적으로 지시했다. 에이전트가 보고한 내용을
+그대로 믿지 않고, 내가 직접 실제 소스 코드를 다시 읽어 각 발견사항이 진짜인지 하나하나
+대조 검증한 뒤에만 사용자에게 보고했다. 보고 시점에는 **수정을 하나도 적용하지 않고** 6건을
+전부 사용자에게 알리고 수정 여부를 물었다 — "리뷰 요청 = 수정 허가 아님"이라는 이 세션 초반의
+피드백을 그대로 지켰다. 사용자가 수정 순서를 물어서 우선순위를 제안했고, 그중 범위가 가장 큰
+6번(trialNumber)의 실익을 물어서 설명한 뒤, 사용자가 "그럼 5번도 같이 포함해서 수정해"라고
+명시적으로 승인해서 6건 전부(+22-D 테스트 보강 1건) 구현했다.
+
+수정한 6건:
+
+1. **(22-D) `runOne()`의 catch가 `ClientRequestException`만 잡고 있었다.**
+   `recoverConcurrentRun()`에서 raw `DuplicateKeyException`이 그대로 escape할 수 있는
+   경로가 있는데(동시 재시도가 같은 최상위 Idempotency-Key로 부딪히는 실제 도달 가능한
+   레이스), 이 경우 배치 전체가 500으로 죽어서 이미 계산된 다른 명세들의 결과까지 날아갔다.
+   `catch (exception: Exception)` 폴백을 추가해서 어떤 예외든 배치를 죽이지 않고 개별
+   `failureCode: "TEST_SPECIFICATION_REGRESSION_RUN_FAILED"` outcome으로 남게 했다.
+2. **(22-D) "혼합 배치" 테스트가 사실 혼합이 아니었다.** 기존 5번째 테스트
+   (`reports a per-specification failure without losing the rest of the batch`)는
+   `hasBlockingRun`이 Target 전체에 걸리는 조건이라 배치 안 두 명세가 전부 실패했다 —
+   진짜 "하나는 성공, 하나는 실패"를 증명하지 못했다. `policy.trials`를 서로 다르게 준 뒤
+   Profile의 `maxTrials`를 낮춰서 한쪽만 검증 실패하게 만드는 방식으로 진짜 혼합 outcome
+   테스트를 새로 추가했다(6번째 테스트).
+3. **(22-C) `requestHash()`가 `modelKey`/`modelId`/`promptVersion`을 빼먹었다.**
+   Phase 20 `TestSpecGenerationService`의 `configurationHash` 패턴(모델 해석을 멱등성
+   조회보다 먼저 하고, 해시에 모델 설정 전체를 포함)과 다르게 구현되어 있었다. 같은 패턴으로
+   맞췄다 — `report()`에서 모델 해석을 먼저 하고, `requestHash()`가 `modelKey`/`modelId`/
+   `promptVersion`(+ 아래 6번 수정으로 `trialNumber`)까지 해시에 포함한다.
+4. **(22-C) `draft()`의 "절대 던지지 않는다"는 KDoc이 실제로는 깨져 있었다.**
+   `draftedDocumentJson()` 호출이 `try` 블록 밖에 있어서, 그 안의 `check(matched)`가 던지는
+   `IllegalStateException`이 그대로 escape해 `executeOutboxJob()`의 범용 catch까지 가서
+   REJECTED가 아니라 알 수 없는 FAILED로 오분류됐다. 호출을 `try` 안으로 옮기고
+   `catch (exception: IllegalStateException)`을 추가해 명확한 REJECTED 사유로 남게 했다.
+5. **(22-C) 동시에 같은 base 버전에 오판 초안을 두 개 이상 만들면 DB unique 제약 위반이
+   그대로 노출됐다.** `draft()`에 `catch (_: DuplicateKeyException)`을 추가해서 "동시에 다른
+   초안이 먼저 그 버전을 선점했다"는 명확한 REJECTED 사유로 남게 했다(범용 catch가 주던
+   "Rejected due to an unexpected failure: DuplicateKeyException" 대신).
+6. **(22-C) 오판 보고가 어떤 trial을 가리키는지 지정할 방법이 없었다.** `StopPolicy.RUN_ALL`
+   때문에 한 run 안에 같은 invariant에 대한 VIOLATED verdict가 trial마다 다른 관측값으로
+   여러 개 있을 수 있는데(도달 가능한 시나리오로 확인함), 기존 `requireViolatedVerdict()`는
+   무조건 trialNumber가 가장 낮은 VIOLATED verdict 하나만 골랐다. 리뷰어가 실제로 본 trial과
+   다른 trial의 증거로 LLM에 예외를 초안시킬 위험이 있었다. `trialNumber`를 API 요청부터
+   도메인 레코드·store 커맨드·SQL/migration(`trial_number integer not null` 컬럼 +
+   `>= 1` 체크 제약)·리포지토리·서비스 로직까지 끝까지 관통시켰다 — `requireViolatedVerdict()`가
+   이제 trial을 먼저 찾고(`TEST_SPEC_MISJUDGMENT_TRIAL_NOT_FOUND`) 그 trial 안에서
+   VIOLATED verdict를 찾는다(`TEST_SPEC_MISJUDGMENT_VERDICT_NOT_FOUND`). 새 실패 경로
+   테스트 하나 추가(`refuses a report that references a trial the run does not have`).
+
+수정한 파일(6건 전체, 22-D 관련은 위 0.1절과 겹침): `testspec/application/
+TestSpecificationService.kt`(1번), `testspec/api/TestSpecRegressionRunApiIntegrationTests.kt`
+(2번), `testspec/application/TestSpecMisjudgmentReportService.kt`(3·4·5·6번),
+`testspec/domain/TestSpecMisjudgmentModels.kt`(6번, `trialNumber` 필드),
+`testspec/application/port/TestSpecMisjudgmentReportStore.kt`(6번),
+`testspec/application/ReportTestSpecMisjudgment.kt`(6번),
+`testspec/infrastructure/sql/TestSpecMisjudgmentReportSql.kt`(6번),
+`testspec/infrastructure/JdbcTestSpecMisjudgmentReportRepository.kt`(6번),
+`db/migration/V27__phase22c_misjudgment_reports.sql`(6번, 아직 커밋 안 된 마이그레이션이라
+V28을 새로 만들지 않고 V27을 직접 수정했다), `testspec/api/dto/
+ReportTestSpecMisjudgmentRequest.kt`(6번, `@field:Min(1) trialNumber`),
+`testspec/api/dto/TestSpecMisjudgmentReportResponse.kt`(6번),
+`testspec/api/TestSpecMisjudgmentReportApiIntegrationTests.kt`(6번, 테스트 5개로 증가).
+
+검증: 수정한 파일 전부 `cat -n`으로 다시 읽어 대조했고, 줄 길이(120자)·괄호/중괄호/대괄호
+균형을 전체 변경 파일에 대해 스크립트로 재확인했다(위반 0건). `grep`으로
+`ReportTestSpecMisjudgment(`/`NewTestSpecMisjudgmentReport(`/`requireViolatedVerdict(` 옛
+시그니처를 참조하는 곳이 남아 있는지 전체 검색해서 orphan 호출부가 없음을 확인했다.
+`git status --short`로 예상한 파일 집합(29개, 수정 15 + 신규 14)과 정확히 일치하는지
+확인했다.
+
+**사용자가 직접 `.\gradlew.bat clean check`를 돌려서 detekt 위반 2건이 나왔고, 둘 다 고쳤다** (device_bash로는
+빌드를 못 돌리므로 이 두 건은 실제 빌드를 돌려봐야만 드러나는 것이었다):
+
+- `TestSpecMisjudgmentReportService.kt`: `parseDraftedException()`이 throw 3개(JSON 파싱 실패/condition
+  누락/description 누락)라 detekt `ThrowsCount`(최대 2) 위반. condition/description 누락 처리를
+  `requireDraftedField(node, field)` private 헬퍼로 뽑아서 `parseDraftedException()`은 throw 1개만
+  남기고, 헬퍼가 나머지 throw 1개를 담당하게 했다.
+- `JdbcTestSpecMisjudgmentReportRepository.kt`: 함수 13개로 `TooManyFunctions`(최대 11) 위반. 같은
+  상황의 다른 Jdbc 레포지토리들(`JdbcAnalysisRunRepository` 등)이 이미 쓰던 관행대로 `@Repository`
+  아래 `@Suppress("TooManyFunctions") // 이유`를 추가했다(오판 보고 하나의 생명주기+조회+행 매핑을
+  한 어댑터가 담당한다는 이유).
+
+두 파일 다 수정 후 줄 길이·괄호 균형 재확인 완료. 재실행한 `.\gradlew.bat clean check`가
+**BUILD SUCCESSFUL**로 통과했다(사용자가 직접 확인). **22-A/22-B/22-C/22-D + 이번 리뷰 수정
+6건 전체가 이제 빌드·detekt·테스트를 통과한 상태다.** 커밋은 아직 안 했다(사용자의 별도 요청
+대기).
 
 ---
 
-## 0. Phase 21(장애 주입) — 구현 완료, 빌드 통과 확인됨, 커밋 대기 (읽고 시작할 것)
+## 0.1 Phase 22-D(회귀 재실행 트리거 API) — 구현 완료, 빌드 검증 완료, 커밋 대기 (읽고 시작할 것)
+
+Phase 22의 마지막 부분, 22-D를 구현했다. 이 세션도 device_bash만 썼고 `.\gradlew.bat clean
+check`를 못 돌렸다 — 아래 0.2/0.3/0.4절부터 이어지는 같은 제약. 편집은 `cat -n`으로 원본을
+읽거나 새 파일을 통째로 쓴 뒤, 편집/작성한 전체 파일을 다시 읽어 대조했고 줄 길이(120자)·괄호
+균형도 스크립트로 확인했다. **다음 세션(또는 사용자)이 22-A/22-B/22-C와 함께
+`.\gradlew.bat clean check`로 직접 확인해야 한다.**
+
+무엇을 했는지: `POST /api/targets/{targetSystemId}/test-specifications/regression-runs` —
+한 Target의 현재 APPROVED 명세를 전부 골라 기존 `TestSpecificationService.execute()`를
+그대로 반복 호출하는 동기 배치 트리거. 외부 CI가 배포 뒤 회귀를 걸 수 있게 트리거만 하고,
+ARL이 스케줄링·배포를 대신하지 않는다(ARL의 명시적 비목표, `HANDOFF.md` 3절과 동일 원칙).
+
+설계에서 결정한 것들:
+
+- **동기 배치 루프로 갔다(비동기 배치+폴링 대신).** 개별 명세 실행(`POST
+  /test-specifications/{id}/runs`)이 이미 동기이므로, "전부 실행" 엔드포인트도 같은 게이트를
+  반복하는 편이 새 비동기 패턴을 하나 더 들여오는 것보다 일관적이라고 판단했다. 사용자에게
+  두 방식의 트레이드오프를 설명하고 동기 배치를 추천했으며(응답이 느려질 수 있지만 CI 쪽에서
+  타임아웃을 넉넉히 잡으면 되고, 필요해지면 나중에 비동기로 바꿀 수 있다), 사용자가 그 판단에
+  맡겨서 이 방향으로 구현했다.
+- **Phase 13의 `TargetTestBatchService`(`targetspec` 패키지)는 재사용하지 않았다.** 읽어서
+  확인한 결과 그건 `TargetTestCandidate`(HEALTH_REACHABILITY/HTTP_STATUS_ASSERTION 프로브)라는
+  완전히 다른, 더 오래된 도메인을 다루는 코드라서 `testspec`의 선언적 명세 엔진과 무관하다.
+  22-D는 `testspec` 안에서 독립적으로 설계했다.
+- **같은 specKey에 APPROVED 버전이 여럿이면 최신 버전만 실행한다.** `supersede()` 호출
+  지점을 grep해서 확인했는데, 새 버전을 승인해도 그 specKey의 이전 APPROVED 버전이 자동으로
+  superseded 되지 않는다(22-A의 Profile Version 재조정 경로에서만 `supersede()`가 불린다).
+  그대로 두면 배치가 같은 specKey를 중복 실행하거나 이미 지나간 버전을 되살릴 수 있어서,
+  `triggerRegressionRuns()`가 specKey로 묶어 `maxBy(StoredTestSpecification::version)`만
+  골라 실행하도록 했다(`TestSpecificationService.kt` KDoc과 `TestSpecificationStore.
+  findApprovedByTarget()` 자체에도 이유를 남겼다).
+- **한 명세의 `execute()` 실패가 배치 전체를 날리지 않는다.** `execute()`가 던지는
+  `ClientRequestException`(예: 같은 Target에 복구 필요한 이전 run이 남아 있어서 나는
+  `TEST_SPECIFICATION_RECOVERY_REQUIRED`)을 명세별로 잡아서 `TestSpecRegressionRunOutcome`에
+  `failureCode`/`failureMessage`로 담는다 — Phase 20 `toCandidate()`, 22-C `draft()`가 이미
+  쓰던 "한 항목의 실패가 나머지를 잃게 하면 안 된다" 원칙을 그대로 따랐다. HTTP 응답은 항상
+  200이고, 배치 안에서 성공/실패가 섞여도 실패한 항목은 `run: null` + 실패 코드로, 성공한
+  항목은 `run`에 기존 `TestSpecRunResponse`를 그대로 채워서 함께 돌려준다.
+- **명세별 파생 Idempotency-Key 길이를 이 엔드포인트에서만 더 좁게 제한한다.** `execute()`
+  내부에서 `"$idempotencyKey:${specification.id}"`를 파생시켜 쓰는데(콜론 + 36자 UUID = 37자
+  추가), 호출자가 준 요청 레벨 키가 `execute()` 자체의 200자 한도에 거의 닿아 있으면 파생 키가
+  `test_spec_run.idempotency_key`(varchar(200))를 넘칠 수 있다. 그래서
+  `triggerRegressionRuns()`는 요청 레벨 Idempotency-Key를 160자로 더 좁게 검증한다
+  (160 + 37 = 197 < 200, 여유를 남겼다).
+- **응답 DTO는 새로 만들지 않고 최대한 재사용했다.** `TestSpecRunResponse.from(view)`를
+  성공한 항목마다 그대로 쓰고, 배치 전체를 감싸는 `TestSpecRegressionRunsResponse`
+  (`targetSystemId`, `runs: List<TestSpecRegressionRunOutcomeResponse>`)만 새로 만들었다.
+
+새 파일: `testspec/api/dto/TestSpecRegressionRunsResponse.kt`(`TestSpecRegressionRunOutcomeResponse`,
+`TestSpecRegressionRunsResponse`), `testspec/api/TestSpecRegressionRunApiIntegrationTests.kt`(신규
+테스트 5개). 기존 파일 수정: `testspec/application/port/TestSpecificationStore.kt`
+(`findApprovedByTarget()` 추가), `testspec/infrastructure/sql/TestSpecificationSql.kt`
+(`FIND_APPROVED_BY_TARGET` 추가), `testspec/infrastructure/JdbcTestSpecificationRepository.kt`
+(구현 추가), `testspec/application/TestSpecViews.kt`(`TestSpecRegressionRunOutcome` 추가),
+`testspec/application/TestSpecificationService.kt`(`triggerRegressionRuns()`/`runOne()` 추가),
+`testspec/api/TestSpecificationController.kt`(`POST /targets/{targetSystemId}/
+test-specifications/regression-runs` 엔드포인트 추가). 새 migration 없음(기존 테이블·컬럼만
+읽는다). 자세한 목록은 7절.
+
+새 통합 테스트 5개(`TestSpecRegressionRunApiIntegrationTests.kt`, 픽스처는 기존
+`TestSpecificationApiIntegrationTests.kt`와 같은 Profile 활성화/원복 패턴을 그대로 복제):
+
+| 테스트 | 무엇을 고정했나 |
+|---|---|
+| `executes every approved specification across distinct specKeys and reports each outcome` | 서로 다른 specKey의 APPROVED 명세 2개가 모두 실행되고 각각의 outcome이 성공(run.status=COMPLETED)으로 보고됨 |
+| `runs only the highest approved version when a specKey has more than one approved version` | 같은 specKey에 APPROVED 버전이 2개 있어도 배치는 버전 2(최신)만 실행 |
+| `returns an empty result for a target with no approved specifications` | APPROVED 명세가 하나도 없으면 200 + 빈 `runs` 배열 |
+| `replaying the same Idempotency-Key returns the same runs instead of executing again` | 같은 Idempotency-Key로 두 번 호출해도 같은 run이 반환되고 `test_spec_run`에 새 행이 추가되지 않음 |
+| `reports a per-specification failure without losing the rest of the batch` | 복구 필요한 이전 run으로 Target이 막혀 있으면 배치의 두 명세 모두 `failureCode=
+TEST_SPECIFICATION_RECOVERY_REQUIRED`로 보고되지만 HTTP 응답은 200이고 두 outcome이 모두 온전히 돌아옴(배치 격리 증명) |
+
+**독립 리뷰 완료, 발견사항 2건 모두 수정 완료.** 자세한 내용은 위 0절 참고. 이 절의 코드는
+이제 리뷰 반영이 끝난 최신 상태다(`runOne()` catch 확장, 진짜 혼합 배치 테스트 추가).
+
+Phase 22는 22-A/22-B/22-C/22-D로 계획된 범위가 전부 구현됐다. 이 뒤로 더 계획된 하위 작업은
+없다.
+
+---
+
+## 0.2 Phase 22-C(오판 되먹임 → LLM 예외 초안 → 기존 승인 게이트) — 구현 완료, 빌드 검증 완료, 커밋 대기
+
+Phase 22의 세 번째 부분, 22-C를 구현했다. 이 세션도 device_bash만 썼고 `.\gradlew.bat clean
+check`를 못 돌렸다 — 아래 0.3절부터 이어지는 같은 제약. 편집은 `cat -n`으로 원본을 읽거나 새
+파일을 통째로 쓴 뒤, 편집/작성한 전체 파일을 다시 읽어 대조했고 줄 길이(120자)도 스크립트로
+확인했다. **다음 세션(또는 사용자)이 22-A/22-B와 함께 `.\gradlew.bat clean check`로 직접
+확인해야 한다.**
+
+무엇을 했는지: 리뷰어가 "이 위반은 오판이다"라고 보고하면, 그 판정을 낸 불변식·관측값·사유를
+LLM에게 보여 주고 좁은 예외 하나를 초안하게 한 뒤, **새 승인 경로를 하나도 만들지 않고** 기존
+`TestSpecificationService.create()`(source: `MODEL_PROPOSED`)/`approve()` 게이트로 그대로
+통과시킨다. 오케스트레이션은 Phase 20(`TestSpecGenerationService`)을 거의 그대로 베꼈다 —
+Idempotency-Key → outbox job(`MISJUDGMENT_EXCEPTION_DRAFT`, 분석 permits 그룹) → 기존
+`TestSpecProposalModel` 포트(새 모델 포트 불필요, 이미 범용) → 검증기 통과/거부 기록. 새로
+만든 건 딱 하나, `POST /api/targets/{targetSystemId}/test-spec-misjudgment-reports`(보고
+접수) + `GET /api/test-spec-misjudgment-reports/{reportId}`(폴링)뿐이고, 초안이 통과해서
+생긴 새 `PENDING_APPROVAL` 명세 버전은 **기존** `POST /api/test-specifications/{id}/approve`로
+승인한다 — 22-C 전용 승인 엔드포인트는 없다.
+
+설계에서 결정한 것들:
+
+- **입력 번들을 저장하지 않는다.** Phase 20은 `inputBundleJson`을 run에 영속화하지만, 22-C는
+  그럴 필요가 없다고 판단했다 — 오판 보고가 참조하는 명세 문서(버전별로 불변)와 완료된 run의
+  trial verdict(한번 저장되면 안 바뀜)가 이미 결정론적으로 재구성 가능한 불변 데이터라서,
+  outbox job 실행 시점에 `specificationService.findSpecification()`/`findRun()`으로 다시
+  읽어서 매번 같은 입력 번들을 새로 만든다. 큰 텍스트 컬럼 하나를 아꼈다.
+- **명세 문서에 예외를 끼워 넣는 방법은 타입 있는 역직렬화가 아니라 `Map<String, Any?>` 기반
+  읽기-변경-재작성이다.** 저장소 전체를 grep해서 확인했는데 기존 코드는 전부 `readTree()`(읽기
+  전용 `JsonNode` 순회) 아니면 `writeValueAsString(Map(...))`(새 문서를 처음부터 조립)만 쓰고,
+  기존 문서를 부분 수정해서 다시 쓰는 코드는 하나도 없었다. `TestSpecParser`가 이미 한 번
+  검증한 신뢰할 수 없는 입력이므로, `Invariant`→JSON 역방향 매핑 전체를 새로 만드는 대신
+  `objectMapper.readValue(documentJson, Map::class.java)`로 읽고 해당 invariant의
+  `exceptions` 리스트에 새 예외 하나를 불변식 함수형으로 덧붙인 뒤(`invariant + mapOf(...)`
+  스타일, 원본 mutate 안 함) `version`을 `+1` 하고 다시 `writeValueAsString`한다
+  (`TestSpecMisjudgmentReportService.draftedDocumentJson()`).
+- **버전 충돌은 별도로 계산하지 않고 기존 게이트가 그대로 걸러내게 둔다.** 초안이 참조하는
+  명세 버전 다음 번호(`specification.version + 1`)를 낙관적으로 쓰고, 그사이 실제로 더 새
+  버전이 생겼으면 `TestSpecificationService.create()`의 `requireNextVersion()`이
+  `TEST_SPECIFICATION_VERSION_CONFLICT`를 던지게 두고 그걸 REJECTED 사유로 기록한다 — 22-C가
+  버전 계산 로직을 중복으로 갖지 않는다.
+- **거부 사유에 `condition`/`description` 모두 남긴다(모델이 실제로 뭘 시도했는지).** DRAFTED든
+  REJECTED든 `drafted_condition`/`drafted_description`은 항상 채운다 — Phase 20이 거부된 후보의
+  `documentJson`을 남기는 것과 같은 이유다.
+- **22-B의 무력화 거부 규칙은 손대지 않고 그대로 적용받는다.** 초안된 예외도 다른 명세와 똑같이
+  `TestSpecValidator.expressionViolations()`를 통과해야 하므로, 모델이 조건 `true`나 관측값을
+  전혀 참조하지 않는 예외를 제안하면 22-B가 이미 추가한 검사가 그대로 잡는다 — 통합 테스트로
+  이 조합(22-C + 22-B)이 실제로 작동하는지 증명했다(아래).
+
+새 파일: `testspec/domain/TestSpecMisjudgmentModels.kt`(`TestSpecMisjudgmentReportStatus`,
+`TestSpecMisjudgmentReportRecord`), `testspec/application/port/TestSpecMisjudgmentReportStore.kt`,
+`testspec/application/port/TestSpecMisjudgmentSettings.kt`,
+`testspec/application/ReportTestSpecMisjudgment.kt`(명령),
+`testspec/application/TestSpecMisjudgmentReportService.kt`(핵심 오케스트레이션),
+`testspec/infrastructure/TestSpecMisjudgmentProperties.kt`,
+`testspec/infrastructure/sql/TestSpecMisjudgmentReportSql.kt`,
+`testspec/infrastructure/JdbcTestSpecMisjudgmentReportRepository.kt`,
+`testspec/api/TestSpecMisjudgmentReportController.kt`,
+`testspec/api/dto/ReportTestSpecMisjudgmentRequest.kt`,
+`testspec/api/dto/TestSpecMisjudgmentReportResponse.kt`, `V27__phase22c_misjudgment_reports.sql`,
+`testspec/api/TestSpecMisjudgmentReportApiIntegrationTests.kt`(신규 테스트 4개). 기존 파일 수정:
+`OutboxJob.kt`(`MISJUDGMENT_EXCEPTION_DRAFT` 추가), `JobExecutionCapacity.kt`(분석 permits
+그룹에 배분), `OutboxJobHandlerConfiguration.kt`(핸들러 등록),
+`TestSpecExecutionConfiguration.kt`(재시작 복구 `ApplicationRunner` 추가). 자세한 목록은 7절.
+
+새 통합 테스트 4개(`TestSpecMisjudgmentReportApiIntegrationTests.kt`, 픽스처 run/trial은
+`TestSpecRunStore`를 직접 호출해 조작 — 기존
+`TestSpecificationApiIntegrationTests.kt`의 "blocks a new execution while an earlier run..."
+테스트들이 이미 쓰던 것과 같은 방식):
+
+| 테스트 | 무엇을 고정했나 |
+|---|---|
+| `drafts a narrow exception and lets the resulting specification be approved` | 위반된 verdict에 대한 보고가 DRAFTED로 끝나고, 새 `PENDING_APPROVAL` 버전(version 2)이 실제로 저장되며, 기존 `/approve`로 승인됨 |
+| `rejects a drafted exception that would nullify the invariant instead of narrowing it` | 모델이 조건 `true`를 제안하면 22-B 검사가 거부하고, REJECTED로 끝나며 새 명세는 생성되지 않음(22-B와의 조합 증명) |
+| `returns the same report for a repeated idempotency key without calling the model again` | 같은 Idempotency-Key 재요청이 모델을 다시 부르지 않고 같은 보고를 반환 |
+| `refuses a report when the run has no VIOLATED verdict for the named invariant` | 지정한 invariant에 VIOLATED verdict가 없는 run을 참조하면 즉시 409(`TEST_SPEC_MISJUDGMENT_VERDICT_NOT_FOUND`) |
+
+**독립 리뷰 완료, 발견사항 4건 모두 수정 완료.** 자세한 내용은 위 0절 참고. 이 절의 코드와
+테스트 표는 리뷰 반영 전 기준이라 일부 낡았다 — 특히 `requestHash()`는 이제 `modelKey`/
+`modelId`/`promptVersion`/`trialNumber`까지 포함하고, `ReportTestSpecMisjudgment`에는
+`trialNumber` 필드가 추가됐다(테스트도 5개로 늘었다). 0절에서 각 수정의 이유를 설명한다.
+
+다음: 22-D(회귀 재실행 트리거 API) — 구현 완료, 위 0.1절 참고.
+
+---
+
+## 0.3 Phase 22-B(예외의 불변식 무력화 거부) — 구현 완료, 빌드 검증 완료, 커밋 대기
+
+Phase 22의 두 번째 부분, 22-B를 구현했다. 이 세션도 device_bash만 썼고 `.\gradlew.bat clean
+check`를 못 돌렸다 — 아래 0.4절부터 이어지는 같은 제약. 편집은 `cat -n`으로 원본을 읽고 정확한
+문자열 치환으로 했고, 편집 후 전체 파일을 다시 읽어 대조했다. **다음 세션(또는 사용자)이 22-A와
+함께 `.\gradlew.bat clean check`로 직접 확인해야 한다.**
+
+무엇을 했는지: `TEST_SPEC.md` 14절("불변식을 통째로 무력화하는 예외" 거부)과 12절
+("`조건: true` 같은 예외는 불변식을 없애는 것과 같아서 거부한다")을 구현했다. `TestSpecValidator`가
+이미 모든 표현식을 컴파일하던 자리(`expressionViolations`)에, 예외 조건 전용 검사
+`exceptionViolations`를 추가했다 — 컴파일이 성공하면 (1) 조건이 문자 그대로 `true`인지, (2) 조건이
+명세 자신의 관측값을 하나도 참조하지 않는지(`1 == 1`처럼 상수만 있는 경우 포함) 확인해서 둘 중
+하나라도 해당하면 거부한다. 두 번째 검사는 새로 만들지 않고 `SpecExpressionEnvironment.compile()`이
+이미 CEL AST에서 뽑아 주던 `CompiledExpression.referencedIdentifiers`를 그대로 재사용했다 — 이
+표현식에 전달되는 식별자 집합이 관측 id뿐이므로(다른 바인딩은 없음), 컴파일이 성공한 이상 참조된
+식별자는 전부 관측 id이고 그 집합이 비어 있으면 곧 "관측값을 하나도 안 씀"과 같다. 별도의
+새 CEL 순회 로직을 만들지 않았다.
+
+기존 동작에 회귀는 없다 — 컴파일 실패 시 메시지 형식("Exception on '...'")을 그대로 보존해서
+기존 테스트(`refuses an exception that cannot be evaluated`)는 그대로 통과해야 한다.
+`TestSpecValidatorTests.kt`에 새 테스트 3개를 추가했다: 리터럴 `true` 거부, 관측값 미참조(`1 == 1`)
+거부, 실제 관측값을 좁게 참조하는 예외는 통과(회귀 방지 — 정당한 예외까지 막지 않는지 확인).
+
+이 검사는 검증기(`TestSpecificationService.create()`/`approve()`가 부르는 게이트) 안에 있으므로,
+아직 만들지 않은 22-C(LLM이 초안하는 예외)도 같은 게이트를 그대로 통과해야 하고 별도로 손댈
+필요가 없다 — Phase 20 때 확정한 "LLM 출력도 기존 검증기를 그대로 통과해야 한다" 원칙과 같다.
+
+다음(아직 시작 안 함): 22-C(오판 보고 → LLM 예외 초안 → 기존 승인 게이트), 22-D(회귀 재실행
+트리거 API).
+
+---
+
+## 0.4 Phase 22-A(Profile 버전 재조정) — 구현 완료, 빌드 검증 완료, 커밋 대기
+
+이번 세션에서 Phase 22(되먹임)의 첫 부분인 22-A(Profile 버전 재조정)를 구현했다. **이 세션도
+`.\gradlew.bat clean check`를 한 번도 돌리지 못했다** — 사용자 기기의 device_bash만 쓸 수 있었고
+네트워크·Gradle 캐시·Docker 전부 없었다(0.5절부터 이어지는 같은 제약). 편집은 전부 기존 파일을
+`cat -n`으로 먼저 읽고 정확한 원본 텍스트에 대해 문자열 치환으로 했고, 편집 후 전체 파일을 다시
+읽어 대조했다 — 컴파일이 되는지, 테스트가 실제로 통과하는지는 **다음 세션(또는 사용자)이
+`.\gradlew.bat clean check`로 직접 확인해야 한다.**
+
+무엇을 했는지: `TestSpecificationService.approve()`/`execute()`가 저장된 명세의
+`profileVersionId`와 현재 활성 Profile Version이 다를 때 무조건 `supersede()`하던 것을, "명세를
+새 Profile Version에 대해 다시 검증해서 여전히 유효하면 `profileVersionId`만 옮기고 재승인 없이
+계속 쓰고, 실제로 참조가 깨졌을 때만 supersede"하는 방식(`reconcileProfileVersion`)으로 바꿨다 —
+`TEST_SPEC.md` §11이 요구하는 동작이다. 새 저장소 메서드
+`TestSpecificationStore.reviseProfileVersion(id, expectedProfileVersionId, profileVersionId)`
+(상태·버전·승인은 안 건드리고 Profile Version 포인터만 이동, `expectedProfileVersionId`에 대한
+compare-and-swap — 이유는 아래 독립 리뷰 항목 참고)를 추가했고, SQL/JDBC 구현을 붙였다.
+
+기존 통합 테스트 `supersedes and blocks a specification when its Profile Version is no longer
+active`의 전제가 낡았다는 걸 코드를 읽고 확인했다: 이 테스트가 쓰는 `executionProfileFrom()`
+헬퍼는 `base` 인자의 내용과 무관하게 항상 똑같은 하드코딩된 `testSpecExecution`을 만들어서
+"교체된" Profile이 사실은 기존과 capability가 완전히 같았다 — 새 재조정 로직에서는 이런
+replacement가 더 이상 supersede를 일으키지 않는 게 맞는 동작이라 이 테스트는 통과할 수 없게
+됐다. 이는 회귀가 아니라 이 테스트가 Phase 22-A 이전의 "무조건 supersede" 동작을 그대로
+인코딩하고 있었다는 증거였다. `executionProfileFrom()`에 `maxTrials` 파라미터(기본값 3)를
+추가해서 실제로 호환 불가능한 replacement(`maxTrials = 0`, 이 WAIT-only 픽스처의
+`policy.trials = 1`을 깨뜨림)를 만들 수 있게 했고, 테스트 이름을 실제로 증명하는 내용에 맞게
+바꿨다("Profile Version bump가 참조를 깨뜨릴 때"). 그리고 새 테스트
+`keeps a specification approved and executable across a compatible Profile Version bump`를
+추가해서 호환되는 bump(같은 capability)에서는 승인된 명세가 재승인 없이 그대로 실행되고
+`profileVersionId`만 갱신됨을 고정했다.
+
+독립 리뷰(제 코드를 처음 보는 별도 에이전트 + 직접 코드 대조 검증)가 결함 2건을 찾았다, 둘 다 고쳤다:
+
+- **`REVISE_PROFILE_VERSION`에 CAS 가드가 없었다.** 최초 구현은 `where id = :id`만으로
+  `profile_version_id`를 덮어썼다 — `APPROVE`(`status = :pending`)와 `SUPERSEDE`
+  (`status in (...)`)는 둘 다 쓰던 조건부 갱신을, 새로 추가한 이 메서드만 빠뜨렸다. 두 요청이
+  겹쳐서(관리자가 Profile Version을 활성화하는 그 순간과 맞물려) 서로 다른 활성 Profile을 읽고
+  각각 `revise`/`supersede`를 부르면, 나중에 도착하는 쪽이 앞선 쓰기를 조용히 덮어써서 결과가
+  "실제 현재 상태의 함수"가 아니게 될 수 있었다(검증을 우회하는 건 아니다 — `revise`는 항상 그
+  직전에 성공한 재검증 뒤에만 불리므로, 최악의 경우도 "멀쩡한 명세가 레이스로 supersede됨" 정도다).
+  `reviseProfileVersion`에 `expectedProfileVersionId` 파라미터를 추가해 SQL을
+  `where id = :id and profile_version_id = :expectedProfileVersionId and status in (:draft,
+  :pending, :approved)`로 바꿨다(CAS). 스왑이 실패하면(다른 요청이 이미 같은 행을 옮겼거나
+  supersede했다는 뜻) `reconcileProfileVersion()`이 행을 다시 읽어서 이미 같은 목표
+  Profile Version에 가 있으면(동시 요청이 같은 결론에 먼저 도달한 것) 성공으로 처리한다.
+  `JdbcTestSpecPersistenceTests.kt`에 CAS 자체를 직접 증명하는 테스트를 추가했다(정상 스왑,
+  낡은 기대값 거부, 존재하지 않는 id, superseded 행에 대한 거부 — 4가지 모두 스왑 후에도
+  `profileVersionId`가 실제로 그대로인지까지 확인). HTTP 레벨 동시성 테스트(두 실행 스레드가
+  Profile 활성화와 겹치는 것)는 결정적으로 재현하기 어려워 시도하지 않았다 — CAS 자체를 저장소
+  계층에서 직접 증명하는 쪽을 택했다.
+- **잡은 예외를 안 쓰면서 이름을 붙였다.** `catch (exception: SpecValidationException) { false }`
+  — `exception`을 본문에서 안 쓴다. 이 파일 자신을 포함해 저장소 전체가 "안 쓰는 캐치 예외는
+  `_`로 이름 붙인다"는 관례를 쓰고(`config/detekt/baseline.xml`에 이미 다른 파일 8곳의
+  grandfather 항목이 있고, 이 파일 자신도 340행에 `catch (_: IllegalArgumentException)` 예가
+  있다), 이 새 캐치만 빠뜨렸다 — detekt `SwallowedException`(baseline에 없는 새 위반)에 걸려
+  `.\gradlew.bat check`를 그대로 실패시켰을 가능성이 높다. `catch (_: SpecValidationException)`로
+  고쳤고, 형제 코드(`TestSpecGenerationService.toCandidate()`)가 같은 재검증 자리에서
+  `SpecParseException`도 같이 잡는 것과 맞춰 그것도 추가했다(현재 `TestSpecParser.parse()`가
+  `profileVersionId`만 다르게 받는 재파싱에서는 도달할 수 없는 방어적 코드지만, 형제 패턴과의
+  일관성을 위해 넣었다).
+
+리뷰가 확인하고 결함이 아니라고 판단한 것: 승인 우회 위험(재검증은 저장된 문서가 새 Profile이
+"허용하지 않는" 것을 요구하지 않는지만 보므로, Profile이 능력을 넓히는 방향으로 바뀌어도 이미
+승인된 명세가 스스로 선언하지 않은 새 능력에 닿을 길이 없다), 예외 무력화·LLM 신뢰·LOCAL/TEST
+제한 등 이 프로젝트의 절대 규칙(5절) 어디에도 영향 없음.
+
+(2026-08-23 갱신: 22-B도 이어서 구현했다 — 위 0절 참고.) 세부 설계는 사용자와
+`AskUserQuestion`으로 확정한 것을 이 세션 대화에만 남겼고 아직 문서화하지 않았다 — 다음 세션이
+이어받으려면 0절과 3절을 먼저 읽을 것.
+
+---
+
+## 0.5 Phase 21(장애 주입) — 커밋 완료 (`6abeb87`)
+
+(2026-08-23 갱신: 사용자가 `.\gradlew.bat clean check` 로컬 빌드 성공을 확인했고 `6abeb87`로
+커밋·푸시됐다. 아래는 그 세션 당시 기록으로, 검증 과정과 설계 이유가 남아 있어 그대로 둔다.)
 
 이번 세션에서 Phase 21(장애 주입)을 구현했다. **`.\gradlew.bat clean check`를 이 세션에서 한 번도
 돌리지 못했다** — 작업 환경이 사용자 기기의 로컬 Linux VM(device_bash)뿐이었고, 거기엔 네트워크가
@@ -152,18 +517,26 @@ Phase 20 자체의 완료 기준은 `TestSpecGenerationApiIntegrationTests`의 �
 
 ## 3. 다음 작업
 
-**(1) Phase 21 커밋 — 가장 먼저.** `.\gradlew.bat clean check`가 **BUILD SUCCESSFUL**로
-끝나는 것을 사용자가 직접 확인했다(사용자가 세 번 돌린 뒤 나온 로그를 이 세션이 보고 그때마다
-고쳤다 — detekt 7건 → 그 수정이 유발한 줄 길이 초과 4건 → 낡은 테스트 1건). 남은 건 커밋뿐이다.
+**독립 리뷰(22-A~22-D)와 빌드 검증 둘 다 끝났다.** 발견사항 6건 전부 수정했고(0절),
+사용자가 직접 `.\gradlew.bat clean check`를 돌려 detekt 위반 2건을 추가로 잡아냈고
+그것도 수정해서 **BUILD SUCCESSFUL**을 확인했다.
 
-**(2) Phase 22(되먹임).** Phase 21 커밋 다음 단계.
+**(1) 커밋 — 남은 유일한 단계.** 코드는 커밋 대기 상태다. 사용자가 명시적으로 커밋을
+요청하면 그때 git add/commit한다(먼저 커밋하지 않는다 — 표준 규칙).
 
-Target 작업과 UI는 **여기 있는 항목이 아니다.** 둘 다 의도적으로 맨 뒤로 미뤘고
-각각 `TARGET_REQUIREMENTS.md`와 `UI_BACKLOG.md`에 모여 있다. Phase 19의 완료 기준
-("3·7·9번이 같은 시각에 예약을 읽었고 반영이 340ms 늦었다")을 **실제 Target으로 눈으로 확인하는
-것은 그때 처음 가능해진다.** 그전까지는 스텁과 단위 테스트로만 확인된 상태다.
+Phase 22(22-A~22-D)는 계획된 범위가 전부 구현·리뷰·빌드 검증까지 끝났다 — 이 뒤로 예정된
+하위 작업은 커밋 말고는 없다.
 
-전체 순서: Phase 20(LLM 제안, 완료) → Phase 21(장애 주입, 구현됨·검증 대기) → **22(되먹임)**.
+**사용자가 순서를 정했다: UI 먼저 → Target 수정 → 전체 테스트.** 원래
+"의도적으로 맨 뒤로 미룬 것"이었지만, Phase 22까지 코드가 다 끝나서 이제 그 차례가 됐다.
+UI 작업 계획은 3.1절에 정리해 뒀다(아직 착수 안 함, 시작 전 확인할 것 2가지 있음).
+Target 쪽에 필요한 것은 `TARGET_REQUIREMENTS.md`에 있고, 확인된 것은 딱 하나
+(`X-ARL-Trial` → 스팬 속성 필터, 6절 요약 참고) — UI가 끝난 뒤에 손댄다. Phase 19의 완료
+기준("3·7·9번이 같은 시각에 예약을 읽었고 반영이 340ms 늦었다")을 **실제 Target으로 눈으로
+확인하는 것은 그때 처음 가능해진다.** 그전까지는 스텁과 단위 테스트로만 확인된 상태다.
+
+전체 순서: Phase 20(완료) → Phase 21(완료, `6abeb87`로 커밋) →
+**Phase 22(22-A·22-B·22-C·22-D 전부 구현·리뷰·빌드 검증 완료, 커밋만 대기)**.
 
 나중으로 미뤄 둔 것은 문서 두 개에 모아 뒀다. 해당 시점에 열어 보면 된다.
 
@@ -171,6 +544,63 @@ Target 작업과 UI는 **여기 있는 항목이 아니다.** 둘 다 의도적�
 - `UI_BACKLOG.md` — 화면. 명세 엔진(Phase 17~20)에는 아직 UI가 하나도 없다.
 
 파일럿 타겟은 `\\wsl.localhost\Ubuntu\home\jybeomss\sideProject` (eventful-commerce). **맨 마지막에** 붙인다.
+
+---
+
+## 3.1 UI 작업 계획 (우선순위 순서, 아직 착수 안 함)
+
+`UI_BACKLOG.md`·현재 백엔드 DTO(`testspec/api/dto/*.kt`)·기존 프론트 관례
+(`features/<도메인>/<이름>Workspace.tsx` + `api/<도메인>.ts`, `App.tsx`의 `WorkspaceView`/
+`SectionNav`)를 대조해서 정리한 순서다. Phase 20/21/22는 `UI_BACKLOG.md` 5절에서
+"후속 Phase에서 생길 것 — 지금 만들 필요 없다"고 미뤄뒀지만, 이제 셋 다 백엔드가 끝났으므로
+뒤로 안 미루고 아래 순서에 포함시켰다.
+
+**시작 전에 정할 것 둘 (사용자 확인 대기):**
+
+1. **명세 목록 조회 API가 없다.** `TestSpecificationController`에는 `GET
+   /test-specifications/{id}`(단건)·`GET /test-spec-runs/{id}`(단건)뿐이고, "이 Target에
+   승인 대기 중인 명세가 뭐가 있나"를 묻는 엔드포인트가 없다(`findApprovedByTarget()`은
+   22-D 회귀 재실행 내부에서만 쓰이고 API로 안 열려 있다). id는 (a) 명세 생성 응답,
+   (b) LLM 제안 실행 결과의 candidate, (c) 오판 신고 결과의 `resultingSpecificationId`에서만
+   나온다. 승인 화면이 "가장 중요하다"고 못박혀 있는데(1번 항목), 목록이 없으면 "id를 아는
+   사람만 쓸 수 있는 화면"이 된다. **`GET /api/targets/{targetSystemId}/test-specifications`
+   목록 엔드포인트를 작게 하나 추가할지 정해야 한다.**
+2. 아래 1~10 순서대로 진행해도 되는지.
+
+**작업 순서:**
+
+1. **공용 판정 어휘 컴포넌트부터.** `PASSED`/`VIOLATED`/`NOT_EVALUATED`,
+   `OBSERVATION_MISSING`/`REQUIREMENT_UNMET`/`EXPRESSION_FAILED`(`NotEvaluatedReason` 3종),
+   trial 레벨 `INCONCLUSIVE`를 절대 뭉개지 않는 배지·라벨 컴포넌트 하나. 다른 모든 화면이
+   이걸 가져다 쓴다 — 나중에 만들면 이미 만든 화면들을 전부 고쳐야 한다(`UI_BACKLOG.md` 0절).
+2. **`api/testSpecifications.ts` 클라이언트.** `TestSpecificationResponse`/
+   `TestSpecRunResponse` 타입 + `create`/`approve`/`execute`/`findSpecification`/`findRun`
+   함수. `api/testPlans.ts` 관례 그대로(타입 + 순수 헬퍼 함수, 상태 라벨 매핑 등).
+3. **승인 화면.** `unfoundedThresholds`를 해당 불변식 옆에 붙여서 보여주고(숫자 하나가 아니라
+   "무엇을 그 값으로 재는가"가 검토 대상), `risk`/장애 주입 여부/예상 소요시간
+   (`시행 × (워크로드+정리)`, sideProject 리셋 120초 기준)을 승인 전에 노출.
+   `profileVersionActive: false`는 경고로. `requiredConfirmation`을 그대로 타이핑하게 하는
+   입력.
+4. **실행/결과 화면.** 실행 버튼(멱등키 자동 생성, 이미 도는 run이 있으면 "오류"가 아니라
+   "상태"로 표시), `RECOVERY_REQUIRED`일 때 무엇을 해야 하는지 문구, trial별 결과를
+   집계(`trialsRun`/`trialsViolated`/`trialsInconclusive`)와 함께 보여주기(합치지 않기),
+   `cleanupVerified: false` 강조.
+5. **22-D 회귀 재실행.** `TestSpecRegressionRunsResponse`의 배치 outcome을 명세별로
+   나열(성공/실패 섞여도 각자 표시).
+6. **20 (LLM 제안) 화면.** `api/testSpecGenerations.ts` + candidate 목록(ACCEPTED/REJECTED
+   배지, REJECTED도 document는 그대로 보여줌 — 모델이 실제로 뭘 시도했는지가 유일한 근거).
+7. **22-C (오판 신고) 화면.** 신고 → DRAFTED/REJECTED 상태 폴링 → `resultingSpecificationId`로
+   승인 화면(3번)으로 바로 연결.
+8. **Profile 화면 보강.** `features/profiles/`에 관측 소스 3종(`HARNESS_STATE`/
+   `PROMETHEUS`/`TRACE`) 입력, `TRACE` 쿼리의 `${trial}` 자리표시자 도움말, `X-ARL-Trial`
+   계측 여부 사전 경고(`TARGET_REQUIREMENTS.md` 참고). `ProfileValidationSummary.tsx`가
+   이미 있으니 새 규칙 메시지가 잘 흘러오는지만 확인하면 될 수 있다.
+9. **트레이스 근거 시각화(`UI_BACKLOG.md` 3절)는 뒤로 미룬다.** 스팬 원본이 지금 6개째부터
+   유실되는 백엔드 선행 작업(`StoredTrialResult`에 근거 컬럼 추가)이 먼저라, 지금은
+   `N spans across M traces` 요약 문자열을 자르지 않고 그대로 보여주는 선에서 멈춘다.
+10. **`App.tsx` 통합.** 새 다섯 번째 `WorkspaceView`(가칭 `spec`)로 붙이고, 그 아래
+    `SectionNav`로 등록/승인/실행/회귀/제안/오판신고 하위 섹션을 나눈다(기존 흐름과
+    다른 축이라는 `UI_BACKLOG.md`의 판단을 그대로 따름 — `batches` 아래에 합치지 않는다).
 
 ---
 
@@ -312,7 +742,7 @@ Phase 20이 건드린 파일 (전부 `082b4ec`):
 
 PostgreSQL Testcontainers는 Docker Desktop을 켠 환경에서 다시 실행해야 한다.
 
-Phase 21이 건드린 파일 (아직 커밋 안 됨 — 커밋 전 0절의 빌드 검증부터):
+Phase 21이 건드린 파일 (`6abeb87`로 커밋됨):
 
 - 도메인: `testspec/domain/FaultInjection.kt`(신규 — `FaultInjectionPlan`, `FaultInjectionOutcome`),
   `testspec/domain/SpecExecutionModels.kt`(`TrialExecution.pendingFaultHandles` 추가),
@@ -339,3 +769,84 @@ Phase 21이 건드린 파일 (아직 커밋 안 됨 — 커밋 전 0절의 빌�
   `target-profile.sample.yaml`(`fault-injection` 블록 추가), 이 문서
 
 프론트엔드는 Phase 21에서 건드리지 않았다.
+
+Phase 22-A가 건드린 파일 (아직 커밋 안 됨 — 커밋 전 0/0.2/0.3/0.4절의 빌드 검증부터):
+
+- 애플리케이션: `testspec/application/port/TestSpecificationStore.kt`(`reviseProfileVersion(id,
+  expectedProfileVersionId, profileVersionId)` 인터페이스 메서드 추가, CAS 시맨틱 명시),
+  `testspec/application/TestSpecificationService.kt`(`approve()`/`execute()`가
+  `reconcileProfileVersion()`을 거치도록 변경, 기존 private `requireCurrentProfile()` 제거,
+  독립 리뷰 대응으로 CAS 실패 시 재조회·`catch (_: ...)` 로 수정)
+- 인프라: `testspec/infrastructure/sql/TestSpecificationSql.kt`(`REVISE_PROFILE_VERSION` SQL에
+  CAS·status 가드 추가), `testspec/infrastructure/JdbcTestSpecificationRepository.kt`(구현 갱신)
+- 테스트: `testspec/api/TestSpecificationApiIntegrationTests.kt`(`executionProfileFrom()`에
+  `maxTrials` 파라미터 추가, 기존 "supersedes..." 테스트를 실제 호환 불가 replacement로 고치고
+  이름 변경, 호환 bump를 증명하는 새 테스트 1개 추가 — `PostgreSqlTestSpecificationApiIntegrationTests`
+  가 이 클래스를 상속하므로 별도 수정 불필요), `testspec/infrastructure/JdbcTestSpecPersistenceTests.kt`
+  (독립 리뷰 대응 신규 — `reviseProfileVersion`의 CAS를 저장소 계층에서 직접 증명하는 테스트 1개)
+- 문서: 이 문서
+
+새 migration은 없다 — `test_specification.profile_version_id` 컬럼은 이미 있고, 이번엔 그 값을
+쓰는 방식만 바꿨다.
+
+Phase 22-B가 건드린 파일 (아직 커밋 안 됨 — 커밋 전 0/0.2/0.3/0.4절의 빌드 검증부터):
+
+- 애플리케이션: `testspec/application/TestSpecValidator.kt`(`expressionViolations`의 예외 검사
+  자리에 `exceptionViolations` 추가 — 컴파일된 조건이 리터럴 `true`이거나
+  `CompiledExpression.referencedIdentifiers`가 비어 있으면 거부)
+- 테스트: `testspec/application/TestSpecValidatorTests.kt`(신규 3개 — 리터럴 `true` 거부,
+  관측값 미참조 거부, 실제 관측값을 좁게 참조하는 정당한 예외는 통과)
+- 새 migration·API 변경 없음, 문서 갱신 없음(`TEST_SPEC.md` 12·14절이 이미 이 동작을 명시하고
+  있어서 구현만 했다)
+
+
+Phase 22-C가 건드린 파일 (아직 커밋 안 됨 — 커밋 전 0/0.2/0.3/0.4절의 빌드 검증부터):
+
+- 도메인: `testspec/domain/TestSpecMisjudgmentModels.kt`(신규 — `TestSpecMisjudgmentReportStatus`,
+  `TestSpecMisjudgmentReportRecord`)
+- 포트: `testspec/application/port/TestSpecMisjudgmentReportStore.kt`,
+  `testspec/application/port/TestSpecMisjudgmentSettings.kt`(전부 신규)
+- 애플리케이션: `testspec/application/ReportTestSpecMisjudgment.kt`(명령),
+  `testspec/application/TestSpecMisjudgmentReportService.kt`(핵심 오케스트레이션 — 멱등성,
+  위반 verdict 조회, 입력 번들 재구성, outbox 핸드오프, 초안 문서 조립, 검증기 통과·기록)
+- 인프라: `testspec/infrastructure/TestSpecMisjudgmentProperties.kt`,
+  `testspec/infrastructure/sql/TestSpecMisjudgmentReportSql.kt`,
+  `testspec/infrastructure/JdbcTestSpecMisjudgmentReportRepository.kt`, `V27` migration
+- outbox 배선: `OutboxJob.kt`(`MISJUDGMENT_EXCEPTION_DRAFT` 추가),
+  `OutboxJobHandlerConfiguration.kt`(핸들러 등록), `JobExecutionCapacity.kt`(분석 permits
+  그룹에 배분), `testspec/infrastructure/TestSpecExecutionConfiguration.kt`(재시작 복구
+  `ApplicationRunner` 추가)
+- API: `testspec/api/TestSpecMisjudgmentReportController.kt`,
+  `testspec/api/dto/ReportTestSpecMisjudgmentRequest.kt`,
+  `testspec/api/dto/TestSpecMisjudgmentReportResponse.kt`
+- 테스트: `testspec/api/TestSpecMisjudgmentReportApiIntegrationTests.kt`(신규 4개 — DRAFTED,
+  22-B와의 조합으로 REJECTED, 멱등성 재요청, VIOLATED verdict 없는 run 거부. 픽스처 run은
+  `TestSpecRunStore`를 직접 호출해 조작해서 실제 Target 실행 없이 위반 verdict를 만들었다)
+- 문서: 이 문서
+
+새 승인 엔드포인트는 추가하지 않았다 — 초안이 통과해서 생기는 새 명세 버전은 기존
+`POST /api/test-specifications/{id}/approve`로 승인한다.
+
+
+Phase 22-D가 건드린 파일 (아직 커밋 안 됨 — 커밋 전 0/0.2/0.3/0.4절의 빌드 검증부터):
+
+- 애플리케이션: `testspec/application/port/TestSpecificationStore.kt`(`findApprovedByTarget()`
+  추가), `testspec/application/TestSpecViews.kt`(`TestSpecRegressionRunOutcome` 추가),
+  `testspec/application/TestSpecificationService.kt`(`triggerRegressionRuns()`/`runOne()` 추가
+  — specKey별 최신 APPROVED 버전만 골라 `execute()`를 반복 호출하고, 명세별
+  `ClientRequestException`을 개별로 잡아 outcome으로 담는다)
+- 인프라: `testspec/infrastructure/sql/TestSpecificationSql.kt`(`FIND_APPROVED_BY_TARGET`
+  추가), `testspec/infrastructure/JdbcTestSpecificationRepository.kt`(구현 추가)
+- API: `testspec/api/TestSpecificationController.kt`(`POST /targets/{targetSystemId}/
+  test-specifications/regression-runs` 엔드포인트 추가, `requireExecutor` — 개별 `/runs`
+  엔드포인트와 같은 권한), `testspec/api/dto/TestSpecRegressionRunsResponse.kt`(신규 —
+  `TestSpecRegressionRunOutcomeResponse`, `TestSpecRegressionRunsResponse`, 기존
+  `TestSpecRunResponse.from()`을 그대로 재사용)
+- 테스트: `testspec/api/TestSpecRegressionRunApiIntegrationTests.kt`(신규 5개 — 서로 다른
+  specKey 전체 실행, 같은 specKey 다중 버전 중 최신만 실행, 승인된 명세 없는 target의 빈 결과,
+  Idempotency-Key 재요청, 배치 내 개별 실패 격리. 픽스처는
+  `TestSpecificationApiIntegrationTests.kt`의 Profile 활성화/원복 패턴을 그대로 복제했다)
+- 문서: 이 문서
+
+새 migration 없음 — 기존 `test_specification` 테이블/컬럼만 조회한다. 새 outbox job
+타입도 없음 — 동기 배치라서 outbox를 거치지 않는다.

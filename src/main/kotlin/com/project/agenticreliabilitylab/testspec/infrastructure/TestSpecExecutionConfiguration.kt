@@ -1,6 +1,7 @@
 package com.project.agenticreliabilitylab.testspec.infrastructure
 
 import com.project.agenticreliabilitylab.testspec.application.TestSpecGenerationService
+import com.project.agenticreliabilitylab.testspec.application.TestSpecMisjudgmentReportService
 import com.project.agenticreliabilitylab.testspec.application.port.TestSpecRunStore
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
@@ -21,4 +22,8 @@ class TestSpecExecutionConfiguration {
     @Bean
     fun testSpecGenerationRecoveryRunner(generationService: TestSpecGenerationService): ApplicationRunner =
         ApplicationRunner { _: ApplicationArguments -> generationService.recoverIncompleteRuns() }
+
+    @Bean
+    fun testSpecMisjudgmentRecoveryRunner(misjudgmentService: TestSpecMisjudgmentReportService): ApplicationRunner =
+        ApplicationRunner { _: ApplicationArguments -> misjudgmentService.recoverIncompleteRuns() }
 }

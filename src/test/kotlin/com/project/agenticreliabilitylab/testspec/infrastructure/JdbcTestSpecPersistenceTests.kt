@@ -1,5 +1,6 @@
 package com.project.agenticreliabilitylab.testspec.infrastructure
 
+import com.project.agenticreliabilitylab.targetprofile.domain.TargetProfileStatus
 import com.project.agenticreliabilitylab.targetprofile.infrastructure.JdbcTargetProfileRepository
 import com.project.agenticreliabilitylab.testspec.application.port.TestSpecRunStore
 import com.project.agenticreliabilitylab.testspec.application.port.TestSpecificationStore
@@ -77,6 +78,44 @@ open class JdbcTestSpecPersistenceTests {
         assertEquals(TestSpecificationStatus.SUPERSEDED, superseded.status)
         assertEquals("Profile version changed", superseded.terminalReason)
         assertFalse(specificationStore.supersede(specification.id, "Cannot overwrite terminal reason"))
+    }
+
+    @Test
+    fun `moves onto a new Profile Version only when the expected Version is still current`() {
+        val specification = pendingSpecification()
+        specificationStore.create(specification)
+        val originalProfileVersionId = specification.profileVersionId
+        val activeVersion = assertNotNull(profileRepository.findActive(TARGET_ID))
+        val nextVersion = activeVersion.copy(
+            id = UUID.randomUUID(),
+            status = TargetProfileStatus.DRAFT,
+            checksum = checksum(),
+            activatedBy = null,
+            activatedAt = null,
+        )
+        val laterVersion = nextVersion.copy(id = UUID.randomUUID(), checksum = checksum())
+        assertTrue(profileRepository.createIfAbsent(nextVersion))
+        assertTrue(profileRepository.createIfAbsent(laterVersion))
+
+        assertTrue(
+            specificationStore.reviseProfileVersion(specification.id, originalProfileVersionId, nextVersion.id),
+        )
+        assertEquals(nextVersion.id, assertNotNull(specificationStore.findById(specification.id)).profileVersionId)
+
+        // A stale expectation (the row already moved past it) must be rejected, not silently clobbered - this is
+        // the compare-and-swap that keeps two concurrent reconciliations of the same row from racing each other.
+        assertFalse(
+            specificationStore.reviseProfileVersion(specification.id, originalProfileVersionId, laterVersion.id),
+        )
+        assertEquals(nextVersion.id, assertNotNull(specificationStore.findById(specification.id)).profileVersionId)
+
+        // An unknown id can never satisfy the compare-and-swap.
+        assertFalse(specificationStore.reviseProfileVersion(UUID.randomUUID(), nextVersion.id, laterVersion.id))
+
+        // A terminal (superseded) row must not be revived by a pointer move either.
+        assertTrue(specificationStore.supersede(specification.id, "test-teardown"))
+        assertFalse(specificationStore.reviseProfileVersion(specification.id, nextVersion.id, laterVersion.id))
+        assertEquals(nextVersion.id, assertNotNull(specificationStore.findById(specification.id)).profileVersionId)
     }
 
     @Test

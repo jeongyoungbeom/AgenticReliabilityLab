@@ -164,6 +164,50 @@ class TestSpecValidatorTests {
     }
 
     @Test
+    fun `refuses an exception that is the literal true`() {
+        val spec = specification(
+            invariants = listOf(
+                invariant(
+                    "stock-never-negative", "dbStock >= 0",
+                    exceptions = listOf(InvariantException("true", "always allow it", null, "someone")),
+                ),
+            ),
+        )
+
+        assertRejects(spec, "which would nullify the invariant")
+    }
+
+    @Test
+    fun `refuses an exception that names none of the specification's observations`() {
+        val spec = specification(
+            invariants = listOf(
+                invariant(
+                    "stock-never-negative", "dbStock >= 0",
+                    exceptions = listOf(InvariantException("1 == 1", "always allow it", null, "someone")),
+                ),
+            ),
+        )
+
+        assertRejects(spec, "references no observed value")
+    }
+
+    @Test
+    fun `accepts an exception narrowed to a value the specification actually observes`() {
+        val spec = specification(
+            invariants = listOf(
+                invariant(
+                    "stock-never-negative", "dbStock >= 0",
+                    exceptions = listOf(
+                        InvariantException("dbStock == -1", "known reserved-row sentinel", null, "someone"),
+                    ),
+                ),
+            ),
+        )
+
+        validator.validate(spec, capabilities())
+    }
+
+    @Test
     fun `refuses a requirement that names a missing invariant`() {
         val spec = specification(
             invariants = listOf(invariant("dependent", "dbStock >= 0", requires = "converged")),
