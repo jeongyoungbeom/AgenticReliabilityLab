@@ -65,6 +65,12 @@ class JdbcTestSpecificationRepository(
             .query { resultSet, _ -> resultSet.toSpecification() }
             .list()
 
+    override fun findByTarget(targetSystemId: String, limit: Int): List<StoredTestSpecification> =
+        jdbcClient.sql(TestSpecificationSql.FIND_BY_TARGET)
+            .params(mapOf("targetSystemId" to targetSystemId, "limit" to limit))
+            .query { resultSet, _ -> resultSet.toSpecification() }
+            .list()
+
     override fun approve(id: UUID, actor: String, correlationId: String, approvedAt: Instant): Boolean =
         jdbcClient.sql(TestSpecificationSql.APPROVE)
             .params(

@@ -83,6 +83,15 @@ class TestSpecificationController(
         return TestSpecificationResponse.from(service.findSpecification(specificationId), objectMapper)
     }
 
+    @GetMapping("/targets/{targetSystemId}/test-specifications")
+    fun findByTarget(
+        @PathVariable targetSystemId: String,
+        @RequestHeader("Authorization", required = false) authorization: String?,
+    ): List<TestSpecificationResponse> {
+        operatorAccessService.requireViewer(authorization)
+        return service.findByTarget(targetSystemId).map { view -> TestSpecificationResponse.from(view, objectMapper) }
+    }
+
     @GetMapping("/test-spec-runs/{runId}")
     fun findRun(
         @PathVariable runId: UUID,

@@ -367,6 +367,7 @@ POST /api/test-specifications                            선언형 명세 등록
 POST /api/test-specifications/{id}/approve               위험도별 문구로 승인         (EXECUTOR)
 POST /api/test-specifications/{id}/runs                  멱등 실행                    (EXECUTOR)
 GET  /api/test-specifications/{id}                        명세 조회                    (VIEWER)
+GET  /api/targets/{targetSystemId}/test-specifications    Target별 명세 목록           (VIEWER)
 GET  /api/test-spec-runs/{runId}                          실행·판정·reset 결과 조회    (VIEWER)
 ```
 

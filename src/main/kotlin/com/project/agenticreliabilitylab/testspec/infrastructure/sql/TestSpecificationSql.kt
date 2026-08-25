@@ -34,6 +34,13 @@ object TestSpecificationSql {
         order by spec_key, version
     """.trimIndent()
 
+    val FIND_BY_TARGET = """
+        $SELECT_SPECIFICATION
+        where target_system_id = :targetSystemId
+        order by created_at desc
+        limit :limit
+    """.trimIndent()
+
     val APPROVE = """
         update test_specification
         set status = :approved, approved_by = :actor, approved_correlation_id = :correlationId,

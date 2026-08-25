@@ -223,6 +223,29 @@ open class TestSpecificationApiIntegrationTests {
     }
 
     @Test
+    fun `lists every specification for a target across specKeys and statuses`() {
+        val pendingId = field(createSpecification().body(), "id")
+        val approvedId = field(createSpecification().body(), "id")
+        approve(approvedId)
+
+        val listed = get("/api/targets/$TARGET_ID/test-specifications")
+
+        assertEquals(200, listed.statusCode(), listed.body())
+        val ids = objectMapper.readValue(listed.body(), List::class.java)
+            .map { entry -> (entry as Map<*, *>)["id"] as String }
+        assertContains(ids, pendingId)
+        assertContains(ids, approvedId)
+    }
+
+    @Test
+    fun `returns an empty list for a target with no specifications`() {
+        val listed = get("/api/targets/no-such-target-${UUID.randomUUID()}/test-specifications")
+
+        assertEquals(200, listed.statusCode(), listed.body())
+        assertEquals(emptyList<Any>(), objectMapper.readValue(listed.body(), List::class.java))
+    }
+
+    @Test
     fun `rejects an oversized specification before materializing its document`() {
         val response = post("/api/test-specifications", "x".repeat(OVERSIZED_PAYLOAD_BYTES))
 

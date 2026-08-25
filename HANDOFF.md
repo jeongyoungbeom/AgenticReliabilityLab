@@ -1,6 +1,51 @@
 # HANDOFF — 다음 세션 인수인계
 
-작성: 2026-08-23, 갱신: 2026-08-24 / 기준 커밋: `6abeb87` (Phase 21 커밋 완료) + **Phase 22-A/22-B/22-C/22-D + 독립 리뷰 발견사항 6건 수정, `.\gradlew.bat clean check` BUILD SUCCESSFUL 확인됨, 아직 커밋 안 됨**
+작성: 2026-08-23, 갱신: 2026-08-24 / 기준 커밋: `395eea7` (Phase 22-A/22-B/22-C/22-D + 독립 리뷰 발견사항 6건 수정, 커밋 완료) — **명세 목록 조회 API 추가 작업이 진행 중 중단됨. 바로 아래 절부터 읽고 이어서 할 것**
+
+## 진행 중 — 명세 목록 조회 API 추가 (중단됨, 여기부터 이어서 할 것)
+
+사용자가 "UI 작업 착수 전 목록 조회 API를 추가한다"고 승인해서, `UI_BACKLOG.md`/`HANDOFF.md` 3.1절이 지적한 문제
+("승인 화면이 1순위인데 지금은 단건 조회뿐이라 id를 아는 사람만 쓸 수 있다")를 해소하려고
+`GET /api/targets/{targetSystemId}/test-specifications`를 추가하는 중이었다. 기존
+`TargetKnowledgeSnapshotController.findByTarget()`/`TargetKnowledgeSnapshotService.findByTarget()` 패턴을
+그대로 따랐다 — target 존재 여부는 별도로 검증하지 않고(없으면 빈 배열), 최대 50개
+(`MAX_LISTED_SNAPSHOTS` 관례와 동일), `created_at desc` 정렬.
+
+사용자가 "왜 맘대로 진행하냐, 단계별로 나눠서 확인하면서 하자"고 중단시켰다가, 이 절의 남은 항목을
+그대로 마저 진행해도 된다고 승인해서 4~7번까지 마쳤다. **8번(빌드 검증)·9번(커밋)은 아직 안 했다 —
+다음 세션은 여기서부터 사용자와 확인하면서 이어갈 것.**
+
+한 것 (7개 파일, 아직 커밋 안 됨, `git diff`로 확인 가능):
+
+1. `testspec/application/port/TestSpecificationStore.kt` — `findByTarget(targetSystemId, limit):
+   List<StoredTestSpecification>` 인터페이스 메서드 추가 (기존 `findApprovedByTarget` 바로 아래)
+2. `testspec/infrastructure/sql/TestSpecificationSql.kt` — `FIND_BY_TARGET` 쿼리 추가
+   (`where target_system_id = :targetSystemId order by created_at desc limit :limit`)
+3. `testspec/infrastructure/JdbcTestSpecificationRepository.kt` — 위 인터페이스 구현 추가
+4. `testspec/application/TestSpecificationService.kt` — `findByTarget(targetSystemId):
+   List<TestSpecificationView>` 서비스 메서드 추가(기존 private `view()` 재사용), `MAX_LISTED_SPECIFICATIONS`
+   상수(=50, `TargetKnowledgeSnapshotService.MAX_LISTED_SNAPSHOTS` 관례를 따름) companion object에 추가
+5. `testspec/api/TestSpecificationController.kt` — `GET /targets/{targetSystemId}/test-specifications`
+   엔드포인트 추가 (`operatorAccessService.requireViewer`, `List<TestSpecificationResponse>` 반환,
+   `TestSpecificationResponse.from(view, objectMapper)`로 매핑). target 존재 여부는 검증하지 않는다 —
+   없으면 빈 배열(기존 `TargetKnowledgeSnapshotController.findByTarget()`과 동일한 계약)
+6. `README.md` "주요 API" 표에 새 엔드포인트 한 줄 추가 (VIEWER 권한)
+7. `TestSpecificationApiIntegrationTests.kt`에 통합 테스트 2개 추가 —
+   `lists every specification for a target across specKeys and statuses`(승인 대기 1개·승인됨 1개를 만들고
+   둘 다 목록에 나오는지), `returns an empty list for a target with no specifications`(존재하지 않는
+   target은 빈 배열, 404가 아님)
+
+편집은 전부 `cat -n`으로 원본을 읽고 정확한 원본 텍스트에 대해 python 문자열 치환으로 했고, 편집한 6개
+소스 파일 전부 편집 후 다시 읽어 대조했다. 120자 줄 길이(`awk 'length($0) > 120'`)와 중괄호/괄호 균형
+(파이썬으로 `{`/`}`, `(`/`)` 개수 대조)을 테스트 파일에 대해 재확인했다 — 위반 0건.
+
+8. 빌드 검증 — 사용자가 직접 `.\gradlew.bat clean check` 실행, **BUILD SUCCESSFUL**. `build/test-results/
+   test/TEST-*.xml`에서 직접 센 결과 316 tests / failures 0 / errors 0 / skipped 26(Docker 필요한
+   PostgreSQL 계약 테스트), `TestSpecificationApiIntegrationTests`는 10개(기존 8 + 신규 2) 전부 통과.
+
+아직 안 한 것:
+
+9. 사용자가 명시적으로 요청하면 커밋
 
 ## 0. Phase 22 독립 리뷰 + 발견사항 수정 (6건) — 구현 완료, 빌드 검증 완료(BUILD SUCCESSFUL), 커밋 대기 (가장 최근 작업, 읽고 시작할 것)
 

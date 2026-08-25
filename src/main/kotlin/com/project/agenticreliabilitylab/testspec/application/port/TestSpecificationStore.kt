@@ -11,6 +11,9 @@ interface TestSpecificationStore {
 
     /** All currently APPROVED specifications for [targetSystemId], across every specKey and version. */
     fun findApprovedByTarget(targetSystemId: String): List<StoredTestSpecification>
+
+    /** Every specification for [targetSystemId] regardless of status, newest first, capped at [limit]. */
+    fun findByTarget(targetSystemId: String, limit: Int): List<StoredTestSpecification>
     fun approve(id: UUID, actor: String, correlationId: String, approvedAt: Instant): Boolean
 
     /**

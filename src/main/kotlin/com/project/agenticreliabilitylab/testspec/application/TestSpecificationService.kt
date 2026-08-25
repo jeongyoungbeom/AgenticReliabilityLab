@@ -237,6 +237,13 @@ class TestSpecificationService(
 
     fun findSpecification(specificationId: UUID): TestSpecificationView = view(requireSpecification(specificationId))
 
+    /**
+     * Every specification for [targetSystemId] regardless of status, newest first, capped at
+     * [MAX_LISTED_SPECIFICATIONS].
+     */
+    fun findByTarget(targetSystemId: String): List<TestSpecificationView> =
+        specificationStore.findByTarget(targetSystemId, MAX_LISTED_SPECIFICATIONS).map(::view)
+
     fun findRun(runId: UUID): TestSpecRunView = runView(requireRun(runId))
 
     @Suppress("TooGenericExceptionCaught") // Any escaped Runner failure leaves Target state conservatively unknown.
@@ -459,6 +466,10 @@ class TestSpecificationService(
     private companion object {
         const val PROFILE_VERSION_INACTIVE = "Target Profile Version is no longer active"
         val IDEMPOTENCY_KEY_PATTERN = Regex("[A-Za-z0-9._:-]{1,200}")
+
+        // Matches TargetKnowledgeSnapshotService.MAX_LISTED_SNAPSHOTS - an unbounded per-target listing query
+        // is the risk being capped here, not a real expected volume of specifications.
+        const val MAX_LISTED_SPECIFICATIONS = 50
 
         // A regression run's own key gets ":" plus a 36-character specification UUID appended before it reaches
         // execute()'s 200-character idempotency_key column, so the caller-supplied key is capped well under that.
