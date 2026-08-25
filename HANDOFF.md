@@ -1,53 +1,53 @@
 # HANDOFF — 다음 세션 인수인계
 
-작성: 2026-08-23, 갱신: 2026-08-24 / 기준 커밋: `395eea7` (Phase 22-A/22-B/22-C/22-D + 독립 리뷰 발견사항 6건 수정, 커밋 완료) — **명세 목록 조회 API 추가 작업이 진행 중 중단됨. 바로 아래 절부터 읽고 이어서 할 것**
+작성: 2026-08-23, 갱신: 2026-08-25 / 기준 커밋: `fd5cff5` (Target별 명세 목록 조회 API 추가) — Phase 0~22와 명세 목록 조회 API까지 전부 구현·빌드 검증·커밋 완료. **다음은 UI 작업(3.1절)부터, 바로 아래 절 참고**
 
-## 진행 중 — 명세 목록 조회 API 추가 (중단됨, 여기부터 이어서 할 것)
+## 개발 현황 요약 (2026-08-25 기준, 다음 세션은 여기부터 읽을 것)
 
-사용자가 "UI 작업 착수 전 목록 조회 API를 추가한다"고 승인해서, `UI_BACKLOG.md`/`HANDOFF.md` 3.1절이 지적한 문제
-("승인 화면이 1순위인데 지금은 단건 조회뿐이라 id를 아는 사람만 쓸 수 있다")를 해소하려고
-`GET /api/targets/{targetSystemId}/test-specifications`를 추가하는 중이었다. 기존
-`TargetKnowledgeSnapshotController.findByTarget()`/`TargetKnowledgeSnapshotService.findByTarget()` 패턴을
-그대로 따랐다 — target 존재 여부는 별도로 검증하지 않고(없으면 빈 배열), 최대 50개
-(`MAX_LISTED_SNAPSHOTS` 관례와 동일), `created_at desc` 정렬.
+### 지금까지 개발된 것 — 전부 구현·빌드 검증·커밋 완료
 
-사용자가 "왜 맘대로 진행하냐, 단계별로 나눠서 확인하면서 하자"고 중단시켰다가, 이 절의 남은 항목을
-그대로 마저 진행해도 된다고 승인해서 4~7번까지 마쳤다. **8번(빌드 검증)·9번(커밋)은 아직 안 했다 —
-다음 세션은 여기서부터 사용자와 확인하면서 이어갈 것.**
+- **Phase 0~19**(`DESIGN.md`/`DESIGN2.md`/`DESIGN3.md`): Target Profile, 안전한 HTTP Batch, Target 이해
+  모델, 테스트 후보·Test Plan, 범용 Test Harness, 선언형 테스트 명세 엔진(파싱·검증·실행·CEL 판정),
+  `/harness/state`·Prometheus 관측, Tempo 트레이스·시간축 판정까지. 자세한 완료 기준은 2절 표.
+- **Phase 20**(LLM 제안, `082b4ec`): 규칙 기반 후보가 놓친 명세를 LLM이 제안, 기존 검증기 게이트 재사용.
+- **Phase 21**(장애 주입, `6abeb87`): `INJECT_FAULT`/`RELEASE_FAULT`, TTL 강제, 미해제 시 다음 실행 차단.
+- **Phase 22**(되먹임과 자산화, `395eea7`): 22-A Profile 버전 재조정(CAS), 22-B 예외의 불변식 무력화
+  거부, 22-C 오판 신고 → LLM 예외 초안 → 기존 승인 게이트, 22-D 회귀 재실행 트리거 API. 독립 리뷰
+  발견사항 6건 전부 수정 완료(0절 참고 — 이 절들의 "커밋 대기" 표시는 지금은 낡았다. 전부 커밋됨).
+- **명세 목록 조회 API**(`fd5cff5`, 이번 세션): `GET /api/targets/{targetSystemId}/test-specifications`.
+  UI 승인 화면이 id 없이도 명세 목록을 볼 수 있게 하는 선행 작업. 상세 내용은 아래 남겨두되, 이제
+  완료된 작업이라는 것만 확인하면 된다 — `git log --oneline -4`로 커밋 4개(fd5cff5, 395eea7, 6abeb87,
+  d485258) 확인됨.
 
-한 것 (7개 파일, 아직 커밋 안 됨, `git diff`로 확인 가능):
+프론트엔드(`frontend/`)는 Phase 20~22와 이번 목록 API 어느 것도 건드리지 않았다 — 마지막 확인은
+Phase 19 기준 `npm ci`, 46 tests, `tsc`, `vite build` 통과.
 
-1. `testspec/application/port/TestSpecificationStore.kt` — `findByTarget(targetSystemId, limit):
-   List<StoredTestSpecification>` 인터페이스 메서드 추가 (기존 `findApprovedByTarget` 바로 아래)
-2. `testspec/infrastructure/sql/TestSpecificationSql.kt` — `FIND_BY_TARGET` 쿼리 추가
-   (`where target_system_id = :targetSystemId order by created_at desc limit :limit`)
-3. `testspec/infrastructure/JdbcTestSpecificationRepository.kt` — 위 인터페이스 구현 추가
-4. `testspec/application/TestSpecificationService.kt` — `findByTarget(targetSystemId):
-   List<TestSpecificationView>` 서비스 메서드 추가(기존 private `view()` 재사용), `MAX_LISTED_SPECIFICATIONS`
-   상수(=50, `TargetKnowledgeSnapshotService.MAX_LISTED_SNAPSHOTS` 관례를 따름) companion object에 추가
-5. `testspec/api/TestSpecificationController.kt` — `GET /targets/{targetSystemId}/test-specifications`
-   엔드포인트 추가 (`operatorAccessService.requireViewer`, `List<TestSpecificationResponse>` 반환,
-   `TestSpecificationResponse.from(view, objectMapper)`로 매핑). target 존재 여부는 검증하지 않는다 —
-   없으면 빈 배열(기존 `TargetKnowledgeSnapshotController.findByTarget()`과 동일한 계약)
-6. `README.md` "주요 API" 표에 새 엔드포인트 한 줄 추가 (VIEWER 권한)
-7. `TestSpecificationApiIntegrationTests.kt`에 통합 테스트 2개 추가 —
-   `lists every specification for a target across specKeys and statuses`(승인 대기 1개·승인됨 1개를 만들고
-   둘 다 목록에 나오는지), `returns an empty list for a target with no specifications`(존재하지 않는
-   target은 빈 배열, 404가 아님)
+### 이제 개발해야 하는 것 — 사용자가 정한 순서: UI → Target 수정 → 전체 테스트/파일럿
 
-편집은 전부 `cat -n`으로 원본을 읽고 정확한 원본 텍스트에 대해 python 문자열 치환으로 했고, 편집한 6개
-소스 파일 전부 편집 후 다시 읽어 대조했다. 120자 줄 길이(`awk 'length($0) > 120'`)와 중괄호/괄호 균형
-(파이썬으로 `{`/`}`, `(`/`)` 개수 대조)을 테스트 파일에 대해 재확인했다 — 위반 0건.
+1. **UI 작업 (3.1절, 10단계, 아직 착수 안 함).** 명세 엔진(Phase 17~22)에는 화면이 하나도 없다.
+   3.1절의 "시작 전에 정할 것 둘"은 이제 둘 다 해소됐다 — 목록 API는 위에서 추가했고, 10단계
+   순서는 사용자가 그대로 진행하기로 승인했다. **1번(공용 판정 어휘 컴포넌트)부터 시작하면 된다.**
+   지난 세션에서 사용자가 "단계별로 나눠서 확인하면서 하자"고 명시했으므로, 10단계를 한 번에
+   구현하지 말고 각 단계(또는 더 잘게)마다 결과를 보여주고 다음으로 넘어갈 것.
+2. **Target 수정.** `TARGET_REQUIREMENTS.md` 6절 — 확인된 건 `X-ARL-Trial` → 스팬 속성 필터
+   하나뿐. UI가 끝난 뒤에 손댄다.
+3. **전체 테스트 / 파일럿.** `\\wsl.localhost\Ubuntu\home\jybeomss\sideProject`(eventful-commerce).
+   맨 마지막에 붙인다. Phase 19 완료 기준을 실제 Target으로 처음 확인하는 자리다.
 
-8. 빌드 검증 — 사용자가 직접 `.\gradlew.bat clean check` 실행, **BUILD SUCCESSFUL**. `build/test-results/
-   test/TEST-*.xml`에서 직접 센 결과 316 tests / failures 0 / errors 0 / skipped 26(Docker 필요한
-   PostgreSQL 계약 테스트), `TestSpecificationApiIntegrationTests`는 10개(기존 8 + 신규 2) 전부 통과.
+### 이 세션의 작업 제약 (다음 세션도 동일할 가능성이 높다)
 
-아직 안 한 것:
+- device_bash(사용자 로컬 Linux VM)만 쓸 수 있고 네트워크·Docker가 없어 `.\gradlew.bat clean check`를
+  직접 못 돌린다 — 편집 후 원본을 다시 읽어 대조하고 줄 길이·괄호 균형만 스크립트로 확인한 뒤, 실제
+  빌드 검증은 사용자가 직접 돌려서 알려줘야 한다.
+- 이 device_bash는 `rm`을 못 하고, git 명령을 쓸 때마다 `.git/index.lock`(또는 `HEAD.lock`)이 남아
+  다음 git 명령을 막는다 — 매번 `mv .git/index.lock _to_delete/...`로 치워야 한다(사용자의 IDE가
+  같은 저장소를 열어 두고 있어서 그 프로세스가 잠깐씩 잠그는 것으로 보인다 — 재시도하면 대개 풀린다).
+- **여러 결정이 걸린 작업은 한 번에 쭉 진행하지 말고 단계별로 확인받을 것.** 이번 세션 초반에
+  사용자가 이 점을 명시적으로 지적했다.
 
-9. 사용자가 명시적으로 요청하면 커밋
+---
 
-## 0. Phase 22 독립 리뷰 + 발견사항 수정 (6건) — 구현 완료, 빌드 검증 완료(BUILD SUCCESSFUL), 커밋 대기 (가장 최근 작업, 읽고 시작할 것)
+## 0. Phase 22 독립 리뷰 + 발견사항 수정 (6건) — 구현 완료, 빌드 검증 완료(BUILD SUCCESSFUL), 커밋 완료(`395eea7`)
 
 사용자가 "D까지 다하고 독립 리뷰 검토 ㄱㄱ"라고 승인해서, 22-D 구현을 마친 뒤 22-D/22-C에 대한
 독립 리뷰를 진행했다. 22-A/22-B는 이전 세션에서 이미 리뷰를 마쳤다(각 절 참고).
@@ -141,7 +141,7 @@ ReportTestSpecMisjudgmentRequest.kt`(6번, `@field:Min(1) trialNumber`),
 
 ---
 
-## 0.1 Phase 22-D(회귀 재실행 트리거 API) — 구현 완료, 빌드 검증 완료, 커밋 대기 (읽고 시작할 것)
+## 0.1 Phase 22-D(회귀 재실행 트리거 API) — 구현 완료, 빌드 검증 완료, 커밋 완료(`395eea7`)
 
 Phase 22의 마지막 부분, 22-D를 구현했다. 이 세션도 device_bash만 썼고 `.\gradlew.bat clean
 check`를 못 돌렸다 — 아래 0.2/0.3/0.4절부터 이어지는 같은 제약. 편집은 `cat -n`으로 원본을
@@ -221,7 +221,7 @@ Phase 22는 22-A/22-B/22-C/22-D로 계획된 범위가 전부 구현됐다. 이 
 
 ---
 
-## 0.2 Phase 22-C(오판 되먹임 → LLM 예외 초안 → 기존 승인 게이트) — 구현 완료, 빌드 검증 완료, 커밋 대기
+## 0.2 Phase 22-C(오판 되먹임 → LLM 예외 초안 → 기존 승인 게이트) — 구현 완료, 빌드 검증 완료, 커밋 완료(`395eea7`)
 
 Phase 22의 세 번째 부분, 22-C를 구현했다. 이 세션도 device_bash만 썼고 `.\gradlew.bat clean
 check`를 못 돌렸다 — 아래 0.3절부터 이어지는 같은 제약. 편집은 `cat -n`으로 원본을 읽거나 새
@@ -306,7 +306,7 @@ Idempotency-Key → outbox job(`MISJUDGMENT_EXCEPTION_DRAFT`, 분석 permits 그
 
 ---
 
-## 0.3 Phase 22-B(예외의 불변식 무력화 거부) — 구현 완료, 빌드 검증 완료, 커밋 대기
+## 0.3 Phase 22-B(예외의 불변식 무력화 거부) — 구현 완료, 빌드 검증 완료, 커밋 완료(`395eea7`)
 
 Phase 22의 두 번째 부분, 22-B를 구현했다. 이 세션도 device_bash만 썼고 `.\gradlew.bat clean
 check`를 못 돌렸다 — 아래 0.4절부터 이어지는 같은 제약. 편집은 `cat -n`으로 원본을 읽고 정확한
@@ -338,7 +338,7 @@ check`를 못 돌렸다 — 아래 0.4절부터 이어지는 같은 제약. 편�
 
 ---
 
-## 0.4 Phase 22-A(Profile 버전 재조정) — 구현 완료, 빌드 검증 완료, 커밋 대기
+## 0.4 Phase 22-A(Profile 버전 재조정) — 구현 완료, 빌드 검증 완료, 커밋 완료(`395eea7`)
 
 이번 세션에서 Phase 22(되먹임)의 첫 부분인 22-A(Profile 버전 재조정)를 구현했다. **이 세션도
 `.\gradlew.bat clean check`를 한 번도 돌리지 못했다** — 사용자 기기의 device_bash만 쓸 수 있었고
@@ -562,26 +562,23 @@ Phase 20 자체의 완료 기준은 `TestSpecGenerationApiIntegrationTests`의 �
 
 ## 3. 다음 작업
 
-**독립 리뷰(22-A~22-D)와 빌드 검증 둘 다 끝났다.** 발견사항 6건 전부 수정했고(0절),
-사용자가 직접 `.\gradlew.bat clean check`를 돌려 detekt 위반 2건을 추가로 잡아냈고
+**독립 리뷰(22-A~22-D)와 빌드 검증 둘 다 끝났고, 커밋도 끝났다(`395eea7`).** 발견사항 6건 전부
+수정했고(0절), 사용자가 직접 `.\gradlew.bat clean check`를 돌려 detekt 위반 2건을 추가로 잡아냈고
 그것도 수정해서 **BUILD SUCCESSFUL**을 확인했다.
 
-**(1) 커밋 — 남은 유일한 단계.** 코드는 커밋 대기 상태다. 사용자가 명시적으로 커밋을
-요청하면 그때 git add/commit한다(먼저 커밋하지 않는다 — 표준 규칙).
-
-Phase 22(22-A~22-D)는 계획된 범위가 전부 구현·리뷰·빌드 검증까지 끝났다 — 이 뒤로 예정된
-하위 작업은 커밋 말고는 없다.
+Phase 22(22-A~22-D)는 계획된 범위가 전부 구현·리뷰·빌드 검증·커밋까지 끝났다.
 
 **사용자가 순서를 정했다: UI 먼저 → Target 수정 → 전체 테스트.** 원래
 "의도적으로 맨 뒤로 미룬 것"이었지만, Phase 22까지 코드가 다 끝나서 이제 그 차례가 됐다.
-UI 작업 계획은 3.1절에 정리해 뒀다(아직 착수 안 함, 시작 전 확인할 것 2가지 있음).
+UI 작업 계획은 3.1절에 정리해 뒀다 — **목록 조회 API(`fd5cff5`)를 추가해서 시작 전 확인할 것
+2가지가 모두 해소됐으므로, 이제 1번(공용 판정 어휘 컴포넌트)부터 착수하면 된다.**
 Target 쪽에 필요한 것은 `TARGET_REQUIREMENTS.md`에 있고, 확인된 것은 딱 하나
 (`X-ARL-Trial` → 스팬 속성 필터, 6절 요약 참고) — UI가 끝난 뒤에 손댄다. Phase 19의 완료
 기준("3·7·9번이 같은 시각에 예약을 읽었고 반영이 340ms 늦었다")을 **실제 Target으로 눈으로
 확인하는 것은 그때 처음 가능해진다.** 그전까지는 스텁과 단위 테스트로만 확인된 상태다.
 
-전체 순서: Phase 20(완료) → Phase 21(완료, `6abeb87`로 커밋) →
-**Phase 22(22-A·22-B·22-C·22-D 전부 구현·리뷰·빌드 검증 완료, 커밋만 대기)**.
+전체 순서: Phase 20(완료, `082b4ec`) → Phase 21(완료, `6abeb87`) →
+**Phase 22(완료, `395eea7`) → 명세 목록 조회 API(완료, `fd5cff5`) → UI 작업(착수 전, 3.1절)**.
 
 나중으로 미뤄 둔 것은 문서 두 개에 모아 뒀다. 해당 시점에 열어 보면 된다.
 
@@ -600,19 +597,14 @@ Target 쪽에 필요한 것은 `TARGET_REQUIREMENTS.md`에 있고, 확인된 것
 "후속 Phase에서 생길 것 — 지금 만들 필요 없다"고 미뤄뒀지만, 이제 셋 다 백엔드가 끝났으므로
 뒤로 안 미루고 아래 순서에 포함시켰다.
 
-**시작 전에 정할 것 둘 (사용자 확인 대기):**
+**시작 전에 정할 것 둘 — 둘 다 해소됨:**
 
-1. **명세 목록 조회 API가 없다.** `TestSpecificationController`에는 `GET
-   /test-specifications/{id}`(단건)·`GET /test-spec-runs/{id}`(단건)뿐이고, "이 Target에
-   승인 대기 중인 명세가 뭐가 있나"를 묻는 엔드포인트가 없다(`findApprovedByTarget()`은
-   22-D 회귀 재실행 내부에서만 쓰이고 API로 안 열려 있다). id는 (a) 명세 생성 응답,
-   (b) LLM 제안 실행 결과의 candidate, (c) 오판 신고 결과의 `resultingSpecificationId`에서만
-   나온다. 승인 화면이 "가장 중요하다"고 못박혀 있는데(1번 항목), 목록이 없으면 "id를 아는
-   사람만 쓸 수 있는 화면"이 된다. **`GET /api/targets/{targetSystemId}/test-specifications`
-   목록 엔드포인트를 작게 하나 추가할지 정해야 한다.**
-2. 아래 1~10 순서대로 진행해도 되는지.
+1. ~~명세 목록 조회 API가 없다.~~ **해소됨.** `GET /api/targets/{targetSystemId}/test-specifications`를
+   추가해서 커밋했다(`fd5cff5`) — target 존재 검증 없이(없으면 빈 배열) 명세를 최신순 최대 50개
+   돌려준다. 승인 화면은 이제 이 목록에서 id를 얻어 단건 조회/승인으로 이어가면 된다.
+2. ~~아래 1~10 순서대로 진행해도 되는지.~~ **해소됨.** 사용자가 그대로 진행하기로 승인했다.
 
-**작업 순서:**
+**작업 순서 — 1번부터 시작. 단, 10단계를 한 번에 쭉 구현하지 말고 단계마다(또는 더 잘게) 확인받을 것:**
 
 1. **공용 판정 어휘 컴포넌트부터.** `PASSED`/`VIOLATED`/`NOT_EVALUATED`,
    `OBSERVATION_MISSING`/`REQUIREMENT_UNMET`/`EXPRESSION_FAILED`(`NotEvaluatedReason` 3종),
