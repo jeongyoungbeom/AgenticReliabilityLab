@@ -5,6 +5,7 @@ import com.project.agenticreliabilitylab.testspec.domain.CleanupMethod
 import com.project.agenticreliabilitylab.testspec.domain.CleanupTiming
 import com.project.agenticreliabilitylab.testspec.domain.ExecutionPolicy
 import com.project.agenticreliabilitylab.testspec.domain.FaultInjectionPlan
+import com.project.agenticreliabilitylab.testspec.domain.FaultAuditAction
 import com.project.agenticreliabilitylab.testspec.domain.Invariant
 import com.project.agenticreliabilitylab.testspec.domain.Observation
 import com.project.agenticreliabilitylab.testspec.domain.ObservationSourceKind
@@ -93,7 +94,7 @@ class TestSpecRunnerTests {
         }
 
         assertEquals(
-            listOf("/mutate", "/harness/reset", "/harness/state"),
+            listOf("/harness/reset", "/harness/state", "/mutate", "/harness/reset", "/harness/state"),
             transport.requests.map { it.uri.path },
         )
     }
@@ -101,6 +102,7 @@ class TestSpecRunnerTests {
     @Test
     fun `blocks the next trial when cleanup verification fails`() {
         val mutations = AtomicInteger()
+        val stateReads = AtomicInteger()
         val transport = RecordingTransport { request ->
             when (request.uri.path) {
                 "/mutate" -> {
@@ -108,7 +110,10 @@ class TestSpecRunnerTests {
                     jsonResponse(201, "{}")
                 }
                 "/harness/reset" -> jsonResponse(200, "{}")
-                "/harness/state" -> jsonResponse(200, """{"orderCount":4}""")
+                "/harness/state" -> jsonResponse(
+                    200,
+                    if (stateReads.incrementAndGet() == 1) """{"orderCount":0}""" else """{"orderCount":4}""",
+                )
                 else -> error("Unexpected request to ${request.uri.path}")
             }
         }
@@ -124,8 +129,31 @@ class TestSpecRunnerTests {
         assertEquals(1, mutations.get())
         assertEquals(1, outcome.executions.size)
         assertTrue(outcome.resets.isNotEmpty())
-        assertTrue(outcome.resets.none { it.verified })
+        assertTrue(outcome.resets.first().verified)
+        assertFalse(outcome.resets.last().verified)
         assertFalse(outcome.cleanupVerified)
+    }
+
+    @Test
+    fun `does not send a workload when the pre-run reset cannot be verified`() {
+        val transport = RecordingTransport { request ->
+            when (request.uri.path) {
+                "/mutate" -> error("The workload must not start after an unverified baseline")
+                "/harness/reset" -> jsonResponse(200, "{}")
+                "/harness/state" -> jsonResponse(200, """{"orderCount":3}""")
+                else -> error("Unexpected request to ${request.uri.path}")
+            }
+        }
+
+        val outcome = runner(transport).run(
+            specification(setup = listOf(mutationStep()), cleanup = CleanupMethod.ENVIRONMENT_RESET),
+            testTarget(), resetPlan(), "run-pre-reset-failed",
+        )
+
+        assertEquals(TrialOutcome.INCONCLUSIVE, outcome.result.outcome)
+        assertTrue(outcome.executions.isEmpty().not())
+        assertFalse(outcome.cleanupVerified)
+        assertEquals(listOf("/harness/reset", "/harness/state"), transport.requests.map { it.uri.path })
     }
 
     @Test
@@ -154,6 +182,10 @@ class TestSpecRunnerTests {
         )
 
         assertFalse(outcome.cleanupVerified)
+        assertEquals(
+            listOf(FaultAuditAction.INJECTED, FaultAuditAction.RELEASE_FAILED),
+            outcome.executions.single().faultEvents.map { it.action },
+        )
     }
 
     @Test

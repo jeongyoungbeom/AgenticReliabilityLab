@@ -9,6 +9,16 @@ package com.project.agenticreliabilitylab.testspec.application.port
  */
 interface SpecAuthProvider {
     fun headersFor(targetSystemId: String, authProfile: String): Map<String, String>
+
+    /**
+     * A UI credential session is an opaque routing key, never a credential. Existing execution paths use null and
+     * therefore resolve only deployment-time secret references.
+     */
+    fun headersFor(
+        targetSystemId: String,
+        authProfile: String,
+        credentialSessionId: String?,
+    ): Map<String, String> = headersFor(targetSystemId, authProfile)
 }
 
 /** The Runner has no credential for a profile the Profile declared. Nothing is sent. */

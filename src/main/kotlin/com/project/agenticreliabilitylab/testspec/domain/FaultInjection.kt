@@ -19,4 +19,6 @@ data class FaultInjectionOutcome(
     val faultId: String?,
     val succeeded: Boolean,
     val failure: String? = null,
+    /** Optional Target-reported location at which the fault was applied. */
+    val injectionPoint: String? = null,
 )

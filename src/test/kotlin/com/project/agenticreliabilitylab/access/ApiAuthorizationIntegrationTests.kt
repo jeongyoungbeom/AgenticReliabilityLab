@@ -34,6 +34,20 @@ class ApiAuthorizationIntegrationTests {
         assertEquals(403, post("/api/experiments").statusCode())
     }
 
+    @Test
+    fun `secured mode sends document authoring posts to their profile editor controllers`() {
+        val paths = listOf(
+            "/api/test-specifications",
+            "/api/targets/contract-test-target/test-specification-generations",
+            "/api/targets/contract-test-target/test-spec-misjudgment-reports",
+        )
+
+        paths.forEach { path ->
+            assertEquals(400, post(path, "profile-editor-test-token").statusCode(), path)
+            assertEquals(403, post(path, "viewer-test-token").statusCode(), path)
+        }
+    }
+
     private fun get(path: String, token: String? = null): HttpResponse<String> {
         val request = request(path).GET()
         token?.let { request.header(AUTHORIZATION_HEADER, "Bearer $it") }

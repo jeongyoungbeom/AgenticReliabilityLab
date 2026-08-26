@@ -72,6 +72,7 @@ data class StoredTrialResult(
     val verdicts: List<InvariantVerdict>,
     val timings: List<StepTiming>,
     val observations: Map<String, ObservedEvidence> = emptyMap(),
+    val faultEvents: List<FaultAuditEvent> = emptyList(),
 )
 
 data class StoredResetResult(

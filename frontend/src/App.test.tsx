@@ -11,10 +11,10 @@ describe('App shell', () => {
     )
   })
 
-  it('상단 단계는 네 개로 유지한다', () => {
+  it('상단 단계는 선언형 명세를 포함해 다섯 개다', () => {
     render(<App />)
     const nav = screen.getByRole('navigation', { name: '워크벤치 단계' })
-    expect(nav.querySelectorAll('button')).toHaveLength(4)
+    expect(nav.querySelectorAll('button')).toHaveLength(5)
   })
 
   it('Target Profile 안에서 이해 모델로 이동한다', async () => {
@@ -38,6 +38,14 @@ describe('App shell', () => {
     await userEvent.click(screen.getByRole('button', { name: '실험 결과' }))
 
     expect(screen.getByLabelText('Experiment Run ID')).toBeInTheDocument()
+  })
+
+  it('선언형 명세는 기존 안전 테스트와 별도 workspace로 열린다', async () => {
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: '5. 선언형 명세' }))
+
+    expect(screen.getByRole('navigation', { name: '선언형 명세 하위 단계' }).querySelectorAll('button')).toHaveLength(6)
+    expect(screen.getByText(/먼저 Target Profile 화면에서 Target을 선택/)).toBeInTheDocument()
   })
 
   it('Target을 바꾸면 저장된 Test Plan을 버린다', async () => {

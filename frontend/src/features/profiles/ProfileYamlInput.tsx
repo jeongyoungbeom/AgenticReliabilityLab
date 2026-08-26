@@ -53,6 +53,18 @@ export function ProfileYamlInput({ yaml, onChange, onError }: ProfileYamlInputPr
         rows={18}
       />
       <p className="field-note">{new TextEncoder().encode(yaml).byteLength.toLocaleString()} / 65,536 bytes</p>
+      <details className="observation-source-guide">
+        <summary>명세 관측 소스 입력 도움</summary>
+        <p>
+          관측 소스는 명세가 임의로 고르는 값이 아니라, 사람이 승인한 Profile이 소유합니다. 수집에 실패하면 해당
+          불변식은 통과가 아니라 판정 불가가 됩니다.
+        </p>
+        <ul>
+          <li><strong>HARNESS_STATE</strong>: 상대 경로 <code>/harness/state</code>, 제공 field 목록을 입력합니다. 응답은 <code>HARNESS_STATE_V1</code> 계약이어야 합니다.</li>
+          <li><strong>PROMETHEUS</strong>: 절대 URL, field 목록, field별 PromQL <code>queries</code>를 입력합니다. 쿼리는 명세가 아닌 Profile에만 둡니다.</li>
+          <li><strong>TRACE</strong>: 절대 Tempo URL, field 목록, field별 TraceQL <code>queries</code>를 입력합니다. 모든 TraceQL에는 <code>{'${trial}'}</code>이 있어야 하며 Target은 <code>X-ARL-Trial</code> 값을 그 쿼리가 같은 시행을 가리키도록 쓰는 스팬 속성에 기록해야 합니다.</li>
+        </ul>
+      </details>
     </section>
   )
 }

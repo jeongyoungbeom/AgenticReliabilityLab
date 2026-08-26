@@ -30,6 +30,7 @@ class SpecValueReader(
         bindings: Map<String, String>,
         runId: String,
         label: String,
+        credentialSessionId: String? = null,
     ): ObservedValue {
         val required = readTiming.rule.consecutiveReads()
         val deadline = System.nanoTime() + effectiveWait(readTiming.maxWait).toNanos()
@@ -39,7 +40,9 @@ class SpecValueReader(
         var repeats = 0
         var lastFailure: String? = null
         while (true) {
-            val attempt = runCatching { readOnce(target, call, expression, bindings, runId, label) }
+            val attempt = runCatching {
+                readOnce(target, call, expression, bindings, runId, label, credentialSessionId)
+            }
             attempt.onSuccess { value ->
                 repeats = if (repeats > 0 && value == previous) repeats + 1 else 1
                 previous = value
@@ -60,8 +63,16 @@ class SpecValueReader(
         bindings: Map<String, String>,
         runId: String,
         label: String,
+        credentialSessionId: String?,
     ): Any {
-        val response = caller.send(target, call, bindings, FIRST_REQUEST, runId)
+        val response = caller.send(
+            target,
+            call,
+            bindings,
+            FIRST_REQUEST,
+            runId,
+            credentialSessionId = credentialSessionId,
+        )
         if (!response.delivered || response.statusCode !in SUCCESS_STATUS) {
             throw ObservationExpressionException(
                 "read of '$label' returned ${response.failure ?: "HTTP ${response.statusCode}"}",

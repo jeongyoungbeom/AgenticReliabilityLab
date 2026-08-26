@@ -57,10 +57,37 @@ data class TrialExecution(
     val stateChanged: Boolean,
     /** Fault handles this trial injected but never released. The Runner must release these before the run ends. */
     val pendingFaultHandles: List<String> = emptyList(),
+    /**
+     * The fault lifecycle facts observed while this trial ran.
+     *
+     * These deliberately record handles and Target-reported injection metadata, never the harness credential or
+     * a request body.  An operator can therefore establish whether an injected failure was released without
+     * widening the evidence surface to secrets.
+     */
+    val faultEvents: List<FaultAuditEvent> = emptyList(),
     val failure: String? = null,
 ) {
     val completed: Boolean = failure == null
 }
+
+enum class FaultAuditAction {
+    INJECTED,
+    RELEASED,
+    RELEASE_FAILED,
+}
+
+/** The immutable audit record for one fault injection or release attempt. */
+data class FaultAuditEvent(
+    val action: FaultAuditAction,
+    val faultId: String?,
+    val faultType: String?,
+    val scope: String?,
+    val ttlMs: Long?,
+    val injectionPoint: String?,
+    val description: String,
+    val succeeded: Boolean,
+    val failure: String? = null,
+)
 
 /** The run could not be carried out as specified. Distinct from a violation: nothing was judged. */
 class SpecExecutionException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)

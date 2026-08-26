@@ -163,6 +163,8 @@ data class WorkloadStep(
     /** How many of those requests are in flight at once. */
     val concurrency: Int = 1,
     val captureAs: String? = null,
+    /** Response fields a single-request CALL makes available to later workload steps. */
+    val captures: Map<String, String> = emptyMap(),
     val wait: Duration? = null,
     val faultType: String? = null,
     val faultScope: String? = null,

@@ -2,6 +2,8 @@ package com.project.agenticreliabilitylab.testspec.application
 
 import com.project.agenticreliabilitylab.target.domain.RegisteredTarget
 import com.project.agenticreliabilitylab.testspec.domain.FaultInjectionPlan
+import com.project.agenticreliabilitylab.testspec.domain.FaultAuditAction
+import com.project.agenticreliabilitylab.testspec.domain.FaultAuditEvent
 import com.project.agenticreliabilitylab.testspec.domain.RecordedResponse
 import com.project.agenticreliabilitylab.testspec.domain.SetupStep
 import com.project.agenticreliabilitylab.testspec.domain.SpecExecutionException
@@ -46,15 +48,24 @@ class SpecWorkloadExecutor(
         runId: String,
         trialNumber: Int,
         faultInjectionPlan: FaultInjectionPlan? = null,
+        credentialSessionId: String? = null,
     ): TrialExecution {
         val state = TrialState(trialNumber)
         state.bindings.putAll(references.staticBindings(specification))
         state.bindings["runId"] = runId
         state.bindings["trialNumber"] = trialNumber.toString()
         return try {
-            specification.setup.forEach { step -> runSetupStep(step, target, state, runId) }
+            specification.setup.forEach { step -> runSetupStep(step, target, state, runId, credentialSessionId) }
             specification.workload.forEach { step ->
-                runWorkloadStep(step, target, state, runId, TraceScope.of(runId, trialNumber), faultInjectionPlan)
+                runWorkloadStep(
+                    step,
+                    target,
+                    state,
+                    runId,
+                    TraceScope.of(runId, trialNumber),
+                    faultInjectionPlan,
+                    credentialSessionId,
+                )
             }
             state.toExecution(null)
         } catch (exception: Exception) {
@@ -70,14 +81,22 @@ class SpecWorkloadExecutor(
      * would produce observations nobody can interpret, and an uninterpretable run reported as a result is worse
      * than no run at all.
      */
-    private fun runSetupStep(step: SetupStep, target: RegisteredTarget, state: TrialState, runId: String) {
+    private fun runSetupStep(
+        step: SetupStep,
+        target: RegisteredTarget,
+        state: TrialState,
+        runId: String,
+        credentialSessionId: String?,
+    ) {
         val prefix = "setup.${step.name}"
         val body = step.call.bodyJson?.let { json -> references.resolve(json, state.bindings) }
         state.bindings.putAll(references.bodyFields(prefix, body))
         state.markStateChange(step.call)
 
         val startedAt = clock.instant()
-        val response = caller.send(target, step.call, state.bindings.toMap(), FIRST_REQUEST, runId)
+        val response = caller.send(
+            target, step.call, state.bindings.toMap(), FIRST_REQUEST, runId, credentialSessionId = credentialSessionId,
+        )
         state.timings.add(StepTiming(step.name, startedAt, clock.instant(), StepRole.SETUP))
         if (!response.delivered || response.statusCode !in SUCCESS_STATUS) {
             throw SpecExecutionException(
@@ -99,23 +118,48 @@ class SpecWorkloadExecutor(
         runId: String,
         trialScope: String,
         faultInjectionPlan: FaultInjectionPlan?,
+        credentialSessionId: String?,
     ) {
         val startedAt = clock.instant()
         when (step.kind) {
             WorkloadStepKind.CALL -> {
                 val call = step.call ?: throw SpecExecutionException("Step '${step.name}' declares no call")
                 state.markStateChange(call)
-                state.responses[step.captureAs ?: step.name] =
-                    runCall(step, call, target, state, runId, trialScope)
+                val responses = runCall(step, call, target, state, runId, trialScope, credentialSessionId)
+                state.responses[step.captureAs ?: step.name] = responses
+                captureWorkloadResponse(step, responses, state)
             }
             WorkloadStepKind.WAIT -> Thread.sleep(
                 (step.wait ?: throw SpecExecutionException("Step '${step.name}' declares no duration")).toMillis(),
             )
-            WorkloadStepKind.INJECT_FAULT -> runInjectFault(step, target, state, runId, faultInjectionPlan)
-            WorkloadStepKind.RELEASE_FAULT -> runReleaseFault(step, target, state, runId, faultInjectionPlan)
+            WorkloadStepKind.INJECT_FAULT ->
+                runInjectFault(step, target, state, runId, trialScope, faultInjectionPlan, credentialSessionId)
+            WorkloadStepKind.RELEASE_FAULT ->
+                runReleaseFault(step, target, state, runId, faultInjectionPlan, credentialSessionId)
             else -> throw SpecExecutionException("Step kind '${step.kind}' cannot be executed by this build")
         }
         state.timings.add(StepTiming(step.name, startedAt, clock.instant(), StepRole.WORKLOAD))
+    }
+
+    /** A captured response is limited to one successful request, so its later reference stays unambiguous. */
+    private fun captureWorkloadResponse(
+        step: WorkloadStep,
+        responses: List<RecordedResponse>,
+        state: TrialState,
+    ) {
+        if (step.captures.isEmpty()) return
+        val response = responses.singleOrNull()
+            ?: throw SpecExecutionException("Step '${step.name}' cannot capture more than one response")
+        if (!response.delivered || response.statusCode !in SUCCESS_STATUS) {
+            throw SpecExecutionException(
+                "Step '${step.name}' did not succeed before its response could be captured: " +
+                    (response.failure ?: "HTTP ${response.statusCode}"),
+            )
+        }
+        val scope = evaluator.responseScope(response)
+        step.captures.forEach { (name, expression) ->
+            state.bindings["workload.${step.name}.$name"] = evaluator.evaluate(expression, scope).toString()
+        }
     }
 
     /**
@@ -132,20 +176,57 @@ class SpecWorkloadExecutor(
         target: RegisteredTarget,
         state: TrialState,
         runId: String,
+        trialScope: String,
         faultInjectionPlan: FaultInjectionPlan?,
+        credentialSessionId: String?,
     ) {
         val plan = faultInjectionPlan
             ?: throw SpecExecutionException("Step '${step.name}' injects a fault but none is configured")
         val faultType = step.faultType ?: throw SpecExecutionException("Step '${step.name}' declares no fault type")
         val ttl = step.faultTtl ?: throw SpecExecutionException("Step '${step.name}' declares no TTL")
         state.markMutation()
-        val outcome = faultInjection.inject(plan, target, runId, faultType, step.faultScope, ttl.toMillis())
+        val outcome = faultInjection.inject(
+            plan,
+            target,
+            runId,
+            trialScope,
+            faultType,
+            step.faultScope,
+            ttl.toMillis(),
+            credentialSessionId,
+        )
         val faultId = outcome.faultId
         if (!outcome.succeeded || faultId == null) {
+            state.faultEvents.add(
+                FaultAuditEvent(
+                    action = FaultAuditAction.INJECTED,
+                    faultId = faultId,
+                    faultType = faultType,
+                    scope = step.faultScope,
+                    ttlMs = ttl.toMillis(),
+                    injectionPoint = outcome.injectionPoint,
+                    description = "Fault step '${step.name}' injection",
+                    succeeded = false,
+                    failure = outcome.failure ?: "no faultId returned",
+                ),
+            )
             throw SpecExecutionException(
                 "Fault step '${step.name}' did not succeed: ${outcome.failure ?: "no faultId returned"}",
             )
         }
+        state.faultEvents.add(
+            FaultAuditEvent(
+                action = FaultAuditAction.INJECTED,
+                faultId = faultId,
+                faultType = faultType,
+                scope = step.faultScope,
+                ttlMs = ttl.toMillis(),
+                injectionPoint = outcome.injectionPoint,
+                description = "Fault step '${step.name}' injection",
+                succeeded = true,
+            ),
+        )
+        state.faultContexts[faultId] = FaultContext(faultType, step.faultScope, ttl.toMillis(), outcome.injectionPoint)
         state.bindings["workload.${step.name}.faultId"] = faultId
         state.activeFaultHandles.add(faultId)
     }
@@ -160,6 +241,7 @@ class SpecWorkloadExecutor(
         state: TrialState,
         runId: String,
         faultInjectionPlan: FaultInjectionPlan?,
+        credentialSessionId: String?,
     ) {
         val plan = faultInjectionPlan
             ?: throw SpecExecutionException("Step '${step.name}' releases a fault but none is configured")
@@ -167,11 +249,26 @@ class SpecWorkloadExecutor(
             ?: throw SpecExecutionException("Step '${step.name}' declares no handle")
         val faultId = references.resolve(handleReference, state.bindings)
         state.markMutation()
-        val outcome = faultInjection.release(plan, target, runId, faultId)
+        val outcome = faultInjection.release(plan, target, runId, faultId, credentialSessionId)
+        val context = state.faultContexts[faultId]
+        state.faultEvents.add(
+            FaultAuditEvent(
+                action = if (outcome.succeeded) FaultAuditAction.RELEASED else FaultAuditAction.RELEASE_FAILED,
+                faultId = faultId,
+                faultType = context?.faultType,
+                scope = context?.scope,
+                ttlMs = context?.ttlMs,
+                injectionPoint = context?.injectionPoint,
+                description = "Fault step '${step.name}' release",
+                succeeded = outcome.succeeded,
+                failure = outcome.failure,
+            ),
+        )
         if (!outcome.succeeded) {
             throw SpecExecutionException("Fault step '${step.name}' did not release: ${outcome.failure}")
         }
         state.activeFaultHandles.remove(faultId)
+        state.faultContexts.remove(faultId)
     }
 
     /**
@@ -189,6 +286,7 @@ class SpecWorkloadExecutor(
         state: TrialState,
         runId: String,
         trialScope: String,
+        credentialSessionId: String?,
     ): List<RecordedResponse> {
         val gate = CountDownLatch(1)
         val started = CountDownLatch(step.requestCount)
@@ -213,6 +311,7 @@ class SpecWorkloadExecutor(
                                     number,
                                     runId,
                                     trialScope,
+                                    credentialSessionId,
                                 )
                             } finally {
                                 permits.release()
@@ -280,6 +379,8 @@ class SpecWorkloadExecutor(
         val responses = linkedMapOf<String, List<RecordedResponse>>()
         val timings = mutableListOf<StepTiming>()
         val activeFaultHandles = mutableListOf<String>()
+        val faultEvents = mutableListOf<FaultAuditEvent>()
+        val faultContexts = mutableMapOf<String, FaultContext>()
         private var stateChanged = false
 
         /** A request is counted as changing state when it is about to be sent, not when it succeeds. */
@@ -299,9 +400,17 @@ class SpecWorkloadExecutor(
             timings = timings.toList(),
             stateChanged = stateChanged,
             pendingFaultHandles = activeFaultHandles.toList(),
+            faultEvents = faultEvents.toList(),
             failure = failure,
         )
     }
+
+    private data class FaultContext(
+        val faultType: String,
+        val scope: String?,
+        val ttlMs: Long,
+        val injectionPoint: String?,
+    )
 
     private companion object {
         const val TERMINATION_POLL_SECONDS = 1L

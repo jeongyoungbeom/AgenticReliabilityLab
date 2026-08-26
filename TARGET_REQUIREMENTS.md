@@ -34,7 +34,7 @@ ARL이 붙이는 헤더는 Target이 덮어쓰거나 재작성하면 안 된다.
 | 헤더 | 용도 |
 |---|---|
 | `X-ARL-Run-Id` | 모든 요청. 어느 실행에서 온 요청인지 |
-| `X-ARL-Trial` | **워크로드 요청에만.** 트레이스 귀속 (아래 참조) |
+| `X-ARL-Trial` | **워크로드 요청과 결함 주입 요청에만.** 트레이스·결함 귀속 (아래 참조) |
 
 ---
 
@@ -151,7 +151,9 @@ ARL 배포 자체에 영향을 주는 별도 어댑터가 필요해서, 결함 �
 
 - Profile의 `supported-faults`에 선언한 종류를 주입하는 API 하나, 해제하는 API 하나
   (Profile의 `test-spec-execution.fault-injection.inject-endpoint` / `release-endpoint`에 등록)
-- 주입 호출은 `{"runId","faultType","ttlMs","scope"}`를 받고 `{"faultId": "..."}`로 응답해야 한다
+- 주입 호출은 `{"runId","trialScope","faultType","ttlMs","scope"}`를 받고 `{"faultId": "..."}`로 응답해야 한다.
+  `trialScope`는 `X-ARL-Trial` 헤더와 정확히 같아야 하며, Target은 둘 중 하나가 없거나 서로 다르면
+  주입을 거부해야 한다. 결함은 `runId`만이 아니라 이 시행 범위에 귀속되어야 한다.
   (`scope`는 명세가 선언하지 않으면 빈 문자열로 온다)
 - 해제 호출은 `{"runId","faultId"}`를 받는다
 - **TTL 자동 만료는 여전히 Target의 책임이다.** ARL은 워크로드가 명시적으로 `RELEASE_FAULT`를 실행하지

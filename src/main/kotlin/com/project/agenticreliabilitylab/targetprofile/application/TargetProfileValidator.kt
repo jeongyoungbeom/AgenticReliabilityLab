@@ -5,6 +5,8 @@ import com.project.agenticreliabilitylab.targetprofile.domain.GenericHttpProfile
 import com.project.agenticreliabilitylab.targetprofile.domain.ReadOnlyOperationDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.TargetProfileDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.TargetRegistrationDefinition
+import com.project.agenticreliabilitylab.targetprofile.domain.declaredOpenApiPaths
+import com.project.agenticreliabilitylab.target.domain.TargetEnvironment
 import org.springframework.stereotype.Component
 import java.net.URI
 import java.time.Duration
@@ -43,6 +45,14 @@ class TargetProfileValidator(
             "Target base URL origin must exactly match its allowed origin"
         }
         healthPath.validateFixedRelativePath("Target health path")
+        declaredOpenApiPaths().takeIf { paths -> paths.isNotEmpty() }?.let { paths ->
+            require(environment in PILOT_ENVIRONMENTS) {
+                "OpenAPI discovery is refused in '$environment'; only LOCAL or TEST Targets are supported"
+            }
+            require(paths.size <= MAX_OPENAPI_PATHS) { "Target has too many OpenAPI paths" }
+            require(paths.distinct().size == paths.size) { "Target has duplicate OpenAPI paths" }
+            paths.forEach { path -> path.validateFixedRelativePath("Target OpenAPI path") }
+        }
     }
 
     private fun GenericHttpProfileDefinition.validate(targetSystemId: String) {
@@ -86,6 +96,7 @@ class TargetProfileValidator(
             "Target Spec '$targetSystemId' operation '$id' description is too long"
         }
         path.validateFixedRelativePath("Target Spec '$targetSystemId' operation '$id' path")
+        operationId?.validateOpenApiOperationId("Target Spec '$targetSystemId' operation '$id' operationId")
         require(expectedStatusCodes.isNotEmpty() && expectedStatusCodes.all { it in HTTP_STATUS_RANGE }) {
             "Target Spec '$targetSystemId' operation '$id' must declare valid expected status codes"
         }
@@ -140,6 +151,12 @@ class TargetProfileValidator(
         require(uri.path.split('/').none { it == ".." }) { "$label must not contain path traversal" }
     }
 
+    private fun String.validateOpenApiOperationId(label: String) {
+        require(OPENAPI_OPERATION_ID_PATTERN.matches(this)) {
+            "$label must contain 1 to $MAX_OPENAPI_OPERATION_ID_LENGTH safe characters"
+        }
+    }
+
     private fun URI.normalizedOrigin(): String {
         val port = if (port >= 0) port else if (scheme.equals("https", true)) 443 else 80
         return "${scheme.lowercase()}://${host.lowercase()}:$port"
@@ -155,6 +172,8 @@ class TargetProfileValidator(
         const val MAX_DESCRIPTION_LENGTH = 1_000
         const val MAX_SOURCE_REPOSITORY_LENGTH = 500
         const val MAX_PATH_LENGTH = 1_000
+        const val MAX_OPENAPI_PATHS = 8
+        const val MAX_OPENAPI_OPERATION_ID_LENGTH = 200
         val HTTP_STATUS_RANGE = 100..599
         val MIN_TIMEOUT: Duration = Duration.ofMillis(100)
         val MAX_TIMEOUT: Duration = Duration.ofSeconds(30)
@@ -164,5 +183,7 @@ class TargetProfileValidator(
         val ADAPTER_ID_PATTERN = Regex("[A-Za-z][A-Za-z0-9_-]{0,99}")
         val EXPERIMENT_ADAPTER_ID_PATTERN = Regex("[A-Z][A-Z0-9_]{2,99}")
         val HOST_RESOURCE_GROUP_PATTERN = Regex("[a-z0-9][a-z0-9-]{0,119}")
+        val OPENAPI_OPERATION_ID_PATTERN = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
+        val PILOT_ENVIRONMENTS = setOf(TargetEnvironment.LOCAL, TargetEnvironment.TEST)
     }
 }

@@ -123,6 +123,7 @@ class TestSpecParser(
                 requestCount = node.optionalInt("requestCount") ?: 1,
                 concurrency = node.optionalInt("concurrency") ?: 1,
                 captureAs = node.optionalText("captureAs"),
+                captures = node.path("captures").toStringMap(),
             )
             WorkloadStepKind.WAIT -> WorkloadStep(
                 kind = kind, name = name, wait = node.requiredDuration("duration"),

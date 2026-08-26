@@ -53,6 +53,7 @@ class TestSpecExecutionYamlMapper {
         method = requiredString("method").uppercase(),
         path = requiredString("path"),
         authProfile = optionalString("auth-profile"),
+        operationId = optionalString("operation-id"),
     )
 
     private fun Map<String, Any?>.toObservationSource() = ProfileObservationSourceDefinition(

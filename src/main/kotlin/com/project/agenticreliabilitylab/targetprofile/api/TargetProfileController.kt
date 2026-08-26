@@ -1,6 +1,7 @@
 package com.project.agenticreliabilitylab.targetprofile.api
 
 import com.project.agenticreliabilitylab.access.OperatorAccessService
+import com.project.agenticreliabilitylab.targetdiscovery.application.TargetProfileActivationWorkflow
 import com.project.agenticreliabilitylab.targetprofile.api.dto.ActivateTargetProfileRequest
 import com.project.agenticreliabilitylab.targetprofile.api.dto.ImportTargetProfileRequest
 import com.project.agenticreliabilitylab.targetprofile.api.dto.TargetProfileResponse
@@ -26,6 +27,7 @@ import java.util.UUID
 class TargetProfileController(
     private val parser: TargetProfileDocumentParser,
     private val profileService: TargetProfileService,
+    private val activationWorkflow: TargetProfileActivationWorkflow,
     private val operatorAccessService: OperatorAccessService,
 ) {
     @PostMapping("/validate")
@@ -61,7 +63,7 @@ class TargetProfileController(
         }
         val actor = operatorAccessService.requireProfileEditor(authorization)
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(
-            TargetProfileResponse.from(profileService.activate(versionId, actor, correlationId())),
+            TargetProfileResponse.from(activationWorkflow.activate(versionId, actor, correlationId())),
         )
     }
 

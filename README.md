@@ -101,6 +101,18 @@ $env:ARL_QWEN_MODEL = '사용할-qwen-태그'
 
 Target의 health endpoint와 점검할 공개 `GET` endpoint가 실제로 응답하는지 먼저 확인하세요.
 
+선언형 SideProject 테스트를 실행할 때는 판매자와 구매자 역할의 토큰이 필요합니다. 아래 스크립트는
+고유한 로컬 테스트 계정을 생성·로그인하고, 토큰을 출력하거나 파일에 저장하지 않은 채 현재 PowerShell
+세션의 ARL Runner 환경변수에만 넣습니다.
+
+```powershell
+.\scripts\create-sideproject-test-tokens.ps1
+.\start.ps1 -SkipBuild
+```
+
+두 명령은 같은 PowerShell 창에서 실행해야 합니다. 재기동 뒤 `ARL_SPEC_AUTH_SIDEPROJECT_LOCAL_SELLER`와
+`ARL_SPEC_AUTH_SIDEPROJECT_LOCAL_BUYER`가 ARL 컨테이너에 전달됩니다.
+
 ### 3. ARL 실행
 
 프로젝트 루트에서 다음을 실행합니다.

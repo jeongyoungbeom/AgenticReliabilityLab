@@ -14,8 +14,8 @@ const fields: Array<{ key: keyof AccessTokens; label: string; description: strin
 export function AccessTokenPanel({ tokens, onChange }: AccessTokenPanelProps) {
   return (
     <details className="access-panel">
-      <summary>접근 토큰 (SECURED 환경에서만 필요)</summary>
-      <p>토큰은 이 탭의 메모리에만 머물며 브라우저 저장소에는 기록하지 않습니다.</p>
+      <summary>ARL 접근 토큰 (SECURED 환경에서만 필요)</summary>
+      <p>ARL의 Viewer/Profile editor/Executor 권한입니다. Target 테스트 자격증명은 Target 설정 안에서 별도로 입력합니다.</p>
       <div className="access-token-grid">
         {fields.map((field) => (
           <label key={field.key}>

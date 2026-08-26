@@ -29,18 +29,21 @@ class FaultInjectionService(
         plan: FaultInjectionPlan,
         target: RegisteredTarget,
         runId: String,
+        trialScope: String,
         faultType: String,
         scope: String?,
         ttlMs: Long,
+        credentialSessionId: String? = null,
     ): FaultInjectionOutcome {
         val bindings = buildMap {
             put("runId", runId.jsonEscaped())
+            put("trialScope", trialScope.jsonEscaped())
             put("faultType", faultType.jsonEscaped())
             put("ttlMs", ttlMs.toString())
             put("scope", (scope ?: "").jsonEscaped())
         }
         val call = plan.injectHook.copy(bodyJson = INJECT_BODY_TEMPLATE)
-        val response = caller.send(target, call, bindings, FIRST_REQUEST, runId)
+        val response = caller.send(target, call, bindings, FIRST_REQUEST, runId, trialScope, credentialSessionId)
         if (!response.delivered || response.statusCode !in SUCCESS_STATUS) {
             return FaultInjectionOutcome(null, false, response.failure ?: "HTTP ${response.statusCode}")
         }
@@ -52,7 +55,11 @@ class FaultInjectionService(
             val reason = faultIdResult.exceptionOrNull()?.message ?: "the inject hook did not return a faultId"
             FaultInjectionOutcome(null, false, reason)
         } else {
-            FaultInjectionOutcome(faultId, true)
+            FaultInjectionOutcome(
+                faultId = faultId,
+                succeeded = true,
+                injectionPoint = responseValue(response, INJECTION_POINT_EXPRESSION),
+            )
         }
     }
 
@@ -61,10 +68,18 @@ class FaultInjectionService(
         target: RegisteredTarget,
         runId: String,
         faultId: String,
+        credentialSessionId: String? = null,
     ): FaultInjectionOutcome {
         val bindings = mapOf("runId" to runId.jsonEscaped(), "faultId" to faultId.jsonEscaped())
         val call = plan.releaseHook.copy(bodyJson = RELEASE_BODY_TEMPLATE)
-        val response = caller.send(target, call, bindings, FIRST_REQUEST, runId)
+        val response = caller.send(
+            target,
+            call,
+            bindings,
+            FIRST_REQUEST,
+            runId,
+            credentialSessionId = credentialSessionId,
+        )
         return if (response.delivered && response.statusCode in SUCCESS_STATUS) {
             FaultInjectionOutcome(faultId, true)
         } else {
@@ -75,6 +90,7 @@ class FaultInjectionService(
     private companion object {
         const val FIRST_REQUEST = 1
         const val FAULT_ID_EXPRESSION = "response.body.faultId"
+        const val INJECTION_POINT_EXPRESSION = "response.body.injectionPoint"
         const val MIN_PRINTABLE = 0x20
         const val HEX_RADIX = 16
         const val UNICODE_ESCAPE_DIGITS = 4
@@ -83,7 +99,8 @@ class FaultInjectionService(
         // {{scope}} is always sent, as an empty string when the specification did not declare one, so the
         // template stays fixed instead of being assembled per call from specification-influenced fragments.
         const val INJECT_BODY_TEMPLATE =
-            """{"runId":"{{runId}}","faultType":"{{faultType}}","ttlMs":{{ttlMs}},"scope":"{{scope}}"}"""
+            """{"runId":"{{runId}}","trialScope":"{{trialScope}}","faultType":"{{faultType}}","ttlMs":{{ttlMs}},""" +
+                """"scope":"{{scope}}"}"""
         const val RELEASE_BODY_TEMPLATE = """{"runId":"{{runId}}","faultId":"{{faultId}}"}"""
 
         /**
@@ -111,4 +128,12 @@ class FaultInjectionService(
             }
         }
     }
+
+    /** A Target may omit this optional field; a missing field is not an injection failure. */
+    private fun responseValue(
+        response: com.project.agenticreliabilitylab.testspec.domain.RecordedResponse,
+        expression: String,
+    ): String? = runCatching { evaluator.evaluate(expression, evaluator.responseScope(response)).toString() }
+        .getOrNull()
+        ?.takeIf(String::isNotBlank)
 }

@@ -139,6 +139,11 @@ class TestSpecExecutionProfileValidator {
     private fun ProfileHttpCallDefinition.validate(authProfiles: Set<String>, label: String) {
         require(method.uppercase() in HTTP_METHODS) { "Test specification $label method '$method' is invalid" }
         path.validateTemplatePath("Test specification $label path")
+        operationId?.let { id ->
+            require(OPENAPI_OPERATION_ID_PATTERN.matches(id)) {
+                "Test specification $label operationId '$id' is invalid"
+            }
+        }
         authProfile?.let { profile ->
             require(profile in authProfiles) { "Test specification $label uses undeclared auth profile '$profile'" }
         }
@@ -235,6 +240,7 @@ class TestSpecExecutionProfileValidator {
         val HTTP_METHODS = setOf("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE")
         val HTTP_SCHEMES = setOf("http", "https")
         val IDENTIFIER_PATTERN = Regex("[A-Za-z][A-Za-z0-9_-]{0,99}")
+        val OPENAPI_OPERATION_ID_PATTERN = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
         val UPPER_IDENTIFIER_PATTERN = Regex("[A-Z][A-Z0-9_]{1,99}")
         val TARGET_NAME_PATTERN = Regex("[A-Za-z0-9][A-Za-z0-9_.-]{0,119}")
         val READ_METHODS = setOf("GET", "HEAD")

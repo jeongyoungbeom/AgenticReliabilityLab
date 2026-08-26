@@ -25,6 +25,7 @@ data class DeclaredObservationRequest(
     val trialScope: String,
     val timeout: Duration,
     val window: ObservationWindow?,
+    val credentialSessionId: String? = null,
 )
 
 /** A failed read is data, not an execution failure: only invariants using this field become unjudgeable. */

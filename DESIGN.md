@@ -1,5 +1,10 @@
 # Autonomous Reliability Lab
 
+> **문서 상태(2026-08-26):** 이 문서는 Phase 0–10.7의 기반 설계와 안전 경계를 보존하는
+> 역사 문서다. 현재 파일럿의 고객 여정과 다음 구현 우선순위는
+> [`DESIGN4.md`](DESIGN4.md)를 따른다. 이 문서의 `LOCAL`/`TEST` 제한, 승인·감사, 비밀값
+> 비저장 원칙은 계속 유효하다.
+
 > AI Agent가 외부 시스템에 신뢰성·동시성·장애·부하 실험을 수행하고, 수집된 Evidence를 분석하여 문제 가능성·원인 후보·추가 실험·개선 방향을 제안하는 자율 Reliability Testing Platform.
 
 ---

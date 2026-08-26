@@ -2,6 +2,7 @@ package com.project.agenticreliabilitylab.testspec.api.dto
 
 import com.project.agenticreliabilitylab.testspec.application.TestSpecRunView
 import com.project.agenticreliabilitylab.testspec.domain.InvariantVerdict
+import com.project.agenticreliabilitylab.testspec.domain.FaultAuditEvent
 import com.project.agenticreliabilitylab.testspec.domain.ResetCheck
 import com.project.agenticreliabilitylab.testspec.domain.StepTiming
 import com.project.agenticreliabilitylab.testspec.domain.StoredResetResult
@@ -66,6 +67,7 @@ data class TestSpecTrialResponse(
     val failure: String?,
     val verdicts: List<InvariantVerdict>,
     val timings: List<StepTiming>,
+    val faultEvents: List<FaultAuditEvent>,
 ) {
     companion object {
         fun from(trial: StoredTrialResult) = TestSpecTrialResponse(
@@ -76,6 +78,7 @@ data class TestSpecTrialResponse(
             failure = trial.failure,
             verdicts = trial.verdicts,
             timings = trial.timings,
+            faultEvents = trial.faultEvents,
         )
     }
 }

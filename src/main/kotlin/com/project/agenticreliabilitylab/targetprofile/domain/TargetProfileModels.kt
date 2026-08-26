@@ -44,11 +44,20 @@ data class TargetRegistrationDefinition(
     val allowedOrigin: String,
     val allowedCidrs: Set<String>,
     val healthPath: String,
+    /** Legacy singular spelling for a relative OpenAPI path ARL may fetch from this registered Target origin. */
+    val openApiPath: String? = null,
+    /** Explicit relative OpenAPI document paths. This list is an allowlist, never a Swagger UI crawl seed. */
+    // Nullable for Profile JSON written before this field existed; [declaredOpenApiPaths] normalizes it at use.
+    val openApiPaths: List<String>? = null,
     val sourceRepository: String,
     val identityVerification: IdentityVerificationStatus,
     val capabilities: Set<TargetCapability>,
     val enabled: Boolean,
 )
+
+/** The bounded document allowlist, accepting the original singular key for backwards-compatible Profiles. */
+fun TargetRegistrationDefinition.declaredOpenApiPaths(): List<String> =
+    listOfNotNull(openApiPath) + openApiPaths.orEmpty()
 
 data class GenericHttpProfileDefinition(
     val executionEnabled: Boolean,
@@ -66,6 +75,8 @@ data class ReadOnlyOperationDefinition(
     val description: String,
     val path: String,
     val expectedStatusCodes: Set<Int>,
+    /** Optional Swagger identity when the gateway execution path differs from the service document path. */
+    val operationId: String? = null,
 )
 
 data class ExperimentProfileDefinition(
@@ -97,6 +108,8 @@ data class ProfileHttpCallDefinition(
     val method: String,
     val path: String,
     val authProfile: String? = null,
+    /** Optional Swagger identity; execution authority remains the exact method/path above. */
+    val operationId: String? = null,
 )
 
 enum class ProfileObservationSourceKind {

@@ -1,8 +1,114 @@
 # HANDOFF — 다음 세션 인수인계
 
-작성: 2026-08-23, 갱신: 2026-08-25 / 기준 커밋: `fd5cff5` (Target별 명세 목록 조회 API 추가) — Phase 0~22와 명세 목록 조회 API까지 전부 구현·빌드 검증·커밋 완료. **다음은 UI 작업(3.1절)부터, 바로 아래 절 참고**
+> **가장 최신 인수인계: 2026-08-26.** 아래의 Phase 0–22 상세 로그는 구현 이력으로 보존한다.
+> 다음 세션의 작업 순서와 제품 흐름은 이 문서의 새 `0. 현재 파일럿 우선순위`와
+> [`DESIGN4.md`](DESIGN4.md)가 기존 3절·3.1절보다 우선한다.
 
-## 개발 현황 요약 (2026-08-25 기준, 다음 세션은 여기부터 읽을 것)
+## 0. 현재 파일럿 우선순위 — 여기부터 시작
+
+### 목표
+
+사용자는 SideProject 같은 고객 Target을 위한 YAML을 UI에 등록하고, ARL이 등록된 Target origin 안의
+Swagger를 자동으로 읽어 안전한 후보를 보여 준 뒤, 사용자가 선택한 테스트를 실제로 실행해야 한다.
+수동 `Target 이해 모델` 작성, 수동 JSON 명세 등록, 별도 Test Plan 조립은 파일럿 기본 흐름의
+필수 단계가 아니다.
+
+첫 성공은 다음 한 사이클이다.
+
+```text
+YAML 등록·활성화
+→ 허용 Swagger 자동 발견
+→ 역할별 Target 테스트 자격증명 입력/preflight
+→ 후보 선택·실행 승인
+→ reset / fixture / workload / observation / cleanup
+→ UI의 PASS / VIOLATED / NOT_EVALUATED 결과
+```
+
+코드가 기능을 많이 가진 상태와 이 사이클이 실제로 되는 상태는 다르다. **다음 세션은 이 사이클을
+P1·P2로 끝내는 것이 최우선이며, 그전에는 AI·회귀·추가 화면을 넓히지 않는다.**
+
+### 확정된 설계 결정
+
+- 최신 설계 원본은 `DESIGN4.md`다. `DESIGN.md`/`DESIGN2.md`/`DESIGN3.md`는 기반 안전 계약과
+  구현 이력을 보존한다. 이전 3.1절의 10단계 UI 계획은 더 이상 착수 순서가 아니다.
+- YAML은 Target의 실행 allowlist다. `base-url`, safe environment, `allowed-origin`/CIDR,
+  상대 `openapi-path` 또는 명시 목록 `openapi-paths`, 허용 operation·역할, Harness state/reset/fault/release,
+  실행 상한만 선언한다. 복수 문서는 이 목록만 fetch하며 Swagger UI 탐색·redirect·외부 `$ref`로 경로를 늘리지 않는다.
+  Swagger 전체나 임의 POST를 실행하지 않는다.
+- Swagger fetch는 등록된 Target의 허용 origin/cidr 안에서만 한다. redirect, 다른 host, 외부 `$ref`,
+  Swagger 내부 URL은 금지한다. 기존 bounded parser 한도를 유지한다.
+- UI의 ARL 접근 토큰과 Target seller/buyer/harness 테스트 토큰은 반드시 분리한다. Target 토큰은
+  UI 파일럿에서는 짧은 수명 런타임 세션에만 보관하며 DB/YAML/Evidence/log/prompt에 저장하지 않는다.
+  실행 전 preflight 인증 실패는 `TARGET_CREDENTIAL_EXPIRED`로 분류한다.
+- 후보는 LLM 없이 먼저 결정적으로 만든다: health/catalog, 상품 생성, 상품→주문, 결제 성공,
+  멱등/중복, 동시성, 결제 장애·복구. LLM은 나중에 추가 후보와 해석만 맡는다.
+- 새 상품 fixture를 매 테스트마다 만들고 response ID capture를 다음 주문/결제 요청에 연결한다.
+  사용자가 request body나 Test Plan을 수동으로 만들지 않는다.
+- Target 쓰기 테스트는 한 Target에서 순차 실행한다. 매 테스트 전 reset→state 확인, 종료 시
+  finally reset/fault release→state 확인을 한다. 이 보장이 있으므로 파일럿 Harness의 전역 count로
+  충분하며 run-scoped state를 새로 요구하지 않는다.
+- 내부 `runId`, `trialId`, correlation ID, idempotency key는 ARL이 만든다. 사용자 설정이 아니다.
+- 기본 수렴은 최대 5초/200ms polling, 동시성은 20 parallel×3 trials다. 고급 Profile 설정에서만
+  YAML 상한 안으로 조정한다.
+- 중복 검증은 canonical body와 idempotency/event key를 완전히 동일하게 두 번 보내며, business 결과와
+  Harness count를 본다. outbox처럼 내부 ID가 다른 것만으로 중복이라 판정하지 않는다.
+- fault 결과에는 injection point, 설명, `faultId`, TTL, release 결과를 남긴다. `RECOVERY_REQUIRED`는
+  다음 쓰기 테스트를 막고, `NOT_EVALUATED`는 절대 PASS로 표시하지 않는다.
+
+### 구현 순서와 단계별 확인
+
+1. **P1 — 등록부터 후보 표시.** Profile schema/validator에 안전한 `openapi-path`를 추가하고,
+   활성화 뒤 Swagger snapshot과 allowlist-filtered 기본 후보를 만든다. UI는 Target 설정·발견 결과·
+   역할별 runtime credential/preflight를 한 흐름으로 보인다.
+   - 확인: SideProject YAML을 UI에서 활성화하면 재기동 없이 후보가 보인다. allowlist 밖 endpoint와
+     다른 host/redirect/external `$ref` fetch는 거부된다.
+2. **P2 — 실제 한 사이클.** 선택한 후보를 내부 Test Plan/선언형 명세로 자동 변환하고, response
+   capture, 순차 reset/fixture/workload/observation/cleanup, 결과 UI를 연결한다.
+   - 확인: 사용자가 SideProject에서 health, 상품 생성, 상품→주문, 결제 성공 중 하나 이상을 직접
+     실행해 근거 있는 결과를 본다. 이 확인 전 P3로 가지 않는다.
+3. **P3 — 일반 신뢰성.** 동일 요청 멱등/중복과 20×3 동시성 template, trial별 결과를 추가한다.
+4. **P4 — 결제 장애·복구.** fault injection point, 실패 상태, release/retry, recovery result를 추가한다.
+5. **P5 — AI·회귀·정리.** AI 후보 추천/해석은 기본 기능 위에 추가하고, 승인된 후보의 회귀 실행과
+   고급 화면 정리를 한다.
+
+### 다음 구현 세션의 조사 순서
+
+1. `AGENTS.md`, `.agents/skills/SKILL.md`, `DESIGN4.md`, 이 handoff를 읽는다.
+2. 현재 Target Profile YAML schema/validator/mapper, safe Target HTTP transport, snapshot/candidate,
+   Test Plan/선언형 명세 runner, `TargetProfileWorkspace`·`CandidateWorkspace`를 필요한 범위만 읽는다.
+3. SideProject의 실제 Swagger URL/operationId/request-response schema와 Harness 네 endpoint의 현재
+   응답을 읽어 P1/P2 template 입력을 확정한다. 토큰·비밀값을 명령 출력·문서에 남기지 않는다.
+4. P1의 변경 범위와 검증을 짧게 공유하고 구현한다. P2는 P1 결과와 실제 Swagger가 확인된 뒤에만
+   이어 간다. 코드를 고친 뒤에는 관련 백엔드 테스트, 프런트 테스트/build, 실제 Docker 파일럿 UI
+   흐름을 검증한다.
+
+### 변경하면 안 되는 것
+
+- `LOCAL`/`TEST` 외 쓰기·부하·fault 실행 금지
+- Profile allowlist 밖 URL/method/path/header/auth 사용 금지
+- 임의 문서 URL/외부 `$ref`/redirect fetch 금지
+- 토큰·비밀값의 DB/YAML/Evidence/log/LLM prompt 저장 금지
+- LLM의 실행 범위·request body·PASS/FAIL 결정 금지
+- cleanup/reset/fault release가 확인되지 않으면 다음 쓰기 실행 차단
+- 기존 사용자 변경을 되돌리거나, P1/P2 이전에 대규모 일반화·새 의존성을 추가하지 않음
+
+### 현재 파일·환경 사실
+
+- ARL: `C:\Users\jybeo\OneDrive\Desktop\study\AgenticReliabilityLab`
+- SideProject: `\\wsl.localhost\Ubuntu\home\jybeomss\sideProject`
+- SideProject에는 Harness state/reset/fault/release와 판매자·구매자 테스트 흐름이 파일럿용으로
+  준비돼 있다. 다음 세션은 실제 Swagger 계약을 다시 읽어 확정한다.
+- 이전에 `target-profile.ui-import.yaml`을 UI import용으로 따로 두었던 이유는 UI가 `${...}` 환경변수
+  placeholder를 Profile document에서 거부했기 때문이다. P1은 재기동·이중 YAML을 요구하지 않는 UI
+  등록 흐름으로 정리해야 한다. secret 자체는 YAML에 넣지 않는다.
+- 이 문서 갱신 세션에서는 **코드·설정·테스트를 수정하거나 실행하지 않았다.** 문서만 바뀌었다.
+
+---
+
+> **이전 기준(2026-08-25):** `fd5cff5` 시점의 상세 구현 로그다. 당시의 다음 작업은
+> UI 10단계였지만, 현재 순서는 위 `0. 현재 파일럿 우선순위`와 `DESIGN4.md`를 따른다.
+
+## 이전 개발 현황 요약 (2026-08-25 기준 — 상세 구현 이력)
 
 ### 지금까지 개발된 것 — 전부 구현·빌드 검증·커밋 완료
 
@@ -22,7 +128,7 @@
 프론트엔드(`frontend/`)는 Phase 20~22와 이번 목록 API 어느 것도 건드리지 않았다 — 마지막 확인은
 Phase 19 기준 `npm ci`, 46 tests, `tsc`, `vite build` 통과.
 
-### 이제 개발해야 하는 것 — 사용자가 정한 순서: UI → Target 수정 → 전체 테스트/파일럿
+### 당시의 다음 작업 — 현재 착수 순서 아님
 
 1. **UI 작업 (3.1절, 10단계, 아직 착수 안 함).** 명세 엔진(Phase 17~22)에는 화면이 하나도 없다.
    3.1절의 "시작 전에 정할 것 둘"은 이제 둘 다 해소됐다 — 목록 API는 위에서 추가했고, 10단계
@@ -560,7 +666,7 @@ Phase 20 자체의 완료 기준은 `TestSpecGenerationApiIntegrationTests`의 �
 
 ---
 
-## 3. 다음 작업
+## 3. 당시의 다음 작업 상세 (현재 착수 순서 아님)
 
 **독립 리뷰(22-A~22-D)와 빌드 검증 둘 다 끝났고, 커밋도 끝났다(`395eea7`).** 발견사항 6건 전부
 수정했고(0절), 사용자가 직접 `.\gradlew.bat clean check`를 돌려 detekt 위반 2건을 추가로 잡아냈고
@@ -589,7 +695,7 @@ Target 쪽에 필요한 것은 `TARGET_REQUIREMENTS.md`에 있고, 확인된 것
 
 ---
 
-## 3.1 UI 작업 계획 (우선순위 순서, 아직 착수 안 함)
+## 3.1 당시 UI 작업 계획 (현재는 DESIGN4 P1–P5가 우선)
 
 `UI_BACKLOG.md`·현재 백엔드 DTO(`testspec/api/dto/*.kt`)·기존 프론트 관례
 (`features/<도메인>/<이름>Workspace.tsx` + `api/<도메인>.ts`, `App.tsx`의 `WorkspaceView`/

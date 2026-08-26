@@ -5,6 +5,7 @@ import com.project.agenticreliabilitylab.testspec.domain.CleanupMethod
 import com.project.agenticreliabilitylab.testspec.domain.CleanupTiming
 import com.project.agenticreliabilitylab.testspec.domain.ExecutionPolicy
 import com.project.agenticreliabilitylab.testspec.domain.FaultInjectionPlan
+import com.project.agenticreliabilitylab.testspec.domain.FaultAuditAction
 import com.project.agenticreliabilitylab.testspec.domain.SetupStep
 import com.project.agenticreliabilitylab.testspec.domain.SpecCategory
 import com.project.agenticreliabilitylab.testspec.domain.SpecHttpCall
@@ -68,6 +69,44 @@ class SpecWorkloadExecutorTests {
             .filter { it.uri.path.startsWith("/orders") }
             .map { it.headers.getValue("Idempotency-Key") }
         assertEquals(listOf("run-1-3-1", "run-1-3-2"), keys.sorted())
+    }
+
+    @Test
+    fun `carries a single workload response capture into the following workload call`() {
+        val transport = RecordingTransport { request ->
+            when (request.uri.path) {
+                "/products" -> jsonResponse(201, """{"id":"p-9"}""")
+                "/orders" -> jsonResponse(200, """{"orderId":"o-42"}""")
+                "/payments" -> jsonResponse(200, "{}")
+                else -> error("Unexpected request to ${request.uri.path}")
+            }
+        }
+        val specification = specification().let { spec ->
+            spec.copy(
+                workload = listOf(
+                    WorkloadStep(
+                        kind = WorkloadStepKind.CALL,
+                        name = "create-order",
+                        call = SpecHttpCall("POST", "/orders", null, emptyMap(), "{}"),
+                        captures = mapOf("orderId" to "response.body.orderId"),
+                    ),
+                    WorkloadStep(
+                        kind = WorkloadStepKind.CALL,
+                        name = "pay-order",
+                        call = SpecHttpCall(
+                            "POST", "/payments", null, emptyMap(),
+                            """{"orderId":"{{workload.create-order.orderId}}"}""",
+                        ),
+                    ),
+                ),
+            )
+        }
+
+        val execution = executor(transport).execute(specification, testTarget(), "run-1", 1)
+
+        assertTrue(execution.completed)
+        assertEquals("o-42", execution.bindings["workload.create-order.orderId"])
+        assertTrue(transport.requests.single { it.uri.path == "/payments" }.body.contains("\"orderId\":\"o-42\""))
     }
 
     @Test
@@ -178,7 +217,7 @@ class SpecWorkloadExecutorTests {
         val transport = RecordingTransport { request ->
             when (request.uri.path) {
                 "/products" -> jsonResponse(201, """{"id":"p-9"}""")
-                "/harness/fault" -> jsonResponse(200, """{"faultId":"f-1"}""")
+                "/harness/fault" -> jsonResponse(200, """{"faultId":"f-1","injectionPoint":"PAYMENT_CALLBACK"}""")
                 "/harness/fault/release" -> jsonResponse(200, "{}")
                 else -> jsonResponse(201, "{}")
             }
@@ -206,8 +245,16 @@ class SpecWorkloadExecutorTests {
         assertTrue(execution.completed)
         assertEquals("f-1", execution.bindings["workload.payment-down.faultId"])
         assertTrue(execution.pendingFaultHandles.isEmpty())
+        assertEquals(
+            listOf(FaultAuditAction.INJECTED, FaultAuditAction.RELEASED),
+            execution.faultEvents.map { it.action },
+        )
+        assertEquals("PAYMENT_CALLBACK", execution.faultEvents.first().injectionPoint)
+        assertEquals(30_000, execution.faultEvents.first().ttlMs)
         val faultRequests = transport.requests.filter { it.uri.path.startsWith("/harness/fault") }
         assertEquals(2, faultRequests.size)
+        assertTrue(faultRequests.first().body.contains("\"trialScope\":\"run-1/1\""))
+        assertEquals("run-1/1", faultRequests.first().headers["X-ARL-Trial"])
     }
 
     @Test

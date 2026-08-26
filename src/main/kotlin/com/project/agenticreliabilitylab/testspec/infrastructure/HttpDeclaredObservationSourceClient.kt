@@ -38,12 +38,19 @@ class HttpDeclaredObservationSourceClient(
         val source = request.source
         return when (source.kind) {
             DeclaredObservationSourceKind.HARNESS_STATE -> try {
-                readHarnessState(request.target, source, fields, request.runId, request.timeout)
+                readHarnessState(
+                    request.target,
+                    source,
+                    fields,
+                    request.runId,
+                    request.timeout,
+                    request.credentialSessionId,
+                )
             } catch (exception: Exception) {
                 missingAll(fields, failureMessage(source, exception))
             }
             DeclaredObservationSourceKind.PROMETHEUS -> readPrometheusFields(
-                request.target, source, fields, request.runId, request.timeout,
+                request.target, source, fields, request.runId, request.timeout, request.credentialSessionId,
             )
             DeclaredObservationSourceKind.TRACE -> readTraceFields(request)
         }
@@ -102,7 +109,7 @@ class HttpDeclaredObservationSourceClient(
                 "&spss=${TRACE_LIMITS.maxSpansPerSet}",
         )
         val sourceTarget = request.target.copy(baseUri = URI(source.endpoint), allowedOrigin = URI(origin(uri)))
-        val response = get(sourceTarget, uri, source, request.runId, timeout)
+        val response = get(sourceTarget, uri, source, request.runId, timeout, request.credentialSessionId)
         if (response.statusCode !in SUCCESS_STATUS) {
             return DeclaredObservationRead.missing(
                 "Trace source '${source.name}' returned HTTP ${response.statusCode}",
@@ -120,6 +127,7 @@ class HttpDeclaredObservationSourceClient(
         requestedFields: Set<String>,
         runId: String,
         timeout: Duration,
+        credentialSessionId: String?,
     ): Map<String, DeclaredObservationRead> {
         val uri = target.baseUri.resolve(source.endpoint)
         if (origin(uri) != origin(target.allowedOrigin)) {
@@ -128,7 +136,7 @@ class HttpDeclaredObservationSourceClient(
                 "HARNESS_STATE source '${source.name}' escaped the Target origin",
             )
         }
-        val response = get(target, uri, source, runId, timeout)
+        val response = get(target, uri, source, runId, timeout, credentialSessionId)
         if (response.statusCode !in SUCCESS_STATUS) {
             return missingAll(
                 requestedFields,
@@ -173,6 +181,7 @@ class HttpDeclaredObservationSourceClient(
         fields: Set<String>,
         runId: String,
         timeout: Duration,
+        credentialSessionId: String?,
     ): Map<String, DeclaredObservationRead> {
         val deadline = System.nanoTime() + timeout.toNanos()
         return fields.associateWith { field ->
@@ -181,7 +190,7 @@ class HttpDeclaredObservationSourceClient(
                 DeclaredObservationRead.missing("Prometheus source '${source.name}' exceeded the observation deadline")
             } else {
                 try {
-                    readPrometheus(target, source, field, runId, remaining)
+                    readPrometheus(target, source, field, runId, remaining, credentialSessionId)
                 } catch (exception: Exception) {
                     DeclaredObservationRead.missing(failureMessage(source, exception))
                 }
@@ -196,13 +205,14 @@ class HttpDeclaredObservationSourceClient(
         field: String,
         runId: String,
         timeout: Duration,
+        credentialSessionId: String?,
     ): DeclaredObservationRead {
         val query = source.queries[field]
             ?: return DeclaredObservationRead.missing("Prometheus source '${source.name}' has no query for '$field'")
         val encoded = URLEncoder.encode(query, StandardCharsets.UTF_8)
         val uri = URI("${source.endpoint.trimEnd('/')}/api/v1/query?query=$encoded")
         val sourceTarget = target.copy(baseUri = URI(source.endpoint), allowedOrigin = URI(origin(uri)))
-        val response = get(sourceTarget, uri, source, runId, timeout)
+        val response = get(sourceTarget, uri, source, runId, timeout, credentialSessionId)
         if (response.statusCode !in SUCCESS_STATUS) {
             return DeclaredObservationRead.missing(
                 "Prometheus source '${source.name}' returned HTTP ${response.statusCode}",
@@ -247,11 +257,12 @@ class HttpDeclaredObservationSourceClient(
         source: DeclaredObservationSource,
         runId: String,
         timeout: Duration,
+        credentialSessionId: String?,
     ) = transport.send(
         target = target,
         uri = uri,
         method = "GET",
-        headers = headers(target, source, runId),
+        headers = headers(target, source, runId, credentialSessionId),
         body = ByteArray(0),
         timeout = minOf(timeout, settings.requestTimeout),
     )
@@ -260,11 +271,12 @@ class HttpDeclaredObservationSourceClient(
         target: RegisteredTarget,
         source: DeclaredObservationSource,
         runId: String,
+        credentialSessionId: String?,
     ): Map<String, String> = buildMap {
         put("Accept", "application/json")
         put(RUN_HEADER, runId)
         source.authProfile?.let { profile ->
-            val authHeaders = authProvider.headersFor(target.id, profile)
+            val authHeaders = authProvider.headersFor(target.id, profile, credentialSessionId)
             authHeaders.keys.forEach { name ->
                 SpecRequestPolicy.authHeaderViolation(name)?.let { violation -> error(violation) }
             }

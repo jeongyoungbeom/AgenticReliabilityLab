@@ -5,13 +5,14 @@ internal object TargetProfileYamlSchema {
     val REGISTRATIONS_FIELD = setOf("registrations")
     val TARGET_FIELDS = setOf(
         "id", "name", "adapter-type", "environment", "base-url", "allowed-origin", "allowed-cidrs",
-        "health-path", "source-repository", "identity-verification", "capabilities", "enabled",
+        "health-path", "openapi-path", "openapi-paths", "source-repository", "identity-verification",
+        "capabilities", "enabled",
     )
     val GENERIC_FIELDS = setOf(
         "target-system-id", "execution-enabled", "host-resource-group", "max-batch-size", "request-timeout",
         "read-only-operations", "failure-injection-planning-enabled", "failure-injection-candidates",
     )
-    val OPERATION_FIELDS = setOf("id", "title", "description", "path", "expected-status-codes")
+    val OPERATION_FIELDS = setOf("id", "title", "description", "path", "operation-id", "expected-status-codes")
     val FAILURE_CANDIDATE_FIELDS = setOf(
         "id", "type", "risk", "title", "description", "recovery-expectation",
     )
@@ -28,7 +29,7 @@ internal object TargetProfileYamlSchema {
         "supported-faults", "infrastructure-targets", "max-concurrency", "max-request-count", "max-trials",
         "state-changing-allowed", "reset", "fault-injection",
     )
-    val SPEC_CALL_FIELDS = setOf("method", "path", "auth-profile")
+    val SPEC_CALL_FIELDS = setOf("method", "path", "auth-profile", "operation-id")
     val OBSERVATION_SOURCE_FIELDS = setOf("name", "kind", "endpoint", "fields", "queries", "auth-profile")
     val RESET_FIELDS = setOf("method", "hook", "expected-duration", "verifications")
     val FAULT_INJECTION_FIELDS = setOf("inject-endpoint", "release-endpoint", "max-ttl")

@@ -4,21 +4,31 @@ import type { TargetProfile, TargetProfileValidation } from '../../api/targetPro
 import { ActiveProfileList } from './ActiveProfileList'
 import { ProfileValidationSummary } from './ProfileValidationSummary'
 import { ProfileYamlInput } from './ProfileYamlInput'
+import { PilotDiscoveryPanel } from './PilotDiscoveryPanel'
 import { SourceDraftWorkspace } from './SourceDraftWorkspace'
+import { TargetCredentialPanel } from './TargetCredentialPanel'
+import { PilotTemplateRunnerPanel } from './PilotTemplateRunnerPanel'
 
 interface TargetProfileWorkspaceProps {
   api: ApiClient
   selectedTargetId: string | null
   onSelectTarget: (targetSystemId: string) => void
+  onOpenRegression: () => void
+  onOpenAiProposal: () => void
+  onOpenRun: (runId: string) => void
 }
 
-export function TargetProfileWorkspace({ api, selectedTargetId, onSelectTarget }: TargetProfileWorkspaceProps) {
+export function TargetProfileWorkspace({
+  api, selectedTargetId, onSelectTarget, onOpenRegression, onOpenAiProposal, onOpenRun,
+}: TargetProfileWorkspaceProps) {
   const [yaml, setYaml] = useState('')
   const [validation, setValidation] = useState<TargetProfileValidation | null>(null)
   const [draft, setDraft] = useState<TargetProfile | null>(null)
   const [activeProfiles, setActiveProfiles] = useState<TargetProfile[]>([])
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [discoveryRefreshKey, setDiscoveryRefreshKey] = useState(0)
+  const [credentialSessionId, setCredentialSessionId] = useState<string | null>(null)
 
   useEffect(() => {
     void refreshActiveProfiles()
@@ -69,6 +79,7 @@ export function TargetProfileWorkspace({ api, selectedTargetId, onSelectTarget }
       setDraft(activated)
       setMessage(`Profile Version이 활성화되었습니다. Target '${activated.targetSystemId}'을 선택해 다음 단계로 진행할 수 있습니다.`)
       onSelectTarget(activated.targetSystemId)
+      setDiscoveryRefreshKey((key) => key + 1)
       await refreshActiveProfiles()
     })
   }
@@ -125,6 +136,21 @@ export function TargetProfileWorkspace({ api, selectedTargetId, onSelectTarget }
           onSelectTarget={onSelectTarget}
         />
       </section>
+      <PilotDiscoveryPanel api={api} targetSystemId={selectedTargetId} refreshKey={discoveryRefreshKey} />
+      <TargetCredentialPanel
+        api={api}
+        targetSystemId={selectedTargetId}
+        onCredentialSessionChange={setCredentialSessionId}
+      />
+      <PilotTemplateRunnerPanel
+        api={api}
+        targetSystemId={selectedTargetId}
+        refreshKey={discoveryRefreshKey}
+        onOpenRegression={onOpenRegression}
+        onOpenAiProposal={onOpenAiProposal}
+        onOpenRun={onOpenRun}
+        credentialSessionId={credentialSessionId}
+      />
       <SourceDraftWorkspace
         api={api}
         onUseYaml={(value) => {

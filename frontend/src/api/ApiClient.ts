@@ -24,14 +24,30 @@ export class ApiClient {
     body: unknown,
     role: AccessRole,
     idempotencyKey?: string,
+    extraHeaders?: HeadersInit,
   ): Promise<T> {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
+    const headers = new Headers(extraHeaders)
+    headers.set('Content-Type', 'application/json')
     if (idempotencyKey) headers.set('Idempotency-Key', idempotencyKey)
     return this.request<T>(
       path,
       { method: 'POST', headers, body: JSON.stringify(body) },
       role,
     )
+  }
+
+  put<T>(path: string, body: unknown, role: AccessRole, extraHeaders?: HeadersInit): Promise<T> {
+    const headers = new Headers(extraHeaders)
+    headers.set('Content-Type', 'application/json')
+    return this.request<T>(
+      path,
+      { method: 'PUT', headers, body: JSON.stringify(body) },
+      role,
+    )
+  }
+
+  delete<T>(path: string, role: AccessRole, extraHeaders?: HeadersInit): Promise<T> {
+    return this.request<T>(path, { method: 'DELETE', headers: extraHeaders }, role)
   }
 
   private async request<T>(path: string, init: RequestInit, role: AccessRole): Promise<T> {

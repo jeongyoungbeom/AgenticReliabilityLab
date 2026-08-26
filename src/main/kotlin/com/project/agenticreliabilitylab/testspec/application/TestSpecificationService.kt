@@ -102,6 +102,7 @@ class TestSpecificationService(
         idempotencyKey: String,
         actor: String,
         correlationId: String,
+        credentialSessionId: String? = null,
     ): TestSpecRunView {
         require(IDEMPOTENCY_KEY_PATTERN.matches(idempotencyKey)) {
             "Idempotency-Key must contain 1 to 200 letters, numbers, '.', '_', ':' or '-'"
@@ -146,7 +147,7 @@ class TestSpecificationService(
             return recoverConcurrentRun(run, exception)
         }
         if (!runStore.markRunning(run.id, clock.instant())) return runView(requireRun(run.id))
-        executeClaimedRun(run, parsed, target, profile, correlationId)
+        executeClaimedRun(run, parsed, target, profile, correlationId, credentialSessionId)
         return runView(requireRun(run.id))
     }
 
@@ -253,6 +254,7 @@ class TestSpecificationService(
         target: com.project.agenticreliabilitylab.target.domain.RegisteredTarget,
         profile: ActiveTestSpecExecutionProfile,
         correlationId: String,
+        credentialSessionId: String?,
     ) {
         try {
             val outcome = runner.run(
@@ -262,6 +264,7 @@ class TestSpecificationService(
                 run.id.toString(),
                 profile.capabilities.observationSources,
                 profile.faultInjectionPlan,
+                credentialSessionId,
             )
             runStore.complete(run.id, outcome, clock.instant())
         } catch (exception: Exception) {

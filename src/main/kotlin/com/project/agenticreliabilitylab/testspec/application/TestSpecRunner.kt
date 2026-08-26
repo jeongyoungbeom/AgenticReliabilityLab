@@ -3,6 +3,9 @@ package com.project.agenticreliabilitylab.testspec.application
 import com.project.agenticreliabilitylab.target.domain.RegisteredTarget
 import com.project.agenticreliabilitylab.target.domain.TargetEnvironment
 import com.project.agenticreliabilitylab.testspec.domain.CleanupTiming
+import com.project.agenticreliabilitylab.testspec.domain.FaultAuditAction
+import com.project.agenticreliabilitylab.testspec.domain.FaultAuditEvent
+import com.project.agenticreliabilitylab.testspec.domain.FaultInjectionOutcome
 import com.project.agenticreliabilitylab.testspec.domain.FaultInjectionPlan
 import com.project.agenticreliabilitylab.testspec.domain.ResetOutcome
 import com.project.agenticreliabilitylab.testspec.domain.ResetPlan
@@ -38,6 +41,7 @@ class TestSpecRunner(
         runId: String,
         observationSources: Map<String, DeclaredObservationSource> = emptyMap(),
         faultInjectionPlan: FaultInjectionPlan? = null,
+        credentialSessionId: String? = null,
     ): SpecRunOutcome {
         requireSafeEnvironment(specification, target)
         val trials = mutableListOf<TrialResult>()
@@ -47,15 +51,23 @@ class TestSpecRunner(
         var faultsReleased = true
 
         try {
-            runTrials(
-                specification, target, plan, runId, observationSources, faultInjectionPlan,
-                trials, executions, resets, cleanup,
-            )
+            val baseline = safeReset(plan, target, runId, credentialSessionId)
+            resets.add(baseline)
+            if (!baseline.verified) {
+                val reason = baseline.failure ?: "Pre-run reset was not verified"
+                executions.add(TrialExecution(1, emptyMap(), emptyMap(), emptyList(), false, failure = reason))
+                trials.add(evaluator.unrunnable(specification, 1, reason))
+            } else {
+                runTrials(
+                    specification, target, plan, runId, observationSources, faultInjectionPlan,
+                    trials, executions, resets, cleanup, credentialSessionId,
+                )
+            }
         } finally {
             // Faults are released before the environment reset, so the reset's own verification checks see a
             // Target that is no longer under an injected fault rather than one still mid-failure.
-            faultsReleased = releasePendingFaults(faultInjectionPlan, target, runId, executions)
-            if (cleanup.owed) resets.add(safeReset(plan, target, runId))
+            faultsReleased = releasePendingFaults(faultInjectionPlan, target, runId, executions, credentialSessionId)
+            if (cleanup.owed) resets.add(safeReset(plan, target, runId, credentialSessionId))
         }
 
         return SpecRunOutcome(
@@ -79,15 +91,23 @@ class TestSpecRunner(
         executions: MutableList<TrialExecution>,
         resets: MutableList<ResetOutcome>,
         cleanup: PendingCleanup,
+        credentialSessionId: String?,
     ) {
         for (number in 1..specification.policy.trials) {
-            val execution = executor.execute(specification, target, runId, number, faultInjectionPlan)
+            val execution = executor.execute(
+                specification,
+                target,
+                runId,
+                number,
+                faultInjectionPlan,
+                credentialSessionId,
+            )
             executions.add(execution)
             if (execution.stateChanged) cleanup.owed = true
-            trials.add(judge(specification, target, execution, runId, observationSources))
+            trials.add(judge(specification, target, execution, runId, observationSources, credentialSessionId))
 
             if (specification.policy.cleanupTiming == CleanupTiming.EACH_TRIAL && cleanup.owed) {
-                val outcome = safeReset(plan, target, runId)
+                val outcome = safeReset(plan, target, runId, credentialSessionId)
                 resets.add(outcome)
                 cleanup.owed = !outcome.verified
                 if (!outcome.verified) return
@@ -103,8 +123,16 @@ class TestSpecRunner(
         execution: TrialExecution,
         runId: String,
         observationSources: Map<String, DeclaredObservationSource>,
+        credentialSessionId: String?,
     ): TrialResult = if (execution.completed) {
-        val observed = observations.read(specification, target, execution, runId, observationSources)
+        val observed = observations.read(
+            specification,
+            target,
+            execution,
+            runId,
+            observationSources,
+            credentialSessionId,
+        )
         evaluator.judgeTrial(specification, execution.trialNumber, observed)
     } else {
         evaluator.unrunnable(specification, execution.trialNumber, execution.failure ?: "the trial did not complete")
@@ -112,8 +140,13 @@ class TestSpecRunner(
 
     /** A cleanup that itself fails must not hide the run's result, so its failure becomes part of the record. */
     @Suppress("TooGenericExceptionCaught") // Whatever went wrong, the environment is now in an unknown state.
-    private fun safeReset(plan: ResetPlan, target: RegisteredTarget, runId: String): ResetOutcome = try {
-        reset.reset(plan, target, runId)
+    private fun safeReset(
+        plan: ResetPlan,
+        target: RegisteredTarget,
+        runId: String,
+        credentialSessionId: String?,
+    ): ResetOutcome = try {
+        reset.reset(plan, target, runId, credentialSessionId)
     } catch (exception: Exception) {
         val reason = exception.message ?: exception.javaClass.simpleName
         ResetOutcome(false, false, emptyList(), "Cleanup failed: $reason")
@@ -128,17 +161,40 @@ class TestSpecRunner(
      * which folds into [SpecRunOutcome.cleanupVerified] the same way an unverified environment reset does.
      */
     // No pending handle, no configured plan, and the release outcome are three distinct terminal states.
-    @Suppress("ReturnCount")
     private fun releasePendingFaults(
         faultInjectionPlan: FaultInjectionPlan?,
         target: RegisteredTarget,
         runId: String,
-        executions: List<TrialExecution>,
+        executions: MutableList<TrialExecution>,
+        credentialSessionId: String?,
     ): Boolean {
-        val pending = executions.flatMap { it.pendingFaultHandles }.distinct()
-        if (pending.isEmpty()) return true
-        val plan = faultInjectionPlan ?: return false
-        return pending.map { handle -> safeRelease(plan, target, runId, handle) }.all { it }
+        val released = mutableSetOf<String>()
+        var allReleased = true
+        executions.indices.forEach { index ->
+            val execution = executions[index]
+            var events = execution.faultEvents
+            execution.pendingFaultHandles.distinct().forEach { handle ->
+                if (!released.add(handle)) return@forEach
+                val injected = events.lastOrNull { it.action == FaultAuditAction.INJECTED && it.faultId == handle }
+                val outcome = faultInjectionPlan?.let { plan ->
+                    safeRelease(plan, target, runId, handle, credentialSessionId)
+                } ?: FaultInjectionOutcome(handle, false, "No fault injection plan is configured")
+                allReleased = allReleased && outcome.succeeded
+                events = events + FaultAuditEvent(
+                    action = if (outcome.succeeded) FaultAuditAction.RELEASED else FaultAuditAction.RELEASE_FAILED,
+                    faultId = handle,
+                    faultType = injected?.faultType,
+                    scope = injected?.scope,
+                    ttlMs = injected?.ttlMs,
+                    injectionPoint = injected?.injectionPoint,
+                    description = "Runner cleanup release for an outstanding fault",
+                    succeeded = outcome.succeeded,
+                    failure = outcome.failure,
+                )
+            }
+            if (events !== execution.faultEvents) executions[index] = execution.copy(faultEvents = events)
+        }
+        return allReleased
     }
 
     /** Whatever went wrong, the fault must be assumed still active - the same conservative stance as [safeReset]. */
@@ -148,10 +204,11 @@ class TestSpecRunner(
         target: RegisteredTarget,
         runId: String,
         handle: String,
-    ): Boolean = try {
-        faultInjection.release(plan, target, runId, handle).succeeded
-    } catch (_: Exception) {
-        false
+        credentialSessionId: String?,
+    ): FaultInjectionOutcome = try {
+        faultInjection.release(plan, target, runId, handle, credentialSessionId)
+    } catch (exception: Exception) {
+        FaultInjectionOutcome(handle, false, exception.message ?: exception.javaClass.simpleName)
     }
 
     /**

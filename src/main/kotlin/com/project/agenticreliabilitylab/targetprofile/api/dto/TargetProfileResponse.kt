@@ -1,6 +1,7 @@
 package com.project.agenticreliabilitylab.targetprofile.api.dto
 
 import com.project.agenticreliabilitylab.targetprofile.domain.TargetProfileVersion
+import com.project.agenticreliabilitylab.targetprofile.domain.declaredOpenApiPaths
 import java.time.Instant
 
 data class TargetProfileResponse(
@@ -9,6 +10,8 @@ data class TargetProfileResponse(
     val source: String,
     val status: String,
     val checksum: String,
+    val openApiPath: String?,
+    val openApiPaths: List<String>,
     val genericHttpEnabled: Boolean,
     val readOnlyOperationCount: Int,
     val experimentProfilePresent: Boolean,
@@ -22,6 +25,8 @@ data class TargetProfileResponse(
             source = version.source.name,
             status = version.status.name,
             checksum = version.checksum,
+            openApiPath = version.definition.target.openApiPath,
+            openApiPaths = version.definition.target.declaredOpenApiPaths(),
             genericHttpEnabled = version.definition.genericHttp?.executionEnabled ?: false,
             readOnlyOperationCount = version.definition.genericHttp?.readOnlyOperations?.size ?: 0,
             experimentProfilePresent = version.definition.experiment != null,

@@ -44,10 +44,10 @@ class ApiAuthorizationFilter(
 
         val authorization = request.getHeader(AUTHORIZATION_HEADER)
         when {
-            request.requestURI.isAuthoringPath() && request.method.isSafeReadMethod() ->
+            request.isAuthoringPath() && request.method.isSafeReadMethod() ->
                 operatorAccessService.requireViewer(authorization)
 
-            request.requestURI.isAuthoringPath() ->
+            request.isAuthoringPath() ->
                 operatorAccessService.requireProfileEditor(authorization)
 
             request.requestURI.isTargetHealthPath() ->
@@ -77,7 +77,19 @@ class ApiAuthorizationFilter(
      * These read supplied text and stored analysis only, so they need the editor role rather than the executor role.
      * Anything that can reach the Target keeps falling through to the executor default below.
      */
-    private fun String.isAuthoringPath(): Boolean = AUTHORING_PATHS.any(::startsWith)
+    private fun HttpServletRequest.isAuthoringPath(): Boolean =
+        requestURI.isKnownAuthoringPath() || (method == HttpMethod.POST.name() && requestURI.isTestSpecAuthoringPost())
+
+    private fun String.isKnownAuthoringPath(): Boolean = AUTHORING_PATHS.any(::startsWith)
+
+    /**
+     * These endpoints only author specifications; their controllers independently keep approval and execution
+     * executor-only.
+     */
+    private fun String.isTestSpecAuthoringPost(): Boolean =
+        this == TEST_SPECIFICATION_CREATE_PATH ||
+            matches(TEST_SPEC_GENERATION_PATH) ||
+            matches(TEST_SPEC_MISJUDGMENT_PATH)
 
     private fun String.isTargetHealthPath(): Boolean =
         matches(TARGET_HEALTH_PATH)
@@ -96,6 +108,7 @@ class ApiAuthorizationFilter(
 
     private companion object {
         const val API_PATH = "/api/"
+        const val TEST_SPECIFICATION_CREATE_PATH = "/api/test-specifications"
         val AUTHORING_PATHS = listOf(
             "/api/target-profiles",
             "/api/target-profile-drafts",
@@ -103,6 +116,8 @@ class ApiAuthorizationFilter(
             "/api/test-candidate-generations",
             "/api/test-candidate-requests",
         )
+        val TEST_SPEC_GENERATION_PATH = Regex("/api/targets/[^/]+/test-specification-generations")
+        val TEST_SPEC_MISJUDGMENT_PATH = Regex("/api/targets/[^/]+/test-spec-misjudgment-reports")
         const val AUTHORIZATION_HEADER = "Authorization"
         const val CORRELATION_ID_KEY = "correlationId"
         val TARGET_HEALTH_PATH = Regex("/api/targets/[^/]+/health")

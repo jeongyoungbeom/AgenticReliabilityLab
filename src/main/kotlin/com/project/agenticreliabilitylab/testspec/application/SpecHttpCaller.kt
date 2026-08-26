@@ -37,9 +37,10 @@ class SpecHttpCaller(
         requestNumber: Int,
         runId: String,
         trialScope: String? = null,
+        credentialSessionId: String? = null,
     ): RecordedResponse {
         val uri = resolveUri(target, call, bindings)
-        val headers = buildHeaders(target, call, bindings, runId, trialScope)
+        val headers = buildHeaders(target, call, bindings, runId, trialScope, credentialSessionId)
         val body = call.bodyJson?.let { references.resolve(it, bindings) }
             ?.toByteArray(StandardCharsets.UTF_8) ?: ByteArray(0)
 
@@ -87,6 +88,7 @@ class SpecHttpCaller(
         bindings: Map<String, String>,
         runId: String,
         trialScope: String?,
+        credentialSessionId: String?,
     ): Map<String, String> = buildMap {
         put("Accept", "application/json")
         if (call.bodyJson != null) put("Content-Type", "application/json")
@@ -102,7 +104,7 @@ class SpecHttpCaller(
         }
         putAll(specificationHeaders)
         call.authProfile?.let { profile ->
-            val authHeaders = authProvider.headersFor(target.id, profile)
+            val authHeaders = authProvider.headersFor(target.id, profile, credentialSessionId)
             authHeaders.keys.forEach { name ->
                 SpecRequestPolicy.authHeaderViolation(name)?.let { violation ->
                     throw SpecExecutionException(violation)

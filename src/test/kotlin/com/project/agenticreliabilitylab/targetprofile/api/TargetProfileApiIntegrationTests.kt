@@ -3,6 +3,7 @@ package com.project.agenticreliabilitylab.targetprofile.api
 import com.project.agenticreliabilitylab.testspec.application.port.TestSpecExecutionProfileCatalog
 import com.project.agenticreliabilitylab.testspec.domain.CleanupMethod
 import com.project.agenticreliabilitylab.testspec.domain.SpecHttpCall
+import com.project.agenticreliabilitylab.targetprofiledraft.application.BoundedOpenApiDocumentParser
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
@@ -19,6 +20,7 @@ import java.util.UUID
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import tools.jackson.databind.ObjectMapper
 
@@ -33,6 +35,9 @@ class TargetProfileApiIntegrationTests {
 
     @Autowired
     private lateinit var testSpecProfiles: TestSpecExecutionProfileCatalog
+
+    @Autowired
+    private lateinit var openApiParser: BoundedOpenApiDocumentParser
 
     private val httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()
 
@@ -146,6 +151,18 @@ class TargetProfileApiIntegrationTests {
         assertEquals(400, originValidation.statusCode(), originValidation.body())
         assertContains(originValidation.body(), "only an HTTP(S) origin")
 
+        val unsafeOpenApiPath = validProfile(targetId).replace(
+            "health-path: /actuator/health",
+            "health-path: /actuator/health\n        openapi-path: https://example.test/v3/api-docs",
+        )
+        val openApiValidation = post(
+            "/api/target-profiles/validate",
+            profileJson(unsafeOpenApiPath),
+            authorizationHeader(),
+        )
+        assertEquals(400, openApiValidation.statusCode(), openApiValidation.body())
+        assertContains(openApiValidation.body(), "fixed relative HTTP path")
+
         val mismatchedQuery = validProfile(targetId).replace("httpUp: up", "otherField: up")
         val sourceValidation = post(
             "/api/target-profiles/validate",
@@ -167,6 +184,26 @@ class TargetProfileApiIntegrationTests {
 
         val oversized = post("/api/target-profiles/validate", profileJson("x".repeat(262_144)))
         assertEquals(413, oversized.statusCode())
+    }
+
+    @Test
+    fun `bounded OpenAPI parser rejects external references`() {
+        val exception = assertFailsWith<IllegalArgumentException> {
+            openApiParser.parse(
+                """
+                {
+                  "openapi": "3.0.1",
+                  "paths": {
+                    "/products": {
+                      "${'$'}ref": "https://example.test/paths.json"
+                    }
+                  }
+                }
+                """.trimIndent(),
+            )
+        }
+
+        assertContains(exception.message.orEmpty(), "external references")
     }
 
     private fun authorizationHeader(): Map<String, String> =

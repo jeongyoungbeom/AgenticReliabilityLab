@@ -40,6 +40,7 @@ class SpecObservationReader(
         execution: TrialExecution,
         runId: String,
         sources: Map<String, DeclaredObservationSource> = emptyMap(),
+        credentialSessionId: String? = null,
     ): Map<String, ObservedValue> {
         val responseScope = evaluator.responsesScope(execution.responses)
         val declaredGroups = specification.observations
@@ -50,7 +51,14 @@ class SpecObservationReader(
         specification.observations
             .filter { observation -> observation.sourceKind != ObservationSourceKind.DECLARED_SOURCE }
             .forEach { observation ->
-                observed[observation.id] = readOne(observation, target, execution, responseScope, runId)
+                observed[observation.id] = readOne(
+                    observation,
+                    target,
+                    execution,
+                    responseScope,
+                    runId,
+                    credentialSessionId,
+                )
             }
         declaredGroups.values.forEach { observations ->
             observed.putAll(
@@ -61,6 +69,7 @@ class SpecObservationReader(
                     sources,
                     workloadStart,
                     TraceScope.of(runId, execution.trialNumber),
+                    credentialSessionId,
                 ),
             )
         }
@@ -75,9 +84,10 @@ class SpecObservationReader(
         execution: TrialExecution,
         responseScope: Map<String, Any?>,
         runId: String,
+        credentialSessionId: String?,
     ): ObservedValue = when (observation.sourceKind) {
         ObservationSourceKind.RESPONSES -> evaluated { evaluator.evaluate(observation.expression, responseScope) }
-        ObservationSourceKind.API -> readFromApi(observation, target, execution, runId)
+        ObservationSourceKind.API -> readFromApi(observation, target, execution, runId, credentialSessionId)
         // Unreachable: read() routes declared sources through their source group. Degrading to a missing
         // value rather than throwing keeps a routing mistake from ending a trial that already changed the Target.
         ObservationSourceKind.DECLARED_SOURCE ->
@@ -92,6 +102,7 @@ class SpecObservationReader(
         sources: Map<String, DeclaredObservationSource>,
         workloadStart: Instant?,
         trialScope: String,
+        credentialSessionId: String?,
     ): Map<String, ObservedValue> {
         val sourceName = observations.first().sourceName
             ?: return observations.missing("declared observations have no source name")
@@ -122,6 +133,7 @@ class SpecObservationReader(
                     window = workloadStart?.let { start ->
                         ObservationWindow.spanning(start, clock.instant(), TRACE_WINDOW_MARGIN)
                     },
+                    credentialSessionId = credentialSessionId,
                 ),
             )
             fields.forEach { field -> states.getValue(field).record(reads[field], field) }
@@ -140,6 +152,7 @@ class SpecObservationReader(
         target: RegisteredTarget,
         execution: TrialExecution,
         runId: String,
+        credentialSessionId: String?,
     ): ObservedValue {
         val call = observation.call
             ?: return ObservedValue.missing("observation '${observation.id}' declares no read call")
@@ -151,6 +164,7 @@ class SpecObservationReader(
             bindings = execution.bindings,
             runId = runId,
             label = observation.id,
+            credentialSessionId = credentialSessionId,
         )
     }
 

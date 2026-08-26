@@ -24,6 +24,11 @@ services:
       ARL_DB_PASSWORD: ${ARL_DB_PASSWORD:-arl-local-password}
       ARL_OLLAMA_BASE_URL: ${ARL_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       ARL_ACCESS_MODE: LOCAL
+      # Declarative SideProject tests read these only inside the Runner container. Leave them unset for read-only use.
+      ARL_SPEC_AUTH_SIDEPROJECT_LOCAL_SELLER: ${ARL_SPEC_AUTH_SIDEPROJECT_LOCAL_SELLER:-}
+      ARL_SPEC_AUTH_SIDEPROJECT_LOCAL_BUYER: ${ARL_SPEC_AUTH_SIDEPROJECT_LOCAL_BUYER:-}
+      ARL_SPEC_AUTH_SIDEPROJECT_LOCAL_HARNESS: ${ARL_SPEC_AUTH_SIDEPROJECT_LOCAL_HARNESS:-}
+      ARL_SPEC_AUTH_SIDEPROJECT_LOCAL_HARNESS_HEADER: ${ARL_SPEC_AUTH_SIDEPROJECT_LOCAL_HARNESS_HEADER:-X-ARL-Harness-Key}
       SPRING_CONFIG_ADDITIONAL_LOCATION: optional:file:/config/target-profile.yaml
     ports:
       - "127.0.0.1:8090:8090"

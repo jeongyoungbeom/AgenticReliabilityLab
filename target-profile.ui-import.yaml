@@ -1,0 +1,108 @@
+# UI에서 직접 등록하는 SideProject 로컬 Docker Profile입니다.
+# 비밀값(JWT, Harness 키)은 절대 이 파일에 넣지 않습니다.
+arl:
+  targets:
+    registrations:
+      - id: sideproject-local
+        name: SideProject (Eventful Commerce) Local Docker
+        adapter-type: HTTP_TARGET
+        environment: LOCAL
+        base-url: http://host.docker.internal
+        allowed-origin: http://host.docker.internal
+        allowed-cidrs:
+          - 192.168.65.0/24
+        health-path: /actuator/health
+        openapi-paths:
+          - /api-docs/product
+          - /api-docs/order
+          - /api-docs/payment
+        source-repository: sideproject
+        identity-verification: CONFIGURATION_ONLY
+        capabilities:
+          - HEALTH
+          - HTTP_API
+
+  target-specs:
+    registrations:
+      - target-system-id: sideproject-local
+        execution-enabled: true
+        host-resource-group: sideproject-public-gateway
+        max-batch-size: 5
+        request-timeout: 5s
+        read-only-operations:
+          - id: product-catalog
+            title: Public product catalog is reachable
+            description: Nginx and API Gateway must route the public product-list GET endpoint successfully.
+            path: /api/products
+            operation-id: getProducts
+            expected-status-codes:
+              - 200
+
+  test-spec-execution:
+    registrations:
+      - target-system-id: sideproject-local
+        execution-enabled: true
+        allowed-calls:
+          - method: GET
+            path: /actuator/health
+          - method: GET
+            path: /api/products
+            operation-id: getProducts
+          - method: GET
+            path: /api/products/my
+            operation-id: getMyProducts
+            auth-profile: seller
+          - method: GET
+            path: /api/orders
+            operation-id: getMyOrders
+            auth-profile: buyer
+          - method: POST
+            path: /api/products
+            operation-id: createProduct_1
+            auth-profile: seller
+          - method: POST
+            path: /api/orders
+            operation-id: orders
+            auth-profile: buyer
+          - method: POST
+            path: /api/payments/webhook
+            operation-id: webhook
+        auth-profiles: [seller, buyer, harness]
+        observation-sources:
+          - name: harness
+            kind: HARNESS_STATE
+            endpoint: /api/harness/state
+            auth-profile: harness
+            fields: [productCount, orderCount, paymentCount, completedPaymentCount, failedPaymentCount, activeFaultCount]
+        supported-faults: [PAYMENT_FAILURE]
+        fault-injection:
+          inject-endpoint:
+            method: POST
+            path: /api/harness/fault
+            auth-profile: harness
+          release-endpoint:
+            method: POST
+            path: /api/harness/fault/release
+            auth-profile: harness
+          max-ttl: 120s
+        max-concurrency: 20
+        max-request-count: 100
+        max-trials: 20
+        state-changing-allowed: true
+        reset:
+          method: ENVIRONMENT_RESET
+          hook:
+            method: POST
+            path: /api/harness/reset
+            auth-profile: harness
+          expected-duration: 30s
+          verifications:
+            - id: runDataCleared
+              call:
+                method: GET
+                path: /api/harness/state
+                auth-profile: harness
+              expr: response.body.state.orderCount
+              condition: runDataCleared == 0
+              read-at:
+                rule: IMMEDIATE

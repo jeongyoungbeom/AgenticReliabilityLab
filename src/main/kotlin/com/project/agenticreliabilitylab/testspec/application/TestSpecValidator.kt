@@ -262,6 +262,9 @@ class TestSpecValidator(
             if (step.concurrency > step.requestCount) {
                 add("Step '${step.name}' cannot run ${step.concurrency} at once out of ${step.requestCount} requests")
             }
+            if (step.captures.isNotEmpty() && (step.requestCount != 1 || step.concurrency != 1)) {
+                add("Step '${step.name}' can capture response fields only from one sequential request")
+            }
         }
         if (specification.policy.trials > capabilities.maxTrials) {
             add("${specification.policy.trials} trials exceed the allowed ${capabilities.maxTrials}")

@@ -63,6 +63,8 @@ class TargetProfileYamlDefinitionMapper(
             allowedOrigin = requiredString("allowed-origin"),
             allowedCidrs = requiredStringList("allowed-cidrs").toSet(),
             healthPath = requiredString("health-path"),
+            openApiPath = optionalString("openapi-path"),
+            openApiPaths = optionalStringList("openapi-paths") ?: emptyList(),
             sourceRepository = requiredString("source-repository"),
             identityVerification = enumValue("identity-verification"),
             capabilities = requiredStringList("capabilities").mapTo(linkedSetOf(), TargetCapability::valueOf),
@@ -102,6 +104,7 @@ class TargetProfileYamlDefinitionMapper(
             title = requiredString("title"),
             description = optionalString("description").orEmpty(),
             path = requiredString("path"),
+            operationId = optionalString("operation-id"),
             expectedStatusCodes = optionalIntList("expected-status-codes")?.toSet() ?: setOf(HTTP_OK),
         )
 

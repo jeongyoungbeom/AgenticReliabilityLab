@@ -22,14 +22,22 @@ class EnvironmentResetService(
     private val expressions: SpecExpressionEnvironment,
 ) {
     @Suppress("ReturnCount") // Nothing to undo, the hook failing and the checks failing are different outcomes.
-    fun reset(plan: ResetPlan, target: RegisteredTarget, runId: String): ResetOutcome {
+    fun reset(
+        plan: ResetPlan,
+        target: RegisteredTarget,
+        runId: String,
+        credentialSessionId: String? = null,
+    ): ResetOutcome {
         if (plan.method == CleanupMethod.NOT_REQUIRED) {
             return ResetOutcome(performed = false, verified = true, checks = emptyList())
         }
         val hook = plan.hook
             ?: return ResetOutcome(false, false, emptyList(), "No reset hook is configured for this target")
 
-        val response = caller.send(target, hook, mapOf("runId" to runId), FIRST_REQUEST, runId)
+        val response = caller.send(
+            target, hook, mapOf("runId" to runId), FIRST_REQUEST, runId,
+            credentialSessionId = credentialSessionId,
+        )
         if (!response.delivered || response.statusCode !in SUCCESS_STATUS) {
             val reason = response.failure ?: "HTTP ${response.statusCode}"
             return ResetOutcome(false, false, emptyList(), "The reset hook did not succeed: $reason")
@@ -38,7 +46,7 @@ class EnvironmentResetService(
             return ResetOutcome(true, false, emptyList(), "The reset was not verified: no checks are declared")
         }
 
-        val checks = plan.verifications.map { verification -> check(verification, target, runId) }
+        val checks = plan.verifications.map { verification -> check(verification, target, runId, credentialSessionId) }
         val unsatisfied = checks.filterNot { it.satisfied }
         return ResetOutcome(
             performed = true,
@@ -54,6 +62,7 @@ class EnvironmentResetService(
         verification: ResetVerification,
         target: RegisteredTarget,
         runId: String,
+        credentialSessionId: String?,
     ): ResetCheck {
         val observed = values.read(
             target = target,
@@ -63,6 +72,7 @@ class EnvironmentResetService(
             bindings = mapOf("runId" to runId),
             runId = runId,
             label = verification.id,
+            credentialSessionId = credentialSessionId,
         )
         if (!observed.present) {
             return ResetCheck(verification.id, verification.condition, observed.display, satisfied = false)

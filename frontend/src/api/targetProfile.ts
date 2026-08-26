@@ -4,6 +4,8 @@ export interface TargetProfile {
   source: string
   status: 'DRAFT' | 'ACTIVE' | 'SUPERSEDED'
   checksum: string
+  openApiPath: string | null
+  openApiPaths?: string[]
   genericHttpEnabled: boolean
   readOnlyOperationCount: number
   experimentProfilePresent: boolean
@@ -15,6 +17,8 @@ export interface TargetProfileValidation {
   targetSystemId: string
   targetName: string
   environment: string
+  openApiPath: string | null
+  openApiPaths?: string[]
   genericHttpEnabled: boolean
   readOnlyOperationCount: number
   experimentProfilePresent: boolean

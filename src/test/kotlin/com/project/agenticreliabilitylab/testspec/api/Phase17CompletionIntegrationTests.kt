@@ -94,7 +94,8 @@ class Phase17CompletionIntegrationTests {
                 orderRequests = CONCURRENCY_TRIALS * CONCURRENT_REQUESTS,
                 paymentRequests = IDEMPOTENCY_TRIALS * CONCURRENT_REQUESTS,
                 transferRequests = CONSISTENCY_TRIALS,
-                resetRequests = CONCURRENCY_TRIALS + IDEMPOTENCY_TRIALS + CONSISTENCY_TRIALS,
+                // Every execution now verifies a baseline reset before its workload in addition to per-trial cleanup.
+                resetRequests = CONCURRENCY_TRIALS + IDEMPOTENCY_TRIALS + CONSISTENCY_TRIALS + documents.size,
             ),
             fixture.audit(),
         )

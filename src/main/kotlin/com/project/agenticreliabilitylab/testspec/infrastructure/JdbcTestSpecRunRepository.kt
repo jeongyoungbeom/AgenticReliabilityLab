@@ -2,6 +2,7 @@ package com.project.agenticreliabilitylab.testspec.infrastructure
 
 import com.project.agenticreliabilitylab.testspec.application.port.TestSpecRunStore
 import com.project.agenticreliabilitylab.testspec.domain.InvariantVerdict
+import com.project.agenticreliabilitylab.testspec.domain.FaultAuditEvent
 import com.project.agenticreliabilitylab.testspec.domain.ResetCheck
 import com.project.agenticreliabilitylab.testspec.domain.SpecRunOutcome
 import com.project.agenticreliabilitylab.testspec.domain.StepTiming
@@ -205,6 +206,7 @@ class JdbcTestSpecRunRepository(
                     "verdictsJson" to objectMapper.writeValueAsString(trial.verdicts),
                     "timingsJson" to objectMapper.writeValueAsString(execution.timings),
                     "observationsJson" to observationsJson(trial.observations),
+                    "faultEventsJson" to objectMapper.writeValueAsString(execution.faultEvents),
                 ),
             )
             .update()
@@ -250,6 +252,9 @@ class JdbcTestSpecRunRepository(
         observations = getString("observations_json")?.let { json ->
             objectMapper.readValue(json, object : TypeReference<Map<String, ObservedEvidence>>() {})
         } ?: emptyMap(),
+        faultEvents = getString("fault_events_json")?.let { json ->
+            objectMapper.readValue(json, object : TypeReference<List<FaultAuditEvent>>() {})
+        } ?: emptyList(),
     )
 
     /**
