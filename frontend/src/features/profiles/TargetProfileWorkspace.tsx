@@ -5,26 +5,31 @@ import { ActiveProfileList } from './ActiveProfileList'
 import { ProfileValidationSummary } from './ProfileValidationSummary'
 import { ProfileYamlInput } from './ProfileYamlInput'
 import { PilotDiscoveryPanel } from './PilotDiscoveryPanel'
-import { SourceDraftWorkspace } from './SourceDraftWorkspace'
 import { TargetCredentialPanel } from './TargetCredentialPanel'
 import { PilotTemplateRunnerPanel } from './PilotTemplateRunnerPanel'
+import { QuickTargetRegistration } from './QuickTargetRegistration'
+import { EffectiveSettingsPanel } from './EffectiveSettingsPanel'
+import type { TargetCredentialPreflightResult, TargetRuntimeCredentialStatus } from '../../api/targetCredentials'
 
 interface TargetProfileWorkspaceProps {
   api: ApiClient
   selectedTargetId: string | null
   onSelectTarget: (targetSystemId: string) => void
-  onOpenRegression: () => void
-  onOpenAiProposal: () => void
   onOpenRun: (runId: string) => void
-  credentialSessionId: string | null
-  onCredentialSessionChange: (credentialSessionId: string | null) => void
+  onOpenSession: (sessionId: string) => void
+  yaml: string
+  onYamlChange: (yaml: string) => void
+  credentialStatus: TargetRuntimeCredentialStatus | null
+  onCredentialStatusChange: (status: TargetRuntimeCredentialStatus | null) => void
+  credentialPreflight: TargetCredentialPreflightResult[]
+  onCredentialPreflightChange: (results: TargetCredentialPreflightResult[]) => void
 }
 
 export function TargetProfileWorkspace({
-  api, selectedTargetId, onSelectTarget, onOpenRegression, onOpenAiProposal, onOpenRun,
-  credentialSessionId, onCredentialSessionChange,
+  api, selectedTargetId, onSelectTarget, onOpenRun, onOpenSession, yaml, onYamlChange,
+  credentialStatus, onCredentialStatusChange,
+  credentialPreflight, onCredentialPreflightChange,
 }: TargetProfileWorkspaceProps) {
-  const [yaml, setYaml] = useState('')
   const [validation, setValidation] = useState<TargetProfileValidation | null>(null)
   const [draft, setDraft] = useState<TargetProfile | null>(null)
   const [activeProfiles, setActiveProfiles] = useState<TargetProfile[]>([])
@@ -38,7 +43,7 @@ export function TargetProfileWorkspace({
 
   async function refreshActiveProfiles() {
     try {
-      setActiveProfiles(await api.get<TargetProfile[]>('/api/target-profiles'))
+      setActiveProfiles(await api.get<TargetProfile[]>('/api/target-profiles?source=USER_IMPORT'))
     } catch (error) {
       setMessage(errorMessage(error))
     }
@@ -98,12 +103,28 @@ export function TargetProfileWorkspace({
     }
   }
 
+  const selectedProfile = activeProfiles.find((profile) => profile.targetSystemId === selectedTargetId) ?? null
+
+  const successfulMessage = message?.startsWith('안전') || message?.startsWith('Draft') || message?.startsWith('Profile') ||
+    message?.includes('등록하고 Swagger')
+
   return (
     <div className="workspace-grid profile-workspace">
-      <ProfileYamlInput yaml={yaml} onChange={setYaml} onError={setMessage} />
+      <QuickTargetRegistration
+        api={api}
+        busy={busy}
+        onError={setMessage}
+        onRegistered={async (profile) => {
+          setMessage(`'${profile.targetName}'을 등록하고 Swagger 문서 ${profile.openApiPaths?.length ?? 0}개를 확인했습니다.`)
+          onSelectTarget(profile.targetSystemId)
+          setDiscoveryRefreshKey((key) => key + 1)
+          await refreshActiveProfiles()
+        }}
+      />
+      <ProfileYamlInput yaml={yaml} onChange={onYamlChange} onError={setMessage} />
       <section className="card profile-actions">
-        <p className="eyebrow">2. 검증 및 등록</p>
-        <h2>실행 전 안전 확인</h2>
+        <p className="eyebrow">고급 설정</p>
+        <h2>직접 작성한 Profile YAML</h2>
         <ProfileValidationSummary validation={validation} />
         <div className="button-row">
           <button type="button" onClick={() => void validateProfile()} disabled={busy || yaml.trim().length === 0}>
@@ -122,13 +143,13 @@ export function TargetProfileWorkspace({
             </button>
           </div>
         )}
-        {message && <p className={message.startsWith('안전') || message.startsWith('Draft') || message.startsWith('Profile') ? 'notice success' : 'notice error'}>{message}</p>}
+        {message && <p className={successfulMessage ? 'notice success' : 'notice error'}>{message}</p>}
       </section>
       <section className="card active-profiles">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">3. 활성 Target</p>
-            <h2>다시 등록하지 않고 선택</h2>
+            <p className="eyebrow">2. 등록한 Target</p>
+            <h2>등록한 Target을 선택하세요</h2>
           </div>
           <button className="secondary-button" type="button" onClick={() => void refreshActiveProfiles()} disabled={busy}>새로고침</button>
         </div>
@@ -138,29 +159,32 @@ export function TargetProfileWorkspace({
           onSelectTarget={onSelectTarget}
         />
       </section>
+      <EffectiveSettingsPanel
+        api={api}
+        profile={selectedProfile}
+        onUseGeneratedYaml={(generatedYaml) => {
+          onYamlChange(generatedYaml)
+          setValidation(null)
+          setDraft(null)
+          setMessage('현재 적용 설정을 고급 YAML로 불러왔습니다. 필요한 경로만 수정한 뒤 정책 검증을 실행하세요.')
+        }}
+      />
       <PilotDiscoveryPanel api={api} targetSystemId={selectedTargetId} refreshKey={discoveryRefreshKey} />
       <TargetCredentialPanel
         api={api}
         targetSystemId={selectedTargetId}
-        onCredentialSessionChange={onCredentialSessionChange}
+        credentialStatus={credentialStatus}
+        preflight={credentialPreflight}
+        onCredentialStatusChange={onCredentialStatusChange}
+        onPreflightChange={onCredentialPreflightChange}
       />
       <PilotTemplateRunnerPanel
         api={api}
         targetSystemId={selectedTargetId}
         refreshKey={discoveryRefreshKey}
-        onOpenRegression={onOpenRegression}
-        onOpenAiProposal={onOpenAiProposal}
+        harnessPreflight={credentialPreflight.find((result) => result.role === 'harness') ?? null}
         onOpenRun={onOpenRun}
-        credentialSessionId={credentialSessionId}
-      />
-      <SourceDraftWorkspace
-        api={api}
-        onUseYaml={(value) => {
-          setYaml(value)
-          setValidation(null)
-          setDraft(null)
-          setMessage('제안 YAML을 불러왔습니다. 내용을 검토한 뒤 정상 Profile 검증을 실행하세요.')
-        }}
+        onOpenSession={onOpenSession}
       />
     </div>
   )

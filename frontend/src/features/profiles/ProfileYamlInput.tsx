@@ -29,7 +29,7 @@ export function ProfileYamlInput({ yaml, onChange, onError }: ProfileYamlInputPr
     <section className="card profile-input">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">1. Profile 초안</p>
+          <p className="eyebrow">고급 설정</p>
           <h2>Target Profile YAML</h2>
         </div>
         <button className="secondary-button" type="button" onClick={() => inputRef.current?.click()}>

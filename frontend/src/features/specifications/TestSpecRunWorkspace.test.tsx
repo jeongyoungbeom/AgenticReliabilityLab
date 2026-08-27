@@ -47,16 +47,18 @@ describe('TestSpecRunWorkspace', () => {
   beforeEach(() => {
     sessionStorage.clear()
     vi.restoreAllMocks()
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(run))
+    // A Response body can be read only once, so polling would reuse a disturbed one.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => jsonResponse(run))
   })
 
   it('판정 불가와 근거 문자열을 시행별로 생략 없이 보여준다', async () => {
     render(
       <TestSpecRunWorkspace
         api={new ApiClient({ viewer: '', profileEditor: '', executor: '' })}
-        selectedSpecificationId="spec-1"
+        selectedTargetId={null}
+        selectedPilotTestSessionId={null}
+        onSelectPilotTestSession={vi.fn()}
         selectedRunId="run-1"
-        credentialSessionId={null}
         onSelectRun={vi.fn()}
       />,
     )
@@ -69,22 +71,24 @@ describe('TestSpecRunWorkspace', () => {
     expect(screen.getByText('no trace carries both spans')).toBeInTheDocument()
   })
 
-  it('Target credential session을 일반 명세 실행에도 전달한다', async () => {
+  it('명세 실행은 세션 헤더 없이 쿠키로만 나간다', async () => {
     render(
       <TestSpecRunWorkspace
         api={new ApiClient({ viewer: '', profileEditor: '', executor: '' })}
-        selectedSpecificationId="spec-1"
+        selectedTargetId={null}
+        selectedPilotTestSessionId={null}
+        onSelectPilotTestSession={vi.fn()}
         selectedRunId={null}
-        credentialSessionId="credential-session-0001"
         onSelectRun={vi.fn()}
       />,
     )
 
+    await userEvent.type(screen.getByLabelText('Test Specification ID'), 'spec-1')
     await userEvent.click(screen.getByRole('button', { name: '실행 시작' }))
 
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled())
     const [, init] = vi.mocked(globalThis.fetch).mock.calls[0]
-    expect(new Headers(init?.headers).get('X-ARL-Target-Credential-Session')).toBe('credential-session-0001')
+    expect(new Headers(init?.headers).get('X-ARL-Target-Credential-Session')).toBeNull()
   })
 })
 

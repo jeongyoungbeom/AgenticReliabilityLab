@@ -7,6 +7,9 @@ import java.time.Instant
 data class TargetProfileResponse(
     val id: String,
     val targetSystemId: String,
+    val targetName: String,
+    val baseUrl: String,
+    val environment: String,
     val source: String,
     val status: String,
     val checksum: String,
@@ -22,6 +25,9 @@ data class TargetProfileResponse(
         fun from(version: TargetProfileVersion): TargetProfileResponse = TargetProfileResponse(
             id = version.id.toString(),
             targetSystemId = version.targetSystemId,
+            targetName = version.definition.target.name,
+            baseUrl = version.definition.target.baseUrl,
+            environment = version.definition.target.environment.name,
             source = version.source.name,
             status = version.status.name,
             checksum = version.checksum,

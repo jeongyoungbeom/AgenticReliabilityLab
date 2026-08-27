@@ -39,6 +39,11 @@ logging:
     console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [%X{correlationId:-system}] %logger{36} - %msg%n"
 
 arl:
+  target-credential:
+    # Target 자격증명은 서버 메모리에만 있다. 유휴 시간은 마지막 사용 시각 기준이라 작업 중에는 만료되지 않는다.
+    cookie-secure: ${ARL_TARGET_CREDENTIAL_COOKIE_SECURE:false}
+    idle-timeout: ${ARL_TARGET_CREDENTIAL_IDLE_TIMEOUT:8h}
+    max-sessions: ${ARL_TARGET_CREDENTIAL_MAX_SESSIONS:100}
   jobs:
     enabled: ${ARL_JOBS_ENABLED:true}
     poll-delay: ${ARL_JOBS_POLL_DELAY:200ms}

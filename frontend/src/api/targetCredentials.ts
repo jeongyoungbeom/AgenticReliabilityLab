@@ -1,11 +1,12 @@
+/**
+ * The credential session id is intentionally absent: it lives only in an HttpOnly cookie the browser attaches
+ * automatically, so no page script can read it and a reload keeps reaching the same server-side session.
+ */
 export interface TargetRuntimeCredentialStatus {
   targetSystemId: string
-  credentialSessionId: string
   storedRoles: string[]
-  expiresAt: string | null
+  sessionActive: boolean
 }
-
-export const TARGET_CREDENTIAL_SESSION_HEADER = 'X-ARL-Target-Credential-Session'
 
 export type TargetCredentialPreflightStatus =
   | 'READY'

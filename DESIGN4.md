@@ -256,6 +256,6 @@ trial별 결과 표시.
 
 ## 7. 다음 세션의 시작 규칙
 
-다음 구현 세션은 `AGENTS.md`, `.agents/skills/SKILL.md`, 이 문서, `HANDOFF.md`를 먼저 읽는다.
+다음 구현 세션은 `AGENTS.md`, `.agents/skills/develop-with-user/SKILL.md`, 이 문서, `HANDOFF.md`를 먼저 읽는다.
 P1만 먼저 조사·구현·검증하고, P2의 실제 UI 사이클이 확인되기 전에는 구조를 넓히거나 새 일반화 계층을
 추가하지 않는다. 구현 중 새 사실이 이 계약을 바꾸면 코드보다 먼저 이 문서와 handoff를 갱신한다.

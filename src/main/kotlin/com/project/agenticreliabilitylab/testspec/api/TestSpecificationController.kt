@@ -12,6 +12,8 @@ import org.slf4j.MDC
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
+import com.project.agenticreliabilitylab.targetcredential.api.TargetCredentialSessionCookie
+import org.springframework.web.bind.annotation.CookieValue
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -55,7 +57,7 @@ class TestSpecificationController(
         @PathVariable specificationId: UUID,
         @RequestHeader("Authorization", required = false) authorization: String?,
         @RequestHeader("Idempotency-Key", required = false) idempotencyKey: String?,
-        @RequestHeader(CREDENTIAL_SESSION_HEADER, required = false) credentialSessionId: String?,
+        @CookieValue(TargetCredentialSessionCookie.NAME, required = false) credentialSessionId: String?,
     ): ResponseEntity<TestSpecRunResponse> {
         require(!idempotencyKey.isNullOrBlank()) { "Idempotency-Key header is required" }
         val actor = operatorAccessService.requireExecutor(authorization)
@@ -68,7 +70,7 @@ class TestSpecificationController(
         @PathVariable targetSystemId: String,
         @RequestHeader("Authorization", required = false) authorization: String?,
         @RequestHeader("Idempotency-Key", required = false) idempotencyKey: String?,
-        @RequestHeader(CREDENTIAL_SESSION_HEADER, required = false) credentialSessionId: String?,
+        @CookieValue(TargetCredentialSessionCookie.NAME, required = false) credentialSessionId: String?,
     ): TestSpecRegressionRunsResponse {
         require(!idempotencyKey.isNullOrBlank()) { "Idempotency-Key header is required" }
         val actor = operatorAccessService.requireExecutor(authorization)
@@ -113,6 +115,5 @@ class TestSpecificationController(
 
     private companion object {
         const val CORRELATION_ID_KEY = "correlationId"
-        const val CREDENTIAL_SESSION_HEADER = "X-ARL-Target-Credential-Session"
     }
 }

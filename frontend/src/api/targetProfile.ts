@@ -1,6 +1,9 @@
 export interface TargetProfile {
   id: string
   targetSystemId: string
+  targetName: string
+  baseUrl: string
+  environment: string
   source: string
   status: 'DRAFT' | 'ACTIVE' | 'SUPERSEDED'
   checksum: string

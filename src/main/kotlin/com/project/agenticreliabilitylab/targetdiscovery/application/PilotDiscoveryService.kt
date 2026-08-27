@@ -263,17 +263,21 @@ private object PilotTemplateConfigurationReadiness {
     ): List<String> = buildList {
         val resetPlan = reset
         if (
-            resetPlan?.method != CleanupMethod.ENVIRONMENT_RESET || resetPlan.hook?.authProfile != HARNESS ||
+            resetPlan?.method != CleanupMethod.ENVIRONMENT_RESET || !resetPlan.hook.isHarnessPost() ||
             resetPlan.verifications.isEmpty()
-        ) add("verified Harness environment reset")
+        ) add("Harness POST reset with verification")
 
         val harness = observationSources.firstOrNull { source ->
             source.kind == ProfileObservationSourceKind.HARNESS_STATE && source.authProfile == HARNESS
         }
-        if (harness == null) add("Harness state observation source")
+        if (harness == null) add("Harness GET state observation")
         else (requirements.requiredHarnessFields - harness.fields).sorted().forEach { field ->
             add("Harness field '$field'")
         }
+
+        val fault = faultInjection
+        if (!fault?.injectEndpoint.isHarnessPost()) add("Harness POST fault injection")
+        if (!fault?.releaseEndpoint.isHarnessPost()) add("Harness POST fault release")
     }
 
     private fun TestSpecExecutionProfileDefinition.faultRequirementsMissing(
@@ -281,12 +285,11 @@ private object PilotTemplateConfigurationReadiness {
     ): List<String> = requirements.requiredFaultType?.let { faultType ->
         buildList {
             if (faultType !in supportedFaults) add("supported fault '$faultType'")
-            val fault = faultInjection
-            if (fault?.injectEndpoint?.authProfile != HARNESS || fault.releaseEndpoint.authProfile != HARNESS) {
-                add("Harness fault inject/release hooks")
-            }
         }
     } ?: emptyList()
+
+    private fun ProfileHttpCallDefinition?.isHarnessPost(): Boolean =
+        this?.method.equals("POST", ignoreCase = true) && this?.authProfile == HARNESS
 
     private fun TestSpecExecutionProfileDefinition.healthRequirementMissing(
         candidateId: String,

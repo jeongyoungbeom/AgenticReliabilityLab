@@ -19,8 +19,3 @@ data class PilotTemplateExecutionOutcome(
     val failureCode: String?,
     val failureMessage: String?,
 )
-
-data class PilotTemplateExecution(
-    val targetSystemId: String,
-    val outcomes: List<PilotTemplateExecutionOutcome>,
-)

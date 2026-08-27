@@ -18,11 +18,12 @@ function apiStub() {
   return {
     get: vi.fn().mockResolvedValue(discovery),
     post: vi.fn().mockResolvedValue({
-      targetSystemId: 'sideproject-local',
-      outcomes: [{ candidateId: 'availability', specificationId: 'spec-1', failureCode: null, failureMessage: null, run: {
-        id: 'run-1', status: 'COMPLETED', resultOutcome: 'PASSED', trialsRun: 1, requestedTrials: 1, cleanupVerified: true, failure: null,
-        trials: [],
-      } }],
+      id: 'session-1', targetSystemId: 'sideproject-local', profileVersionId: 'profile-1', status: 'COMPLETED',
+      resultOutcome: 'PASSED', cleanupVerified: true, createdAt: '2026-08-27T00:00:00Z', completedAt: '2026-08-27T00:00:01Z', failure: null,
+      outcomes: [{
+        candidateId: 'availability', specificationId: 'spec-1', testSpecRunId: 'run-1', status: 'COMPLETED',
+        resultOutcome: 'PASSED', cleanupVerified: true, failureCode: null, failureMessage: null, completedAt: '2026-08-27T00:00:01Z',
+      }],
     }),
   } as unknown as ApiClient
 }
@@ -38,10 +39,9 @@ describe('PilotTemplateRunnerPanel', () => {
         api={api}
         targetSystemId="sideproject-local"
         refreshKey={0}
-        credentialSessionId="credential-session-0001"
+        harnessPreflight={{ role: 'harness', status: 'READY', method: 'GET', path: '/api/harness/state', httpStatus: 200 }}
         onOpenRun={vi.fn()}
-        onOpenRegression={vi.fn()}
-        onOpenAiProposal={vi.fn()}
+        onOpenSession={vi.fn()}
       />,
     )
 
@@ -57,24 +57,60 @@ describe('PilotTemplateRunnerPanel', () => {
       { candidateIds: ['availability'], confirmation: 'EXECUTE_PILOT_TEMPLATES' },
       'executor',
       expect.stringMatching(/^pilot-template-/),
-      { 'X-ARL-Target-Credential-Session': 'credential-session-0001' },
     )
     expect(await screen.findByText(/cleanup VERIFIED/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '세션 결과 보기' })).toBeInTheDocument()
   })
 
-  it('opens the existing regression and AI proposal workspaces', async () => {
-    const onOpenRegression = vi.fn()
-    const onOpenAiProposal = vi.fn()
+  it('does not show executable choices until the non-mutating Harness state preflight succeeds', async () => {
+    const api = apiStub()
     render(
-      <PilotTemplateRunnerPanel api={apiStub()} targetSystemId="sideproject-local" refreshKey={0}
-        credentialSessionId={null} onOpenRun={vi.fn()}
-        onOpenRegression={onOpenRegression} onOpenAiProposal={onOpenAiProposal} />,
+      <PilotTemplateRunnerPanel
+        api={api}
+        targetSystemId="sideproject-local"
+        refreshKey={0}
+        harnessPreflight={null}
+        onOpenRun={vi.fn()}
+        onOpenSession={vi.fn()}
+      />,
     )
 
-    await screen.findByText('가용성')
-    fireEvent.click(screen.getByRole('button', { name: '회귀 실행·결과 열기' }))
-    fireEvent.click(screen.getByRole('button', { name: 'AI 제안 검토 열기' }))
-    expect(onOpenRegression).toHaveBeenCalledOnce()
-    expect(onOpenAiProposal).toHaveBeenCalledOnce()
+    expect(await screen.findByText(/Harness 실행 게이트/)).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: /가용성/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '선택한 템플릿 실행' })).toBeDisabled()
   })
+
+  it('clears an existing choice and refuses execution when a later Harness preflight fails', async () => {
+    const api = apiStub()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { rerender } = render(
+      <PilotTemplateRunnerPanel
+        api={api}
+        targetSystemId="sideproject-local"
+        refreshKey={0}
+        harnessPreflight={{ role: 'harness', status: 'READY', method: 'GET', path: '/api/harness/state', httpStatus: 200 }}
+        onOpenRun={vi.fn()}
+        onOpenSession={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(await screen.findByRole('checkbox', { name: /가용성/ }))
+    rerender(
+      <PilotTemplateRunnerPanel
+        api={api}
+        targetSystemId="sideproject-local"
+        refreshKey={0}
+        harnessPreflight={{ role: 'harness', status: 'TARGET_UNREACHABLE', method: 'GET', path: '/api/harness/state', httpStatus: null }}
+        onOpenRun={vi.fn()}
+        onOpenSession={vi.fn()}
+      />,
+    )
+
+    const execute = screen.getByRole('button', { name: '선택한 템플릿 실행' })
+    expect(execute).toBeDisabled()
+    await userEvent.click(execute)
+    expect(confirm).not.toHaveBeenCalled()
+    expect(api.post).not.toHaveBeenCalled()
+  })
+
 })

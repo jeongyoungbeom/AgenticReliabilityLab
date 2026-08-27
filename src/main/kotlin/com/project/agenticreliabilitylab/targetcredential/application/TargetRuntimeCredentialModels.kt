@@ -1,6 +1,5 @@
 package com.project.agenticreliabilitylab.targetcredential.application
 
-import java.time.Instant
 
 enum class TargetCredentialRole {
     SELLER,
@@ -13,10 +12,9 @@ enum class TargetCredentialRole {
 
 data class TargetRuntimeCredentialStatus(
     val targetSystemId: String,
-    /** Opaque, short-lived capability kept only in the current browser memory. It is not a Target credential. */
+    /** Opaque browser-memory capability. It is not a Target credential and ends on explicit clear or ARL restart. */
     val credentialSessionId: String,
     val storedRoles: Set<String>,
-    val expiresAt: Instant?,
 )
 
 enum class TargetCredentialPreflightStatus {

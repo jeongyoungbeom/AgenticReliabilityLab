@@ -4,6 +4,7 @@ import com.project.agenticreliabilitylab.testspec.application.port.TestSpecExecu
 import com.project.agenticreliabilitylab.testspec.domain.CleanupMethod
 import com.project.agenticreliabilitylab.testspec.domain.SpecHttpCall
 import com.project.agenticreliabilitylab.targetprofiledraft.application.BoundedOpenApiDocumentParser
+import com.sun.net.httpserver.HttpServer
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
@@ -12,6 +13,7 @@ import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import java.net.URI
+import java.net.InetSocketAddress
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -90,6 +92,59 @@ class TargetProfileApiIntegrationTests {
         assertFalse(candidates.body().contains("access_token"))
 
         assertPendingBatchIsCancelledWhenItsProfileIsReplaced(targetId)
+    }
+
+    @Test
+    fun `quick registration discovers an allowlisted OpenAPI document and activates the standard profile`() {
+        val target = openApiTarget()
+        target.start()
+        try {
+            val response = post(
+                "/api/target-profiles/quick-register",
+                objectMapper.writeValueAsString(
+                    mapOf(
+                        "name" to "Quick Target ${UUID.randomUUID().toString().take(8)}",
+                        "baseUrl" to "http://127.0.0.1:${target.address.port}",
+                        "environment" to "TEST",
+                    ),
+                ),
+                authorizationHeader(),
+            )
+
+            assertEquals(201, response.statusCode(), response.body())
+            assertContains(response.body(), "\"status\":\"ACTIVE\"")
+            assertContains(response.body(), "\"openApiPaths\":[\"/v3/api-docs\"]")
+
+            val registered = get("/api/target-profiles?source=USER_IMPORT")
+            assertEquals(200, registered.statusCode(), registered.body())
+            assertContains(registered.body(), "\"source\":\"USER_IMPORT\"")
+            assertContains(registered.body(), "\"baseUrl\":\"http://127.0.0.1:${target.address.port}\"")
+
+            // Nothing quick registration filled in may stay hidden: a default that gates a run must be readable.
+            val versionId = Regex("\"id\":\"([0-9a-f-]{36})\"").find(response.body())!!.groupValues[1]
+            val effective = get("/api/target-profiles/$versionId/effective-settings")
+            assertEquals(200, effective.statusCode(), effective.body())
+            assertContains(effective.body(), "\"harnessStatePath\":\"/api/harness/state\"")
+            assertContains(effective.body(), "\"harnessResetPath\":\"/api/harness/reset\"")
+            assertContains(effective.body(), "\"harnessFaultPath\":\"/api/harness/fault\"")
+            assertContains(effective.body(), "\"harnessFaultReleasePath\":\"/api/harness/fault/release\"")
+            assertContains(effective.body(), "\"allowedCidrs\":[\"127.0.0.1/32\"]")
+            assertContains(effective.body(), "generatedYaml")
+            assertContains(effective.body(), "allowed-cidrs")
+
+            val generatedYaml = objectMapper.readTree(effective.body()).path("generatedYaml").asString()
+            assertContains(generatedYaml, "source-repository")
+            assertContains(generatedYaml, "fault-injection")
+            val advancedImport = post(
+                "/api/target-profiles",
+                objectMapper.writeValueAsString(mapOf("yaml" to generatedYaml)),
+                authorizationHeader(),
+            )
+            assertEquals(202, advancedImport.statusCode(), advancedImport.body())
+            assertContains(advancedImport.body(), "\"status\":\"DRAFT\"")
+        } finally {
+            target.stop(0)
+        }
     }
 
     private fun assertPendingBatchIsCancelledWhenItsProfileIsReplaced(targetId: String) {
@@ -211,6 +266,19 @@ class TargetProfileApiIntegrationTests {
 
     private fun executorAuthorizationHeader(): Map<String, String> =
         mapOf("Authorization" to "Bearer executor-test-token")
+
+    private fun openApiTarget(): HttpServer = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+        createContext("/v3/api-docs") { exchange ->
+            val document = """
+                {"openapi":"3.0.1","info":{"title":"Quick Target","version":"1"},"paths":{
+                  "/api/products":{"get":{"operationId":"getProducts","responses":{"200":{"description":"ok"}}}}
+                }}
+            """.trimIndent().toByteArray()
+            exchange.sendResponseHeaders(200, document.size.toLong())
+            exchange.responseBody.use { body -> body.write(document) }
+        }
+        createContext("/") { exchange -> exchange.sendResponseHeaders(404, -1) }
+    }
 
     private fun validProfile(targetId: String, executionEnabled: Boolean = true): String = """
         arl:

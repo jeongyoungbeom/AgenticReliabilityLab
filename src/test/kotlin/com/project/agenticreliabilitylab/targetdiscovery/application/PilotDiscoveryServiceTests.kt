@@ -14,6 +14,7 @@ import com.project.agenticreliabilitylab.targetintelligence.domain.TargetKnowled
 import com.project.agenticreliabilitylab.targetprofile.application.TargetProfileService
 import com.project.agenticreliabilitylab.targetprofile.domain.GenericHttpProfileDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileHttpCallDefinition
+import com.project.agenticreliabilitylab.targetprofile.domain.ProfileFaultInjectionDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileObservationSourceDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileObservationSourceKind
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileReadTimingDefinition
@@ -63,7 +64,24 @@ class PilotDiscoveryServiceTests {
         )
     }
 
-    private fun profileVersion(): TargetProfileVersion {
+    @Test
+    fun `blocks every pilot template when formal Harness fault routes are not declared`() {
+        val version = profileVersion(includeFaultInjection = false)
+        val profiles = Mockito.mock(TargetProfileService::class.java)
+        val snapshots = Mockito.mock(TargetKnowledgeSnapshotStore::class.java)
+        Mockito.`when`(profiles.findActive(version.targetSystemId)).thenReturn(version)
+        Mockito.`when`(snapshots.findByTarget(version.targetSystemId, 50)).thenReturn(listOf(snapshot(version)))
+
+        val candidates = PilotDiscoveryService(profiles, snapshots).find(version.targetSystemId).candidates
+        val availability = candidates.single { candidate -> candidate.id == "availability" }
+
+        assertEquals(true, candidates.all { candidate -> candidate.readiness == PilotCandidateReadiness.NOT_READY })
+        assertEquals(PilotCandidateReadiness.NOT_READY, availability.readiness)
+        assertEquals(true, "Harness POST fault injection" in availability.missingOperations)
+        assertEquals(true, "Harness POST fault release" in availability.missingOperations)
+    }
+
+    private fun profileVersion(includeFaultInjection: Boolean = true): TargetProfileVersion {
         val target = targetDefinition()
         return TargetProfileVersion(
             id = UUID.randomUUID(),
@@ -75,7 +93,7 @@ class PilotDiscoveryServiceTests {
                 target,
                 genericDefinition(),
                 null,
-                executionDefinition(),
+                executionDefinition(includeFaultInjection),
             ),
             createdBy = "tester",
             createdAt = Instant.EPOCH,
@@ -121,7 +139,7 @@ class PilotDiscoveryServiceTests {
             failureInjectionCandidates = emptyList(),
         )
 
-    private fun executionDefinition(): TestSpecExecutionProfileDefinition =
+    private fun executionDefinition(includeFaultInjection: Boolean): TestSpecExecutionProfileDefinition =
         TestSpecExecutionProfileDefinition(
             executionEnabled = true,
             allowedCalls = listOf(
@@ -147,7 +165,7 @@ class PilotDiscoveryServiceTests {
                     authProfile = "harness",
                 ),
             ),
-            supportedFaults = emptySet(),
+            supportedFaults = if (includeFaultInjection) setOf("PAYMENT_FAILURE") else emptySet(),
             infrastructureTargets = emptySet(),
             maxConcurrency = 20,
             maxRequestCount = 100,
@@ -171,6 +189,11 @@ class PilotDiscoveryServiceTests {
                     ),
                 ),
             ),
+            faultInjection = if (includeFaultInjection) ProfileFaultInjectionDefinition(
+                injectEndpoint = ProfileHttpCallDefinition("POST", "/api/harness/fault", "harness"),
+                releaseEndpoint = ProfileHttpCallDefinition("POST", "/api/harness/fault/release", "harness"),
+                maxTtl = Duration.ofSeconds(120),
+            ) else null,
         )
 
     private fun snapshot(version: TargetProfileVersion): TargetKnowledgeSnapshot = TargetKnowledgeSnapshot(

@@ -10,21 +10,23 @@ import {
 import { NotEvaluatedReasonBadge, TestSpecJudgementBadge } from '../../components/TestSpecJudgement'
 import { useIdempotencyKey } from '../../hooks/useIdempotencyKey'
 import { useSessionStorageState } from '../../hooks/useSessionStorageState'
+import { PilotTestSessionResultsPanel } from './PilotTestSessionResultsPanel'
 
 interface TestSpecRunWorkspaceProps {
   api: ApiClient
-  selectedSpecificationId: string | null
+  selectedTargetId: string | null
+  selectedPilotTestSessionId: string | null
+  onSelectPilotTestSession: (sessionId: string) => void
   selectedRunId: string | null
-  credentialSessionId: string | null
   onSelectRun: (runId: string) => void
 }
 
 export function TestSpecRunWorkspace({
-  api, selectedSpecificationId, selectedRunId, credentialSessionId, onSelectRun,
+  api, selectedTargetId, selectedPilotTestSessionId, onSelectPilotTestSession, selectedRunId, onSelectRun,
 }: TestSpecRunWorkspaceProps) {
   const [storedRunId, setStoredRunId] = useSessionStorageState<string>('arl.test-spec-run-id', '')
   const [runInput, setRunInput] = useState(selectedRunId ?? storedRunId)
-  const [specificationInput, setSpecificationInput] = useState(selectedSpecificationId ?? '')
+  const [specificationInput, setSpecificationInput] = useState('')
   const [run, setRun] = useState<TestSpecRunResponse | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
@@ -38,9 +40,6 @@ export function TestSpecRunWorkspace({
     return () => { mounted.current = false }
   }, [])
 
-  useEffect(() => {
-    if (selectedSpecificationId) setSpecificationInput(selectedSpecificationId)
-  }, [selectedSpecificationId])
 
   useEffect(() => {
     if (selectedRunId) {
@@ -78,7 +77,7 @@ export function TestSpecRunWorkspace({
     try {
       setBusy(true)
       setMessage(null)
-      const created = await executeTestSpecification(api, specificationId, key, credentialSessionId)
+      const created = await executeTestSpecification(api, specificationId, key)
       if (!mounted.current) return
       setRun(created)
       setRunInput(created.id)
@@ -115,6 +114,13 @@ export function TestSpecRunWorkspace({
 
   return (
     <div className="workspace-grid specification-run-workspace">
+      <PilotTestSessionResultsPanel
+        api={api}
+        targetSystemId={selectedTargetId}
+        selectedSessionId={selectedPilotTestSessionId}
+        onSelectSession={onSelectPilotTestSession}
+        onOpenRun={onSelectRun}
+      />
       <section className="card">
         <p className="eyebrow">명세 실행</p>
         <h2>승인한 기준으로 실행합니다</h2>
