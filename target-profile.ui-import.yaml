@@ -7,8 +7,8 @@ arl:
         name: SideProject (Eventful Commerce) Local Docker
         adapter-type: HTTP_TARGET
         environment: LOCAL
-        base-url: http://host.docker.internal
-        allowed-origin: http://host.docker.internal
+        base-url: http://host.docker.internal:18080
+        allowed-origin: http://host.docker.internal:18080
         allowed-cidrs:
           - 192.168.65.0/24
         health-path: /actuator/health

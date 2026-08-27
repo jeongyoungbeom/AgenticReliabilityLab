@@ -1,9 +1,9 @@
 [CmdletBinding()]
 param(
-    [string]$ApiBaseUrl = 'http://localhost/api',
-    [string]$SellerEmail,
-    [string]$BuyerEmail,
-    [string]$Password,
+    [string]$ApiBaseUrl = 'http://localhost:18080/api',
+    [string]$SellerEmail = 'arl-seller@portfolio.test',
+    [string]$BuyerEmail = 'arl-buyer@portfolio.test',
+    [string]$Password = 'Test1234!',
     [string]$SellerName = 'ARL Test Seller',
     [string]$BuyerName = 'ARL Test Buyer',
     [string]$BusinessName = 'ARL Test Store',
@@ -14,12 +14,6 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-
-function New-TestSuffix {
-    $timestamp = Get-Date -Format 'yyyyMMddHHmmss'
-    $random = Get-Random -Minimum 100000 -Maximum 999999
-    return "$timestamp$random"
-}
 
 function Invoke-ApiJson {
     param(
@@ -80,10 +74,6 @@ function Register-AndLogin {
 }
 
 $normalizedApiBaseUrl = $ApiBaseUrl.TrimEnd('/')
-$suffix = New-TestSuffix
-if ([string]::IsNullOrWhiteSpace($SellerEmail)) { $SellerEmail = "arl.seller.$suffix@example.test" }
-if ([string]::IsNullOrWhiteSpace($BuyerEmail)) { $BuyerEmail = "arl.buyer.$suffix@example.test" }
-if ([string]::IsNullOrWhiteSpace($Password)) { $Password = "Arl!$suffix" }
 $passwordToUse = $Password
 
 $sellerToken = Register-AndLogin -Role seller -Email $SellerEmail -DisplayName $SellerName

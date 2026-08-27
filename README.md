@@ -97,21 +97,23 @@ $env:ARL_QWEN_MODEL = '사용할-qwen-태그'
 
 ### 2. Target 프로젝트를 먼저 실행
 
-테스트할 프로젝트를 Docker, WSL 또는 로컬 프로세스로 실행합니다. 예를 들어 Docker Desktop에 노출된 Target은 ARL 컨테이너에서 보통 `http://host.docker.internal`로 접근합니다.
+테스트할 프로젝트를 Docker, WSL 또는 로컬 프로세스로 실행합니다. 예를 들어 SideProject Harness overlay는 Docker Desktop에서 `http://host.docker.internal:18080`으로 접근합니다.
 
 Target의 health endpoint와 점검할 공개 `GET` endpoint가 실제로 응답하는지 먼저 확인하세요.
 
-선언형 SideProject 테스트를 실행할 때는 판매자와 구매자 역할의 토큰이 필요합니다. 아래 스크립트는
-고유한 로컬 테스트 계정을 생성·로그인하고, 토큰을 출력하거나 파일에 저장하지 않은 채 현재 PowerShell
-세션의 ARL Runner 환경변수에만 넣습니다.
+선언형 SideProject 테스트를 실행할 때는 Harness가 관측하는 판매자와 구매자 테스트 계정의 토큰이
+필요합니다. SideProject Harness overlay를 기동한 뒤, SideProject 저장소에서 아래 스크립트를 실행하세요.
+스크립트는 Harness 설정의 두 테스트 계정을 생성 또는 로그인하고, ARL UI에 일회성으로 붙여넣을 토큰을
+출력합니다. 토큰을 파일이나 YAML에 저장하지 마세요.
 
-```powershell
-.\scripts\create-sideproject-test-tokens.ps1
-.\start.ps1 -SkipBuild
+```bash
+cd ~/sideProject
+./scripts/create-test-account-tokens.sh
 ```
 
-두 명령은 같은 PowerShell 창에서 실행해야 합니다. 재기동 뒤 `ARL_SPEC_AUTH_SIDEPROJECT_LOCAL_SELLER`와
-`ARL_SPEC_AUTH_SIDEPROJECT_LOCAL_BUYER`가 ARL 컨테이너에 전달됩니다.
+출력된 seller/buyer 토큰과 SideProject의 `ARL_HARNESS_KEY`를 Workbench의 Target runtime credential 입력칸에
+각각 넣고 역할별 preflight를 실행합니다. Harness overlay의 기본 Gateway 주소는
+`http://host.docker.internal:18080`입니다.
 
 ### 3. ARL 실행
 
@@ -208,7 +210,7 @@ Multi agent는 `SUPERVISOR → PLANNER → ANALYST → REVIEWER` 순서로 같�
 프로젝트 루트의 `target-profile.yaml`은 Docker Compose가 시작할 때 읽는 **환경 설정 파일**입니다. 이 파일에서는 환경별 값 치환을 위해 Spring placeholder를 쓸 수 있습니다.
 
 ```yaml
-base-url: ${ARL_SIDE_PROJECT_BASE_URL:http://host.docker.internal}
+base-url: ${ARL_SIDE_PROJECT_BASE_URL:http://host.docker.internal:18080}
 ```
 
 반면 워크벤치에 붙여넣어 import하는 Profile은 DB에 남는 **불변 버전**입니다. 재현성과 비밀값 보관 금지를 위해 `${...}` placeholder를 허용하지 않습니다.
@@ -216,7 +218,7 @@ base-url: ${ARL_SIDE_PROJECT_BASE_URL:http://host.docker.internal}
 따라서 화면 import에서는 아래처럼 실제 값을 넣어야 합니다.
 
 ```yaml
-base-url: http://host.docker.internal
+base-url: http://host.docker.internal:18080
 ```
 
 `INVALID_REQUEST: Target Profile document must not contain environment placeholders`는 위 두 용도를 섞었을 때 나오는 정상적인 검증 오류입니다.
@@ -233,8 +235,8 @@ arl:
         name: 나의 로컬 Target
         adapter-type: HTTP_TARGET
         environment: LOCAL
-        base-url: http://host.docker.internal
-        allowed-origin: http://host.docker.internal
+        base-url: http://host.docker.internal:18080
+        allowed-origin: http://host.docker.internal:18080
         allowed-cidrs:
           - 192.168.65.0/24
         health-path: /actuator/health
