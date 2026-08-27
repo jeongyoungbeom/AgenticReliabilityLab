@@ -17,6 +17,8 @@ describe('TargetCredentialPanel', () => {
     const user = userEvent.setup()
     render(<TargetCredentialPanel api={api} targetSystemId="sideproject-local" onCredentialSessionChange={onCredentialSessionChange} />)
 
+    expect(screen.getByRole('button', { name: '메모리에서 지우기' })).toBeDisabled()
+
     const seller = screen.getByLabelText('Target seller')
     await user.type(seller, 'short-lived-target-token')
     await user.click(screen.getByRole('button', { name: '런타임에 적용' }))
@@ -25,6 +27,7 @@ describe('TargetCredentialPanel', () => {
     expect(screen.getByText(/입력칸은 지웠습니다/)).toBeInTheDocument()
     expect(storageSpy).not.toHaveBeenCalled()
     expect(onCredentialSessionChange).toHaveBeenCalledWith('credential-session-0001')
+    expect(screen.getByRole('button', { name: '메모리에서 지우기' })).toBeEnabled()
   })
 
   it('역할별 preflight 결과를 인증 문제와 연결 문제로 구분한다', async () => {

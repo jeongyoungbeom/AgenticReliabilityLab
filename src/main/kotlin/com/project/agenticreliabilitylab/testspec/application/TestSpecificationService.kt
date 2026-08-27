@@ -171,6 +171,7 @@ class TestSpecificationService(
         idempotencyKey: String,
         actor: String,
         correlationId: String,
+        credentialSessionId: String? = null,
     ): List<TestSpecRegressionRunOutcome> {
         require(REGRESSION_IDEMPOTENCY_KEY_PATTERN.matches(idempotencyKey)) {
             "Idempotency-Key must contain 1 to $MAX_REGRESSION_IDEMPOTENCY_KEY_LENGTH letters, numbers, '.', " +
@@ -181,7 +182,9 @@ class TestSpecificationService(
             .values
             .map { versions -> versions.maxBy(StoredTestSpecification::version) }
             .sortedBy(StoredTestSpecification::specKey)
-            .map { specification -> runOne(specification, idempotencyKey, actor, correlationId) }
+            .map { specification ->
+                runOne(specification, idempotencyKey, actor, correlationId, credentialSessionId)
+            }
     }
 
     // execute() can also let a raw DuplicateKeyException escape (see recoverConcurrentRun()'s final `throw
@@ -194,10 +197,11 @@ class TestSpecificationService(
         idempotencyKey: String,
         actor: String,
         correlationId: String,
+        credentialSessionId: String?,
     ): TestSpecRegressionRunOutcome {
         val runIdempotencyKey = "$idempotencyKey:${specification.id}"
         return try {
-            val view = execute(specification.id, runIdempotencyKey, actor, correlationId)
+            val view = execute(specification.id, runIdempotencyKey, actor, correlationId, credentialSessionId)
             regressionOutcome(specification, run = view, failureCode = null, failureMessage = null)
         } catch (exception: ClientRequestException) {
             regressionOutcome(

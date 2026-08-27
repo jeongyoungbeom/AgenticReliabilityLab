@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiClient } from '../../api/ApiClient'
 import type { TestSpecRunResponse } from '../../api/testSpecifications'
@@ -55,6 +56,7 @@ describe('TestSpecRunWorkspace', () => {
         api={new ApiClient({ viewer: '', profileEditor: '', executor: '' })}
         selectedSpecificationId="spec-1"
         selectedRunId="run-1"
+        credentialSessionId={null}
         onSelectRun={vi.fn()}
       />,
     )
@@ -65,6 +67,24 @@ describe('TestSpecRunWorkspace', () => {
     expect(screen.getByText('관측 없음')).toBeInTheDocument()
     expect(screen.getByText('[{traceId=t0, ...}] (12 spans across 3 traces)')).toBeInTheDocument()
     expect(screen.getByText('no trace carries both spans')).toBeInTheDocument()
+  })
+
+  it('Target credential session을 일반 명세 실행에도 전달한다', async () => {
+    render(
+      <TestSpecRunWorkspace
+        api={new ApiClient({ viewer: '', profileEditor: '', executor: '' })}
+        selectedSpecificationId="spec-1"
+        selectedRunId={null}
+        credentialSessionId="credential-session-0001"
+        onSelectRun={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: '실행 시작' }))
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled())
+    const [, init] = vi.mocked(globalThis.fetch).mock.calls[0]
+    expect(new Headers(init?.headers).get('X-ARL-Target-Credential-Session')).toBe('credential-session-0001')
   })
 })
 

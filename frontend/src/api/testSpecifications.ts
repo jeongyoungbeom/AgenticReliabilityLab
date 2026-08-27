@@ -1,4 +1,5 @@
 import type { ApiClient } from './ApiClient'
+import { TARGET_CREDENTIAL_SESSION_HEADER } from './targetCredentials'
 
 export type SpecSource = 'RULE_GENERATED' | 'MODEL_PROPOSED' | 'USER_REQUESTED'
 export type SpecCategory = 'AVAILABILITY' | 'CONTRACT_INPUT' | 'WORKFLOW' | 'RETRY_RECOVERY' | 'IDEMPOTENCY' | 'CONCURRENCY' | 'CONSISTENCY'
@@ -139,16 +140,33 @@ export function approveTestSpecification(api: ApiClient, specificationId: string
   return api.post<TestSpecificationResponse>(`/api/test-specifications/${specificationId}/approve`, { confirmation }, 'executor')
 }
 
-export function executeTestSpecification(api: ApiClient, specificationId: string, idempotencyKey: string) {
-  return api.post<TestSpecRunResponse>(`/api/test-specifications/${specificationId}/runs`, {}, 'executor', idempotencyKey)
+export function executeTestSpecification(
+  api: ApiClient,
+  specificationId: string,
+  idempotencyKey: string,
+  credentialSessionId: string | null,
+) {
+  return api.post<TestSpecRunResponse>(
+    `/api/test-specifications/${specificationId}/runs`,
+    {},
+    'executor',
+    idempotencyKey,
+    credentialSessionHeaders(credentialSessionId),
+  )
 }
 
-export function triggerRegressionRuns(api: ApiClient, targetSystemId: string, idempotencyKey: string) {
+export function triggerRegressionRuns(
+  api: ApiClient,
+  targetSystemId: string,
+  idempotencyKey: string,
+  credentialSessionId: string | null,
+) {
   return api.post<TestSpecRegressionRunsResponse>(
     `/api/targets/${targetSystemId}/test-specifications/regression-runs`,
     {},
     'executor',
     idempotencyKey,
+    credentialSessionHeaders(credentialSessionId),
   )
 }
 
@@ -207,4 +225,10 @@ export function isSpecApprovable(specification: TestSpecificationResponse): bool
 
 export function isRunPolling(status: TestSpecRunStatus): boolean {
   return status === 'PENDING' || status === 'RUNNING'
+}
+
+function credentialSessionHeaders(credentialSessionId: string | null): HeadersInit | undefined {
+  return credentialSessionId
+    ? { [TARGET_CREDENTIAL_SESSION_HEADER]: credentialSessionId }
+    : undefined
 }

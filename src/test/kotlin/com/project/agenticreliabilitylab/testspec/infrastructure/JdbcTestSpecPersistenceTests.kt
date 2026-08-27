@@ -28,7 +28,10 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.test.context.ActiveProfiles
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
@@ -54,6 +57,9 @@ open class JdbcTestSpecPersistenceTests {
 
     @Autowired
     private lateinit var jdbcClient: JdbcClient
+
+    @Autowired
+    private lateinit var transactionManager: PlatformTransactionManager
 
     @Test
     fun `keeps specification versions immutable and records one approval decision`() {
@@ -195,7 +201,15 @@ open class JdbcTestSpecPersistenceTests {
         runStore.create(first)
 
         assertTrue(runStore.hasBlockingRun(TARGET_ID))
-        assertFailsWith<org.springframework.dao.DuplicateKeyException> { runStore.create(second) }
+        // PostgreSQL aborts the current transaction after a unique-key violation. Keep the expected collision
+        // behind a nested savepoint so the following state transition exercises the same production behavior.
+        assertFailsWith<org.springframework.dao.DuplicateKeyException> {
+            TransactionTemplate(transactionManager).apply {
+                propagationBehavior = TransactionDefinition.PROPAGATION_NESTED
+            }.executeWithoutResult {
+                runStore.create(second)
+            }
+        }
 
         assertTrue(runStore.markFailed(first.id, false, "Target was not touched", COMPLETED_AT))
         assertFalse(runStore.hasBlockingRun(TARGET_ID))

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiClient } from '../../api/ApiClient'
@@ -42,12 +42,15 @@ describe('TestSpecFollowUpWorkspaces', () => {
     }))
     const user = userEvent.setup()
 
-    render(<RegressionRunWorkspace api={api} targetSystemId="commerce" />)
+    render(<RegressionRunWorkspace api={api} targetSystemId="commerce" credentialSessionId="credential-session-0001" />)
     await user.click(screen.getByRole('button', { name: '회귀 실행 요청' }))
 
     expect(await screen.findByText('실행 통과')).toBeInTheDocument()
     expect(screen.getByText('실행 불가')).toBeInTheDocument()
     expect(screen.getByText('ACTIVE_RUN_EXISTS: 다른 실행이 진행 중입니다.')).toBeInTheDocument()
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled())
+    const [, init] = vi.mocked(globalThis.fetch).mock.calls[0]
+    expect(new Headers(init?.headers).get('X-ARL-Target-Credential-Session')).toBe('credential-session-0001')
   })
 
   it('LLM 제안은 UTF-8 byte 수와 거부된 후보의 원문을 함께 보여준다', async () => {

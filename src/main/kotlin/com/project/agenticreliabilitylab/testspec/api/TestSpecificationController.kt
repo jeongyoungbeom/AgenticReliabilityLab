@@ -55,10 +55,11 @@ class TestSpecificationController(
         @PathVariable specificationId: UUID,
         @RequestHeader("Authorization", required = false) authorization: String?,
         @RequestHeader("Idempotency-Key", required = false) idempotencyKey: String?,
+        @RequestHeader(CREDENTIAL_SESSION_HEADER, required = false) credentialSessionId: String?,
     ): ResponseEntity<TestSpecRunResponse> {
         require(!idempotencyKey.isNullOrBlank()) { "Idempotency-Key header is required" }
         val actor = operatorAccessService.requireExecutor(authorization)
-        val view = service.execute(specificationId, idempotencyKey, actor, correlationId())
+        val view = service.execute(specificationId, idempotencyKey, actor, correlationId(), credentialSessionId)
         return ResponseEntity.status(HttpStatus.CREATED).body(TestSpecRunResponse.from(view))
     }
 
@@ -67,10 +68,17 @@ class TestSpecificationController(
         @PathVariable targetSystemId: String,
         @RequestHeader("Authorization", required = false) authorization: String?,
         @RequestHeader("Idempotency-Key", required = false) idempotencyKey: String?,
+        @RequestHeader(CREDENTIAL_SESSION_HEADER, required = false) credentialSessionId: String?,
     ): TestSpecRegressionRunsResponse {
         require(!idempotencyKey.isNullOrBlank()) { "Idempotency-Key header is required" }
         val actor = operatorAccessService.requireExecutor(authorization)
-        val outcomes = service.triggerRegressionRuns(targetSystemId, idempotencyKey, actor, correlationId())
+        val outcomes = service.triggerRegressionRuns(
+            targetSystemId,
+            idempotencyKey,
+            actor,
+            correlationId(),
+            credentialSessionId,
+        )
         return TestSpecRegressionRunsResponse.from(targetSystemId, outcomes)
     }
 
@@ -105,5 +113,6 @@ class TestSpecificationController(
 
     private companion object {
         const val CORRELATION_ID_KEY = "correlationId"
+        const val CREDENTIAL_SESSION_HEADER = "X-ARL-Target-Credential-Session"
     }
 }

@@ -27,7 +27,13 @@ interface TargetWorkspaceProps {
   targetSystemId: string | null
 }
 
-export function RegressionRunWorkspace({ api, targetSystemId }: TargetWorkspaceProps) {
+interface RegressionRunWorkspaceProps extends TargetWorkspaceProps {
+  credentialSessionId: string | null
+}
+
+export function RegressionRunWorkspace({
+  api, targetSystemId, credentialSessionId,
+}: RegressionRunWorkspaceProps) {
   const [result, setResult] = useState<TestSpecRegressionRunsResponse | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
@@ -49,7 +55,7 @@ export function RegressionRunWorkspace({ api, targetSystemId }: TargetWorkspaceP
     try {
       setBusy(true)
       setMessage(null)
-      const loaded = await triggerRegressionRuns(api, targetSystemId, key)
+      const loaded = await triggerRegressionRuns(api, targetSystemId, key, credentialSessionId)
       if (requestVersion !== regressionRequestVersion.current) return
       setResult(loaded)
       renew()

@@ -16,10 +16,13 @@ interface TargetProfileWorkspaceProps {
   onOpenRegression: () => void
   onOpenAiProposal: () => void
   onOpenRun: (runId: string) => void
+  credentialSessionId: string | null
+  onCredentialSessionChange: (credentialSessionId: string | null) => void
 }
 
 export function TargetProfileWorkspace({
   api, selectedTargetId, onSelectTarget, onOpenRegression, onOpenAiProposal, onOpenRun,
+  credentialSessionId, onCredentialSessionChange,
 }: TargetProfileWorkspaceProps) {
   const [yaml, setYaml] = useState('')
   const [validation, setValidation] = useState<TargetProfileValidation | null>(null)
@@ -28,7 +31,6 @@ export function TargetProfileWorkspace({
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [discoveryRefreshKey, setDiscoveryRefreshKey] = useState(0)
-  const [credentialSessionId, setCredentialSessionId] = useState<string | null>(null)
 
   useEffect(() => {
     void refreshActiveProfiles()
@@ -140,7 +142,7 @@ export function TargetProfileWorkspace({
       <TargetCredentialPanel
         api={api}
         targetSystemId={selectedTargetId}
-        onCredentialSessionChange={setCredentialSessionId}
+        onCredentialSessionChange={onCredentialSessionChange}
       />
       <PilotTemplateRunnerPanel
         api={api}

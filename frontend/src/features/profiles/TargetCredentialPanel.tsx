@@ -121,7 +121,14 @@ export function TargetCredentialPanel({ api, targetSystemId, onCredentialSession
       <div className="button-row">
         <button type="button" onClick={() => void save()} disabled={busy || !hasInput}>런타임에 적용</button>
         <button type="button" className="secondary-button" onClick={() => void check()} disabled={busy}>역할별 preflight</button>
-        <button type="button" className="secondary-button" onClick={() => void clear()} disabled={busy}>메모리에서 지우기</button>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => void clear()}
+          disabled={busy || status === null}
+        >
+          메모리에서 지우기
+        </button>
       </div>
       {status && (
         <p className="muted">

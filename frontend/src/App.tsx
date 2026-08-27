@@ -53,6 +53,8 @@ const emptyTokens: AccessTokens = { viewer: '', profileEditor: '', executor: '' 
 export default function App() {
   const [tokens, setTokens] = useState<AccessTokens>(emptyTokens)
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null)
+  // Browser-memory-only routing key for the current Target credential session. Never put this in storage.
+  const [targetCredentialSessionId, setTargetCredentialSessionId] = useState<string | null>(null)
   const [selectedBatchId, setSelectedBatchId] = useSessionStorageState<string | null>('arl.selected-target-test-batch', null)
   const [view, setView] = useState<WorkspaceView>('profiles')
   const [profileSection, setProfileSection] = useState<ProfileSection>('profile')
@@ -101,6 +103,7 @@ export default function App() {
               selectedTargetId={selectedTargetId}
               onSelectTarget={(targetId) => {
                 setSelectedTargetId(targetId)
+                setTargetCredentialSessionId(null)
                 setSelectedBatchId(null)
                 setSelectedCandidateIds([])
                 setGeneration(null)
@@ -121,6 +124,8 @@ export default function App() {
                 setView('specifications')
                 setSpecificationSection('run')
               }}
+              credentialSessionId={targetCredentialSessionId}
+              onCredentialSessionChange={setTargetCredentialSessionId}
             />
           )}
           {profileSection === 'knowledge' && (
@@ -194,10 +199,17 @@ export default function App() {
               api={api}
               selectedSpecificationId={selectedSpecificationId}
               selectedRunId={selectedTestSpecRunId}
+              credentialSessionId={targetCredentialSessionId}
               onSelectRun={setSelectedTestSpecRunId}
             />
           )}
-          {specificationSection === 'regression' && <RegressionRunWorkspace api={api} targetSystemId={selectedTargetId} />}
+          {specificationSection === 'regression' && (
+            <RegressionRunWorkspace
+              api={api}
+              targetSystemId={selectedTargetId}
+              credentialSessionId={targetCredentialSessionId}
+            />
+          )}
           {specificationSection === 'generate' && (
             <TestSpecGenerationWorkspace
               api={api}
@@ -231,6 +243,7 @@ export default function App() {
           }}
           onSelectTarget={(targetId) => {
             setSelectedTargetId(targetId)
+            setTargetCredentialSessionId(null)
             setSelectedBatchId(null)
             setSelectedCandidateIds([])
             setGeneration(null)

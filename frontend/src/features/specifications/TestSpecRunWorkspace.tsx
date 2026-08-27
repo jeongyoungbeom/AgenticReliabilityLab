@@ -15,10 +15,13 @@ interface TestSpecRunWorkspaceProps {
   api: ApiClient
   selectedSpecificationId: string | null
   selectedRunId: string | null
+  credentialSessionId: string | null
   onSelectRun: (runId: string) => void
 }
 
-export function TestSpecRunWorkspace({ api, selectedSpecificationId, selectedRunId, onSelectRun }: TestSpecRunWorkspaceProps) {
+export function TestSpecRunWorkspace({
+  api, selectedSpecificationId, selectedRunId, credentialSessionId, onSelectRun,
+}: TestSpecRunWorkspaceProps) {
   const [storedRunId, setStoredRunId] = useSessionStorageState<string>('arl.test-spec-run-id', '')
   const [runInput, setRunInput] = useState(selectedRunId ?? storedRunId)
   const [specificationInput, setSpecificationInput] = useState(selectedSpecificationId ?? '')
@@ -75,7 +78,7 @@ export function TestSpecRunWorkspace({ api, selectedSpecificationId, selectedRun
     try {
       setBusy(true)
       setMessage(null)
-      const created = await executeTestSpecification(api, specificationId, key)
+      const created = await executeTestSpecification(api, specificationId, key, credentialSessionId)
       if (!mounted.current) return
       setRun(created)
       setRunInput(created.id)
