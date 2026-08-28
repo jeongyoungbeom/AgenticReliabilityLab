@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
-import { ApiClient, ApiError } from '../../api/ApiClient'
+import { useEffect, useRef, useState } from 'react'
+import { ApiClient, ApiError, formatApiError } from '../../api/ApiClient'
 import { listPilotTestSessions, type PilotTestSession } from '../../api/pilotTemplates'
+import { FailureDiagnosisDetails } from '../../components/FailureDiagnosisDetails'
+import { cleanupLabel } from '../../components/cleanupStatus'
 
 interface PilotTestSessionResultsPanelProps {
   api: ApiClient
@@ -16,19 +18,39 @@ export function PilotTestSessionResultsPanel({
   const [sessions, setSessions] = useState<PilotTestSession[]>([])
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [loadedTargetId, setLoadedTargetId] = useState<string | null>(null)
+  const [reloadNonce, setReloadNonce] = useState(0)
+  const currentTargetId = useRef<string | null>(targetSystemId)
+  currentTargetId.current = targetSystemId
 
   useEffect(() => {
     let current = true
+    const targetId = targetSystemId
     setSessions([])
     setMessage(null)
-    if (!targetSystemId) return () => { current = false }
+    setLoadedTargetId(null)
+    if (!targetId) {
+      setBusy(false)
+      return () => { current = false }
+    }
     setBusy(true)
-    listPilotTestSessions(api, targetSystemId)
-      .then((loaded) => { if (current) setSessions(loaded) })
-      .catch((error: unknown) => { if (current) setMessage(errorMessage(error)) })
-      .finally(() => { if (current) setBusy(false) })
+    listPilotTestSessions(api, targetId)
+      .then((loaded) => {
+        if (!current || currentTargetId.current !== targetId) return
+        setSessions(loaded)
+        setLoadedTargetId(targetId)
+        if (loaded.some((session) => session.status === 'RUNNING')) {
+          window.setTimeout(() => { if (current) setReloadNonce((value) => value + 1) }, 2_000)
+        }
+      })
+      .catch((error: unknown) => {
+        if (current && currentTargetId.current === targetId) setMessage(errorMessage(error))
+      })
+      .finally(() => {
+        if (current && currentTargetId.current === targetId) setBusy(false)
+      })
     return () => { current = false }
-  }, [api, targetSystemId])
+  }, [api, targetSystemId, reloadNonce])
 
   if (!targetSystemId) {
     return (
@@ -40,7 +62,11 @@ export function PilotTestSessionResultsPanel({
     )
   }
 
-  const selected = sessions.find((session) => session.id === selectedSessionId) ?? sessions[0] ?? null
+  const loading = busy || (loadedTargetId !== targetSystemId && message === null)
+  const selected = selectedSessionId === null
+    ? sessions[0] ?? null
+    : sessions.find((session) => session.id === selectedSessionId) ?? null
+  const selectionMissing = selectedSessionId !== null && !loading && selected === null
   return (
     <section className="card pilot-test-session-results">
       <div className="section-heading">
@@ -48,13 +74,15 @@ export function PilotTestSessionResultsPanel({
           <p className="eyebrow">파일럿 세션 결과</p>
           <h2>명시 승인한 선택을 한 단위로 보관합니다</h2>
         </div>
-        <button type="button" className="secondary-button" onClick={() => reload(api, targetSystemId, setSessions, setMessage, setBusy)} disabled={busy}>
+        <button type="button" className="secondary-button" onClick={() => setReloadNonce((value) => value + 1)} disabled={loading}>
           새로고침
         </button>
       </div>
       <p className="muted">각 후보는 연결된 Test Spec Run으로 상세 감사 기록을 열 수 있습니다.</p>
       {message && <p className="notice error">{message}</p>}
-      {!busy && sessions.length === 0 && !message && <p className="muted">이 Target에 저장된 파일럿 세션이 없습니다.</p>}
+      {loading && <p className="muted">저장된 파일럿 세션을 불러오는 중입니다.</p>}
+      {!loading && sessions.length === 0 && !message && <p className="muted">이 Target에 저장된 파일럿 세션이 없습니다.</p>}
+      {selectionMissing && <p className="notice error">선택한 파일럿 세션을 현재 목록에서 찾을 수 없습니다.</p>}
       {sessions.length > 0 && (
         <div className="button-row" aria-label="파일럿 세션 선택">
           {sessions.map((session) => (
@@ -63,6 +91,8 @@ export function PilotTestSessionResultsPanel({
               type="button"
               className={session.id === selected?.id ? 'active' : 'secondary-button'}
               onClick={() => onSelectSession(session.id)}
+              aria-pressed={session.id === selected?.id}
+              aria-label={`파일럿 세션 ${session.id.slice(0, 8)}, ${formatInstant(session.createdAt)}`}
             >
               {session.id.slice(0, 8)} · {session.resultOutcome ?? session.status}
             </button>
@@ -83,11 +113,12 @@ function SessionDetail({ session, onOpenRun }: { session: PilotTestSession; onOp
       {session.cleanupVerified === false && (
         <p className="notice error">세션 정리가 검증되지 않았습니다. 연결된 실행 기록을 확인하세요.</p>
       )}
-      {session.failure && <p className="notice error">{session.failure}</p>}
+      {session.diagnosis && <FailureDiagnosisDetails diagnosis={session.diagnosis} />}
+      {session.failure && !session.diagnosis && <p className="notice error">{session.failure}</p>}
       <dl className="meta-grid">
         <div><dt>세션 ID</dt><dd><code>{session.id}</code></dd></div>
         <div><dt>판정</dt><dd>{session.resultOutcome ?? session.status}</dd></div>
-        <div><dt>정리 검증</dt><dd>{session.cleanupVerified === null ? '-' : session.cleanupVerified ? '확인됨' : '미확인'}</dd></div>
+        <div><dt>정리 검증</dt><dd>{cleanupLabel(session.cleanupVerified)}</dd></div>
         <div><dt>완료 시각</dt><dd>{session.completedAt ? formatInstant(session.completedAt) : '-'}</dd></div>
       </dl>
       <h3>선택한 후보</h3>
@@ -95,9 +126,13 @@ function SessionDetail({ session, onOpenRun }: { session: PilotTestSession; onOp
         {session.outcomes.map((outcome) => (
           <li key={outcome.candidateId}>
             <strong>{labelFor(outcome.candidateId)}</strong>
-            <span className={outcome.resultOutcome === 'PASSED' ? 'badge ok' : 'badge warn'}>{outcome.resultOutcome ?? outcome.status}</span>
-            <small>정리 {outcome.cleanupVerified === null ? '-' : outcome.cleanupVerified ? '확인됨' : '미확인'}</small>
-            {outcome.failureMessage && <p className="candidate-blocker">{outcome.failureCode}: {outcome.failureMessage}</p>}
+            <span className={outcomeResultClass(outcome.resultOutcome, outcome.status)}>판정 {outcome.resultOutcome ?? '-'}</span>
+            <span className={outcome.status === 'COMPLETED' ? 'badge ok' : 'badge warn'}>상태 {outcome.status}</span>
+            <small>정리 {cleanupLabel(outcome.cleanupVerified)}</small>
+            {outcome.diagnosis && <FailureDiagnosisDetails diagnosis={outcome.diagnosis} />}
+            {!outcome.diagnosis && (outcome.failureMessage || outcome.failureCode) && (
+              <p className="candidate-blocker">{failureText(outcome.failureCode, outcome.failureMessage)}</p>
+            )}
             {outcome.testSpecRunId && (
               <button className="text-button" type="button" onClick={() => onOpenRun(outcome.testSpecRunId!)}>시행 상세 보기</button>
             )}
@@ -106,24 +141,6 @@ function SessionDetail({ session, onOpenRun }: { session: PilotTestSession; onOp
       </ol>
     </div>
   )
-}
-
-async function reload(
-  api: ApiClient,
-  targetSystemId: string,
-  setSessions: (sessions: PilotTestSession[]) => void,
-  setMessage: (message: string | null) => void,
-  setBusy: (busy: boolean) => void,
-) {
-  try {
-    setBusy(true)
-    setMessage(null)
-    setSessions(await listPilotTestSessions(api, targetSystemId))
-  } catch (error) {
-    setMessage(errorMessage(error))
-  } finally {
-    setBusy(false)
-  }
 }
 
 function labelFor(candidateId: string): string {
@@ -140,6 +157,17 @@ function formatInstant(value: string): string {
 }
 
 function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) return `${error.code}: ${error.message}`
+  if (error instanceof ApiError) return formatApiError(error)
   return error instanceof Error ? error.message : '파일럿 세션 결과를 불러오지 못했습니다.'
+}
+
+function outcomeResultClass(
+  resultOutcome: PilotTestSession['outcomes'][number]['resultOutcome'],
+  status: PilotTestSession['outcomes'][number]['status'],
+): string {
+  return status === 'COMPLETED' && resultOutcome === 'PASSED' ? 'badge ok' : 'badge warn'
+}
+
+function failureText(failureCode: string | null, failureMessage: string | null): string {
+  return failureMessage ? `${failureCode ?? 'EXECUTION_FAILED'}: ${failureMessage}` : failureCode ?? 'EXECUTION_FAILED'
 }

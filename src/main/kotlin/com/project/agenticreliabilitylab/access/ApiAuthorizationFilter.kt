@@ -1,6 +1,9 @@
 package com.project.agenticreliabilitylab.access
 
 import com.project.agenticreliabilitylab.common.AccessDeniedException
+import com.project.agenticreliabilitylab.diagnosis.FailureDiagnosis
+import com.project.agenticreliabilitylab.diagnosis.FailureDiagnosisFactory
+import com.project.agenticreliabilitylab.diagnosis.SensitiveDiagnosticRedactor
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -13,6 +16,20 @@ import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
 
 private const val API_AUTHORIZATION_FILTER_ORDER_OFFSET = 20
+
+private fun FailureDiagnosis.toJsonObject(): String =
+    "{\"stage\":\"${stage.name}\",\"summary\":\"${summary.toJsonString()}\"," +
+        "\"likelyCause\":\"${likelyCause.toJsonString()}\",\"nextAction\":\"${nextAction.toJsonString()}\"," +
+        "\"technicalDetail\":\"${technicalDetail.toJsonString()}\"}"
+
+private fun String.toJsonString(): String =
+    replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+
+private fun String?.toJsonValue(): String =
+    if (this == null) "null" else "\"${toJsonString()}\""
 
 /**
  * Makes every API route default-deny in SECURED mode. Controllers retain their
@@ -62,12 +79,14 @@ class ApiAuthorizationFilter(
 
     private fun writeForbidden(response: HttpServletResponse, message: String) {
         val correlationId = MDC.get(CORRELATION_ID_KEY)
+        val diagnosis = FailureDiagnosisFactory.fromCode("ACCESS_DENIED", HttpServletResponse.SC_FORBIDDEN)
+        val safeMessage = SensitiveDiagnosticRedactor.redact(message) ?: diagnosis.summary
         response.status = HttpServletResponse.SC_FORBIDDEN
         response.contentType = MediaType.APPLICATION_JSON_VALUE
         response.characterEncoding = Charsets.UTF_8.name()
         response.writer.write(
-            "{\"code\":\"ACCESS_DENIED\",\"message\":\"${message.toJsonString()}\"," +
-                "\"correlationId\":${correlationId.toJsonValue()}}",
+            "{\"code\":\"ACCESS_DENIED\",\"message\":\"${safeMessage.toJsonString()}\"," +
+                "\"correlationId\":${correlationId.toJsonValue()},\"diagnosis\":${diagnosis.toJsonObject()}}",
         )
     }
 
@@ -96,15 +115,6 @@ class ApiAuthorizationFilter(
 
     private fun String.isSafeReadMethod(): Boolean =
         this == HttpMethod.GET.name() || this == HttpMethod.HEAD.name()
-
-    private fun String.toJsonString(): String =
-        replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-
-    private fun String?.toJsonValue(): String =
-        if (this == null) "null" else "\"${toJsonString()}\""
 
     private companion object {
         const val API_PATH = "/api/"

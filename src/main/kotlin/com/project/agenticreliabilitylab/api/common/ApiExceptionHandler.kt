@@ -3,6 +3,8 @@ package com.project.agenticreliabilitylab.api.common
 import com.project.agenticreliabilitylab.common.ClientRequestException
 import com.project.agenticreliabilitylab.common.AccessDeniedException
 import com.project.agenticreliabilitylab.common.ResourceNotFoundException
+import com.project.agenticreliabilitylab.diagnosis.FailureDiagnosisFactory
+import com.project.agenticreliabilitylab.diagnosis.SensitiveDiagnosticRedactor
 import com.project.agenticreliabilitylab.targetprofile.domain.TargetProfileDocumentException
 import com.project.agenticreliabilitylab.testspec.application.SpecParseException
 import com.project.agenticreliabilitylab.testspec.application.SpecValidationException
@@ -63,12 +65,40 @@ class ApiExceptionHandler {
 
     @ExceptionHandler(Exception::class)
     fun unexpected(exception: Exception): ResponseEntity<ApiErrorResponse> {
-        log.error("Unhandled ARL API exception; correlationId={}", MDC.get(CORRELATION_ID_KEY), exception)
+        // The exception object is not handed to the logger: a Target library can embed request headers or a
+        // response body in its message. The cause chain and the top frames carry no message, so they stay —
+        // without them an ARL defect leaves nothing to locate it by.
+        log.error(
+            "Unhandled ARL API exception; correlationId={}, type={}, at={}",
+            MDC.get(CORRELATION_ID_KEY),
+            exception.javaClass.simpleName,
+            messageFreeOrigin(exception),
+        )
         return response(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "An unexpected server error occurred")
     }
 
-    private fun response(status: HttpStatus, code: String, message: String): ResponseEntity<ApiErrorResponse> =
-        ResponseEntity.status(status).body(ApiErrorResponse(code, message, MDC.get(CORRELATION_ID_KEY)))
+    /** Exception classes and stack frames only. Every message is left out rather than filtered. */
+    private fun messageFreeOrigin(exception: Throwable): String {
+        val causes = generateSequence(exception, Throwable::cause)
+            .take(MAX_LOGGED_CAUSES)
+            .joinToString(" <- ") { it.javaClass.name }
+        val frames = exception.stackTrace
+            .take(MAX_LOGGED_FRAMES)
+            .joinToString(" | ") { frame -> "${frame.className}.${frame.methodName}:${frame.lineNumber}" }
+        return "$causes [$frames]"
+    }
+
+    private fun response(status: HttpStatus, code: String, message: String): ResponseEntity<ApiErrorResponse> {
+        val diagnosis = FailureDiagnosisFactory.fromCode(code, status.value())
+        // Preserve existing safe validation feedback for API clients, but drop the whole source if it can carry Target
+        // credentials, headers, or a response body. The UI renders the structured diagnosis in either case.
+        // A blank source falls back to the diagnosis instead of throwing: an exception raised inside this advice
+        // would escape to the container and replace the stable error contract with an unstructured page.
+        val safeMessage = SensitiveDiagnosticRedactor.redact(message)?.takeIf { it.isNotBlank() } ?: diagnosis.summary
+        return ResponseEntity.status(status).body(
+            ApiErrorResponse(code, safeMessage, MDC.get(CORRELATION_ID_KEY), diagnosis),
+        )
+    }
 
     private fun Throwable.hasCause(type: Class<out Throwable>): Boolean {
         var cause: Throwable? = this
@@ -81,5 +111,7 @@ class ApiExceptionHandler {
 
     private companion object {
         const val CORRELATION_ID_KEY = "correlationId"
+        const val MAX_LOGGED_CAUSES = 5
+        const val MAX_LOGGED_FRAMES = 12
     }
 }

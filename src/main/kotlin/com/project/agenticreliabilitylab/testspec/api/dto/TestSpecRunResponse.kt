@@ -1,5 +1,6 @@
 package com.project.agenticreliabilitylab.testspec.api.dto
 
+import com.project.agenticreliabilitylab.diagnosis.FailureDiagnosis
 import com.project.agenticreliabilitylab.testspec.application.TestSpecRunView
 import com.project.agenticreliabilitylab.testspec.domain.InvariantVerdict
 import com.project.agenticreliabilitylab.testspec.domain.FaultAuditEvent
@@ -29,6 +30,7 @@ data class TestSpecRunResponse(
     val startedAt: Instant?,
     val completedAt: Instant?,
     val failure: String?,
+    val diagnosis: FailureDiagnosis?,
     val trials: List<TestSpecTrialResponse>,
     val resets: List<TestSpecResetResponse>,
 ) {
@@ -52,6 +54,7 @@ data class TestSpecRunResponse(
                 startedAt = run.startedAt,
                 completedAt = run.completedAt,
                 failure = run.failure,
+                diagnosis = run.diagnosis,
                 trials = view.trials.map(TestSpecTrialResponse::from),
                 resets = view.resets.map(TestSpecResetResponse::from),
             )
@@ -65,6 +68,7 @@ data class TestSpecTrialResponse(
     val stateChanged: Boolean,
     val completed: Boolean,
     val failure: String?,
+    val diagnosis: FailureDiagnosis?,
     val verdicts: List<InvariantVerdict>,
     val timings: List<StepTiming>,
     val faultEvents: List<FaultAuditEvent>,
@@ -76,6 +80,7 @@ data class TestSpecTrialResponse(
             stateChanged = trial.stateChanged,
             completed = trial.completed,
             failure = trial.failure,
+            diagnosis = trial.diagnosis,
             verdicts = trial.verdicts,
             timings = trial.timings,
             faultEvents = trial.faultEvents,
@@ -89,6 +94,7 @@ data class TestSpecResetResponse(
     val verified: Boolean,
     val checks: List<ResetCheck>,
     val failure: String?,
+    val diagnosis: FailureDiagnosis?,
 ) {
     companion object {
         fun from(reset: StoredResetResult) = TestSpecResetResponse(
@@ -97,6 +103,7 @@ data class TestSpecResetResponse(
             verified = reset.verified,
             checks = reset.checks,
             failure = reset.failure,
+            diagnosis = reset.diagnosis,
         )
     }
 }

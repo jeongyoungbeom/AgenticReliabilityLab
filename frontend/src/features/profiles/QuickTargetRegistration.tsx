@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ApiClient, ApiError } from '../../api/ApiClient'
+import { ApiClient, ApiError, formatApiError } from '../../api/ApiClient'
 import type { TargetProfile } from '../../api/targetProfile'
 
 interface QuickTargetRegistrationProps {
@@ -36,7 +36,7 @@ export function QuickTargetRegistration({ api, busy, onRegistered, onError }: Qu
   return (
     <section className="card quick-target-registration">
       <p className="eyebrow">1. 간편 등록</p>
-      <h2>Target 이름과 URL만 등록하세요</h2>
+      <h2>Target 이름, URL, 환경만 등록하세요</h2>
       <p className="muted">
         표준 seller / buyer / harness 계약과 안전한 테스트 후보를 자동으로 준비합니다. 등록 중에는 이 URL의 허용된
         Swagger/OpenAPI 경로만 확인합니다.
@@ -68,6 +68,6 @@ export function QuickTargetRegistration({ api, busy, onRegistered, onError }: Qu
 }
 
 function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) return `${error.code}: ${error.message}`
+  if (error instanceof ApiError) return formatApiError(error)
   return error instanceof Error ? error.message : '간편 등록을 완료하지 못했습니다.'
 }

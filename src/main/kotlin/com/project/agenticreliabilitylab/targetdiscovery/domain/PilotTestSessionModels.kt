@@ -1,5 +1,6 @@
 package com.project.agenticreliabilitylab.targetdiscovery.domain
 
+import com.project.agenticreliabilitylab.diagnosis.FailureDiagnosis
 import com.project.agenticreliabilitylab.testspec.domain.TrialOutcome
 import java.time.Instant
 import java.util.UUID
@@ -31,6 +32,7 @@ data class PilotTestSession(
     val cleanupVerified: Boolean? = null,
     val completedAt: Instant? = null,
     val failure: String? = null,
+    val diagnosis: FailureDiagnosis? = null,
 )
 
 /** A session item stores only references and verdict metadata; detailed evidence remains owned by Test Spec Run. */
@@ -46,4 +48,5 @@ data class PilotTestSessionItem(
     val failureCode: String?,
     val failureMessage: String?,
     val completedAt: Instant,
+    val diagnosis: FailureDiagnosis? = null,
 )

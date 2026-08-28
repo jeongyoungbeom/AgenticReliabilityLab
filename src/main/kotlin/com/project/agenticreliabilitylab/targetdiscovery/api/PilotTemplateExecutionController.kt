@@ -4,6 +4,7 @@ import com.project.agenticreliabilitylab.access.OperatorAccessService
 import com.project.agenticreliabilitylab.targetdiscovery.application.ExecutePilotTemplates
 import com.project.agenticreliabilitylab.targetdiscovery.application.PilotTemplateExecutionService
 import com.project.agenticreliabilitylab.targetdiscovery.application.PilotTestSessionView
+import com.project.agenticreliabilitylab.diagnosis.FailureDiagnosis
 import com.project.agenticreliabilitylab.targetdiscovery.domain.PilotTestSessionItemStatus
 import com.project.agenticreliabilitylab.targetdiscovery.domain.PilotTestSessionStatus
 import com.project.agenticreliabilitylab.testspec.domain.TrialOutcome
@@ -43,6 +44,7 @@ data class PilotTestSessionResponse(
     val createdAt: Instant,
     val completedAt: Instant?,
     val failure: String?,
+    val diagnosis: FailureDiagnosis?,
     val outcomes: List<PilotTestSessionOutcomeResponse>,
 ) {
     companion object {
@@ -56,6 +58,7 @@ data class PilotTestSessionResponse(
             createdAt = view.session.createdAt,
             completedAt = view.session.completedAt,
             failure = view.session.failure,
+            diagnosis = view.session.diagnosis,
             outcomes = view.items.map { item ->
                 PilotTestSessionOutcomeResponse(
                     candidateId = item.candidateId,
@@ -67,6 +70,7 @@ data class PilotTestSessionResponse(
                     failureCode = item.failureCode,
                     failureMessage = item.failureMessage,
                     completedAt = item.completedAt,
+                    diagnosis = item.diagnosis,
                 )
             },
         )
@@ -83,6 +87,7 @@ data class PilotTestSessionOutcomeResponse(
     val failureCode: String?,
     val failureMessage: String?,
     val completedAt: Instant,
+    val diagnosis: FailureDiagnosis?,
 )
 
 @RestController

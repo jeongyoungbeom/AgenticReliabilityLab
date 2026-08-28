@@ -1,5 +1,6 @@
 package com.project.agenticreliabilitylab.targetcredential.application
 
+import com.project.agenticreliabilitylab.diagnosis.FailureDiagnosis
 
 enum class TargetCredentialRole {
     SELLER,
@@ -32,4 +33,5 @@ data class TargetCredentialPreflightResult(
     val method: String?,
     val path: String?,
     val httpStatus: Int?,
+    val diagnosis: FailureDiagnosis? = null,
 )

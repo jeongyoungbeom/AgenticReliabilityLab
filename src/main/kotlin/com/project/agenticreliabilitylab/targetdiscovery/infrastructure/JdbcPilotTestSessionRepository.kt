@@ -1,6 +1,10 @@
 package com.project.agenticreliabilitylab.targetdiscovery.infrastructure
 
 import com.project.agenticreliabilitylab.targetdiscovery.application.port.PilotTestSessionStore
+import com.project.agenticreliabilitylab.diagnosis.FailureDiagnosis
+import com.project.agenticreliabilitylab.diagnosis.FailureDiagnosisFactory
+import com.project.agenticreliabilitylab.diagnosis.FailureStage
+import com.project.agenticreliabilitylab.diagnosis.SensitiveDiagnosticRedactor
 import com.project.agenticreliabilitylab.targetdiscovery.domain.PilotTestSession
 import com.project.agenticreliabilitylab.targetdiscovery.domain.PilotTestSessionItem
 import com.project.agenticreliabilitylab.targetdiscovery.domain.PilotTestSessionItemStatus
@@ -14,6 +18,15 @@ import java.sql.ResultSet
 import java.sql.Timestamp
 import java.time.Instant
 import java.util.UUID
+
+private fun FailureDiagnosis.redacted(): FailureDiagnosis = copy(
+    summary = safeText(summary).orEmpty(),
+    likelyCause = safeText(likelyCause).orEmpty(),
+    nextAction = safeText(nextAction).orEmpty(),
+    technicalDetail = safeText(technicalDetail).orEmpty(),
+)
+
+private fun safeText(value: String?): String? = SensitiveDiagnosticRedactor.redact(value)
 
 @Repository
 class JdbcPilotTestSessionRepository(
@@ -70,9 +83,10 @@ class JdbcPilotTestSessionRepository(
         id: UUID,
         status: PilotTestSessionStatus,
         resultOutcome: TrialOutcome,
-        cleanupVerified: Boolean,
+        cleanupVerified: Boolean?,
         completedAt: Instant,
         failure: String?,
+        diagnosis: FailureDiagnosis?,
         items: List<PilotTestSessionItem>,
     ): Boolean {
         require(status != PilotTestSessionStatus.RUNNING) { "A completed Pilot session cannot remain RUNNING" }
@@ -80,6 +94,7 @@ class JdbcPilotTestSessionRepository(
         require(items.map(PilotTestSessionItem::sequenceNumber) == (1..items.size).toList()) {
             "Pilot test session item sequence must start at one and remain contiguous"
         }
+        val safeDiagnosis = diagnosis?.redacted()
         val updated = jdbcClient.sql(PilotTestSessionSql.COMPLETE_SESSION)
             .params(
                 mapOf(
@@ -88,7 +103,12 @@ class JdbcPilotTestSessionRepository(
                     "resultOutcome" to resultOutcome.name,
                     "cleanupVerified" to cleanupVerified,
                     "completedAt" to Timestamp.from(completedAt),
-                    "failure" to failure?.take(MAX_FAILURE_LENGTH),
+                    "failure" to safeText(failure)?.take(MAX_FAILURE_LENGTH),
+                    "diagnosisStage" to safeDiagnosis?.stage?.name,
+                    "diagnosisSummary" to safeDiagnosis?.summary?.take(MAX_DIAGNOSIS_SUMMARY_LENGTH),
+                    "diagnosisLikelyCause" to safeDiagnosis?.likelyCause?.take(MAX_FAILURE_LENGTH),
+                    "diagnosisNextAction" to safeDiagnosis?.nextAction?.take(MAX_FAILURE_LENGTH),
+                    "diagnosisTechnicalDetail" to safeDiagnosis?.technicalDetail?.take(MAX_FAILURE_LENGTH),
                     "running" to PilotTestSessionStatus.RUNNING.name,
                 ),
             )
@@ -96,6 +116,7 @@ class JdbcPilotTestSessionRepository(
         if (updated != 1) return false
         items.forEach { item ->
             require(item.sessionId == id) { "Pilot session item belongs to '${item.sessionId}', not '$id'" }
+            val itemDiagnosis = item.diagnosis?.redacted()
             jdbcClient.sql(PilotTestSessionSql.INSERT_ITEM)
                 .params(
                     mapOf(
@@ -108,8 +129,13 @@ class JdbcPilotTestSessionRepository(
                         "resultOutcome" to item.resultOutcome?.name,
                         "cleanupVerified" to item.cleanupVerified,
                         "failureCode" to item.failureCode?.take(MAX_FAILURE_CODE_LENGTH),
-                        "failureMessage" to item.failureMessage?.take(MAX_FAILURE_LENGTH),
+                        "failureMessage" to safeText(item.failureMessage)?.take(MAX_FAILURE_LENGTH),
                         "completedAt" to Timestamp.from(item.completedAt),
+                        "diagnosisStage" to itemDiagnosis?.stage?.name,
+                        "diagnosisSummary" to itemDiagnosis?.summary?.take(MAX_DIAGNOSIS_SUMMARY_LENGTH),
+                        "diagnosisLikelyCause" to itemDiagnosis?.likelyCause?.take(MAX_FAILURE_LENGTH),
+                        "diagnosisNextAction" to itemDiagnosis?.nextAction?.take(MAX_FAILURE_LENGTH),
+                        "diagnosisTechnicalDetail" to itemDiagnosis?.technicalDetail?.take(MAX_FAILURE_LENGTH),
                     ),
                 )
                 .update()
@@ -117,18 +143,25 @@ class JdbcPilotTestSessionRepository(
         return true
     }
 
-    override fun recoverIncompleteSessions(completedAt: Instant): Int =
-        jdbcClient.sql(PilotTestSessionSql.RECOVER_RUNNING)
+    override fun recoverIncompleteSessions(completedAt: Instant): Int {
+        val diagnosis = FailureDiagnosisFactory.fromCode("TEST_SPEC_RUN_RECOVERY_REQUIRED")
+        return jdbcClient.sql(PilotTestSessionSql.RECOVER_RUNNING)
         .params(
             mapOf(
                 "recoveryRequired" to PilotTestSessionStatus.RECOVERY_REQUIRED.name,
                 "inconclusive" to TrialOutcome.INCONCLUSIVE.name,
                 "completedAt" to Timestamp.from(completedAt),
-                "failure" to RESTART_FAILURE,
+                "failure" to diagnosis.summary,
+                "diagnosisStage" to diagnosis.stage.name,
+                "diagnosisSummary" to diagnosis.summary,
+                "diagnosisLikelyCause" to diagnosis.likelyCause,
+                "diagnosisNextAction" to diagnosis.nextAction,
+                "diagnosisTechnicalDetail" to diagnosis.technicalDetail,
                 "running" to PilotTestSessionStatus.RUNNING.name,
             ),
         )
         .update()
+    }
 
     private fun ResultSet.toSession() = PilotTestSession(
         id = getObject("id", UUID::class.java),
@@ -143,7 +176,8 @@ class JdbcPilotTestSessionRepository(
         resultOutcome = getString("result_outcome")?.let(TrialOutcome::valueOf),
         cleanupVerified = getObject("cleanup_verified", Boolean::class.javaObjectType),
         completedAt = getTimestamp("completed_at")?.toInstant(),
-        failure = getString("failure"),
+        failure = safeText(getString("failure")),
+        diagnosis = toDiagnosis(),
     )
 
     private fun ResultSet.toItem() = PilotTestSessionItem(
@@ -156,14 +190,25 @@ class JdbcPilotTestSessionRepository(
         resultOutcome = getString("result_outcome")?.let(TrialOutcome::valueOf),
         cleanupVerified = getObject("cleanup_verified", Boolean::class.javaObjectType),
         failureCode = getString("failure_code"),
-        failureMessage = getString("failure_message"),
+        failureMessage = safeText(getString("failure_message")),
         completedAt = getTimestamp("completed_at").toInstant(),
+        diagnosis = toDiagnosis(),
     )
+
+    private fun ResultSet.toDiagnosis(): FailureDiagnosis? = getString("diagnostic_stage")?.let { stage ->
+        FailureDiagnosis(
+            stage = FailureStage.valueOf(stage),
+            summary = getString("diagnostic_summary"),
+            likelyCause = getString("diagnostic_likely_cause"),
+            nextAction = getString("diagnostic_next_action"),
+            technicalDetail = getString("diagnostic_technical_detail"),
+        ).redacted()
+    }
 
     private companion object {
         const val MAX_FAILURE_CODE_LENGTH = 100
         const val MAX_FAILURE_LENGTH = 1_000
+        const val MAX_DIAGNOSIS_SUMMARY_LENGTH = 500
         const val MAX_LIST_LIMIT = 100
-        const val RESTART_FAILURE = "ARL restarted while a Pilot test session could have been in progress"
     }
 }

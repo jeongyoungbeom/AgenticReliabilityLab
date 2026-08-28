@@ -1,5 +1,9 @@
 package com.project.agenticreliabilitylab.testspec.infrastructure
 
+import com.project.agenticreliabilitylab.diagnosis.FailureDiagnosis
+import com.project.agenticreliabilitylab.diagnosis.FailureDiagnosisFactory
+import com.project.agenticreliabilitylab.diagnosis.FailureStage
+import com.project.agenticreliabilitylab.diagnosis.SensitiveDiagnosticRedactor
 import com.project.agenticreliabilitylab.testspec.application.port.TestSpecRunStore
 import com.project.agenticreliabilitylab.testspec.domain.InvariantVerdict
 import com.project.agenticreliabilitylab.testspec.domain.FaultAuditEvent
@@ -93,6 +97,11 @@ class JdbcTestSpecRunRepository(
             "Every trial verdict must have a matching execution record"
         }
         val status = if (outcome.cleanupVerified) TestSpecRunStatus.COMPLETED else TestSpecRunStatus.RECOVERY_REQUIRED
+        val diagnosis = if (outcome.cleanupVerified) {
+            null
+        } else {
+            FailureDiagnosisFactory.fromCode("TEST_SPEC_RUN_RECOVERY_REQUIRED")
+        }
         val updated = jdbcClient.sql(TestSpecRunSql.MARK_COMPLETED)
             .params(
                 mapOf(
@@ -104,15 +113,19 @@ class JdbcTestSpecRunRepository(
                     "trialsInconclusive" to outcome.result.trialsInconclusive,
                     "cleanupVerified" to outcome.cleanupVerified,
                     "completedAt" to Timestamp.from(completedAt),
+                    "failure" to diagnosis?.summary,
                     "activeSlot" to if (outcome.cleanupVerified) null else ACTIVE_RUN_SLOT,
                     "running" to TestSpecRunStatus.RUNNING.name,
-                ),
+                ) + diagnosticParameters(diagnosis),
             )
             .update()
         if (updated != 1) return false
 
         outcome.result.trials.forEach { trial -> insertTrial(id, trial, executions.getValue(trial.trialNumber)) }
         outcome.resets.forEachIndexed { index, reset ->
+            val resetDiagnosis = reset.failure?.let {
+                FailureDiagnosisFactory.fromCode("TEST_SPEC_RUN_CLEANUP_FAILED")
+            }
             jdbcClient.sql(TestSpecRunSql.INSERT_RESET)
                 .params(
                     mapOf(
@@ -121,8 +134,8 @@ class JdbcTestSpecRunRepository(
                         "performed" to reset.performed,
                         "verified" to reset.verified,
                         "checksJson" to objectMapper.writeValueAsString(reset.checks),
-                        "failure" to reset.failure,
-                    ),
+                        "failure" to safeFailure(reset.failure),
+                    ) + diagnosticParameters(resetDiagnosis),
                 )
                 .update()
         }
@@ -134,7 +147,11 @@ class JdbcTestSpecRunRepository(
         recoveryRequired: Boolean,
         failure: String,
         completedAt: Instant,
-    ): Boolean = jdbcClient.sql(TestSpecRunSql.MARK_FAILED)
+    ): Boolean {
+        val diagnosis = FailureDiagnosisFactory.fromCode(
+            if (recoveryRequired) "TEST_SPEC_RUN_RECOVERY_REQUIRED" else "TEST_SPEC_RUN_FAILED",
+        )
+        return jdbcClient.sql(TestSpecRunSql.MARK_FAILED)
         .params(
             mapOf(
                 "id" to id,
@@ -145,16 +162,18 @@ class JdbcTestSpecRunRepository(
                 },
                 "cleanupVerified" to !recoveryRequired,
                 "completedAt" to Timestamp.from(completedAt),
-                "failure" to failure,
+                "failure" to safeFailure(failure),
                 "activeSlot" to if (recoveryRequired) ACTIVE_RUN_SLOT else null,
                 "pending" to TestSpecRunStatus.PENDING.name,
                 "running" to TestSpecRunStatus.RUNNING.name,
-            ),
+            ) + diagnosticParameters(diagnosis),
         )
         .update() == 1
+    }
 
     @Transactional
     override fun recoverIncompleteRuns(completedAt: Instant): Int {
+        val runningDiagnosis = FailureDiagnosisFactory.fromCode("TEST_SPEC_RUN_RECOVERY_REQUIRED")
         val running = jdbcClient.sql(TestSpecRunSql.RECOVER_ORPHANED_RUNNING)
             .params(
                 mapOf(
@@ -163,9 +182,10 @@ class JdbcTestSpecRunRepository(
                     "failure" to "Application restarted while Target requests could have been in progress",
                     "activeSlot" to ACTIVE_RUN_SLOT,
                     "running" to TestSpecRunStatus.RUNNING.name,
-                ),
+                ) + diagnosticParameters(runningDiagnosis),
             )
             .update()
+        val pendingDiagnosis = FailureDiagnosisFactory.fromCode("TEST_SPEC_RUN_FAILED")
         val pending = jdbcClient.sql(TestSpecRunSql.FAIL_ORPHANED_PENDING)
             .params(
                 mapOf(
@@ -173,7 +193,7 @@ class JdbcTestSpecRunRepository(
                     "completedAt" to Timestamp.from(completedAt),
                     "failure" to "Application restarted before Target execution was claimed",
                     "pending" to TestSpecRunStatus.PENDING.name,
-                ),
+                ) + diagnosticParameters(pendingDiagnosis),
             )
             .update()
         return running + pending
@@ -194,6 +214,7 @@ class JdbcTestSpecRunRepository(
         trial: com.project.agenticreliabilitylab.testspec.domain.TrialResult,
         execution: TrialExecution,
     ) {
+        val diagnosis = execution.failure?.let { FailureDiagnosisFactory.fromCode("TEST_SPEC_RUN_FAILED") }
         jdbcClient.sql(TestSpecRunSql.INSERT_TRIAL)
             .params(
                 mapOf(
@@ -202,12 +223,14 @@ class JdbcTestSpecRunRepository(
                     "outcome" to trial.outcome.name,
                     "stateChanged" to execution.stateChanged,
                     "completed" to execution.completed,
-                    "failure" to execution.failure,
-                    "verdictsJson" to objectMapper.writeValueAsString(trial.verdicts),
+                    "failure" to safeFailure(execution.failure),
+                    "verdictsJson" to objectMapper.writeValueAsString(safeVerdicts(trial.verdicts)),
                     "timingsJson" to objectMapper.writeValueAsString(execution.timings),
                     "observationsJson" to observationsJson(trial.observations),
-                    "faultEventsJson" to objectMapper.writeValueAsString(execution.faultEvents),
-                ),
+                    "faultEventsJson" to objectMapper.writeValueAsString(
+                        execution.faultEvents.map { event -> event.copy(failure = safeFailure(event.failure)) },
+                    ),
+                ) + diagnosticParameters(diagnosis),
             )
             .update()
     }
@@ -231,7 +254,16 @@ class JdbcTestSpecRunRepository(
         cleanupVerified = getObject("cleanup_verified", Boolean::class.javaObjectType),
         startedAt = getTimestamp("started_at")?.toInstant(),
         completedAt = getTimestamp("completed_at")?.toInstant(),
-        failure = getString("failure"),
+        failure = safeFailure(getString("failure")),
+        diagnosis = diagnosisOrNull() ?: safeFailure(getString("failure"))?.let {
+            FailureDiagnosisFactory.fromCode(
+                if (getString("status") == TestSpecRunStatus.RECOVERY_REQUIRED.name) {
+                    "TEST_SPEC_RUN_RECOVERY_REQUIRED"
+                } else {
+                    "TEST_SPEC_RUN_FAILED"
+                },
+            )
+        },
     )
 
     private fun ResultSet.toTrial() = StoredTrialResult(
@@ -240,10 +272,12 @@ class JdbcTestSpecRunRepository(
         outcome = TrialOutcome.valueOf(getString("outcome")),
         stateChanged = getBoolean("state_changed"),
         completed = getBoolean("completed"),
-        failure = getString("failure"),
-        verdicts = objectMapper.readValue(
-            getString("verdicts_json"),
-            object : TypeReference<List<InvariantVerdict>>() {},
+        failure = safeFailure(getString("failure")),
+        verdicts = safeVerdicts(
+            objectMapper.readValue(
+                getString("verdicts_json"),
+                object : TypeReference<List<InvariantVerdict>>() {},
+            ),
         ),
         timings = objectMapper.readValue(
             getString("timings_json"),
@@ -254,7 +288,11 @@ class JdbcTestSpecRunRepository(
         } ?: emptyMap(),
         faultEvents = getString("fault_events_json")?.let { json ->
             objectMapper.readValue(json, object : TypeReference<List<FaultAuditEvent>>() {})
+                .map { event -> event.copy(failure = safeFailure(event.failure)) }
         } ?: emptyList(),
+        diagnosis = diagnosisOrNull() ?: safeFailure(getString("failure"))?.let {
+            FailureDiagnosisFactory.fromCode("TEST_SPEC_RUN_FAILED")
+        },
     )
 
     /**
@@ -286,8 +324,46 @@ class JdbcTestSpecRunRepository(
             getString("checks_json"),
             object : TypeReference<List<ResetCheck>>() {},
         ),
-        failure = getString("failure"),
+        failure = safeFailure(getString("failure")),
+        diagnosis = diagnosisOrNull() ?: safeFailure(getString("failure"))?.let {
+            FailureDiagnosisFactory.fromCode("TEST_SPEC_RUN_CLEANUP_FAILED")
+        },
     )
+
+    private fun diagnosticParameters(diagnosis: FailureDiagnosis?) = mapOf(
+        "diagnosticStage" to diagnosis?.stage?.name,
+        "diagnosticSummary" to diagnosis?.summary,
+        "diagnosticLikelyCause" to diagnosis?.likelyCause,
+        "diagnosticNextAction" to diagnosis?.nextAction,
+        "diagnosticTechnicalDetail" to diagnosis?.technicalDetail,
+    )
+
+    private fun ResultSet.diagnosisOrNull(): FailureDiagnosis? {
+        val stage = getString("diagnostic_stage") ?: return null
+        return FailureDiagnosis(
+            stage = FailureStage.valueOf(stage),
+            summary = getString("diagnostic_summary"),
+            likelyCause = getString("diagnostic_likely_cause"),
+            nextAction = getString("diagnostic_next_action"),
+            technicalDetail = getString("diagnostic_technical_detail"),
+        )
+    }
+
+    private fun safeFailure(failure: String?): String? = SensitiveDiagnosticRedactor.redact(failure)
+
+    /**
+     * A verdict carries the same Target-sourced text as the failure column: `detail` is the unrunnable reason,
+     * and the observed values and applied exception come from the Target's own response. They pass the same
+     * filter on the way into `verdicts_json` and on the way back out to the API.
+     */
+    private fun safeVerdicts(verdicts: List<InvariantVerdict>): List<InvariantVerdict> = verdicts.map { verdict ->
+        verdict.copy(
+            observedValues = verdict.observedValues
+                .mapValues { (_, value) -> SensitiveDiagnosticRedactor.redact(value).orEmpty() },
+            detail = safeFailure(verdict.detail),
+            appliedException = safeFailure(verdict.appliedException),
+        )
+    }
 
     private companion object {
         /** What one trial's observed values may take in its row. Generous enough for a few hundred spans. */

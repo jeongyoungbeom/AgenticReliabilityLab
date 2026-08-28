@@ -1,5 +1,6 @@
 package com.project.agenticreliabilitylab.targetdiscovery.application.port
 
+import com.project.agenticreliabilitylab.diagnosis.FailureDiagnosis
 import com.project.agenticreliabilitylab.targetdiscovery.domain.PilotTestSession
 import com.project.agenticreliabilitylab.targetdiscovery.domain.PilotTestSessionItem
 import com.project.agenticreliabilitylab.targetdiscovery.domain.PilotTestSessionStatus
@@ -18,9 +19,10 @@ interface PilotTestSessionStore {
         id: UUID,
         status: PilotTestSessionStatus,
         resultOutcome: TrialOutcome,
-        cleanupVerified: Boolean,
+        cleanupVerified: Boolean?,
         completedAt: Instant,
         failure: String?,
+        diagnosis: FailureDiagnosis?,
         items: List<PilotTestSessionItem>,
     ): Boolean
 

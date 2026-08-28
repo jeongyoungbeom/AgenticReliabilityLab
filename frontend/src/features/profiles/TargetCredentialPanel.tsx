@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { ApiClient, ApiError } from '../../api/ApiClient'
+import { ApiClient, ApiError, formatApiError } from '../../api/ApiClient'
 import {
   preflightLabel,
   type TargetCredentialPreflightResult,
   type TargetRuntimeCredentialStatus,
 } from '../../api/targetCredentials'
+import { FailureDiagnosisDetails } from '../../components/FailureDiagnosisDetails'
 
 interface TargetCredentialPanelProps {
   api: ApiClient
@@ -152,6 +153,7 @@ export function TargetCredentialPanel({
               <strong>{result.role}</strong>
               <span className={result.status === 'READY' ? 'badge ok' : 'badge warn'}>{preflightLabel(result.status)}</span>
               <small>{result.method && result.path ? `${result.method} ${result.path}` : '호출하지 않음'}{result.httpStatus ? ` · HTTP ${result.httpStatus}` : ''}</small>
+              <FailureDiagnosisDetails diagnosis={result.diagnosis} />
             </li>
           ))}
         </ul>
@@ -162,6 +164,6 @@ export function TargetCredentialPanel({
 }
 
 function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) return `${error.code}: ${error.message}`
+  if (error instanceof ApiError) return formatApiError(error)
   return error instanceof Error ? error.message : 'Target 자격증명 요청을 완료하지 못했습니다.'
 }

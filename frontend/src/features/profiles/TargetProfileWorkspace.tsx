@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ApiClient, ApiError } from '../../api/ApiClient'
+import { ApiClient, ApiError, formatApiError } from '../../api/ApiClient'
 import type { TargetProfile, TargetProfileValidation } from '../../api/targetProfile'
 import { ActiveProfileList } from './ActiveProfileList'
 import { ProfileValidationSummary } from './ProfileValidationSummary'
@@ -191,6 +191,6 @@ export function TargetProfileWorkspace({
 }
 
 function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) return `${error.code}: ${error.message}`
+  if (error instanceof ApiError) return formatApiError(error)
   return error instanceof Error ? error.message : '요청을 완료하지 못했습니다.'
 }

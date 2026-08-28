@@ -1,4 +1,4 @@
-import type { ApiClient } from './ApiClient'
+import type { ApiClient, FailureDiagnosis } from './ApiClient'
 
 export type TestSpecRunStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'RECOVERY_REQUIRED'
 export type TrialOutcome = 'PASSED' | 'VIOLATED' | 'INCONCLUSIVE'
@@ -49,6 +49,7 @@ export interface TestSpecTrialResponse {
   stateChanged: boolean
   completed: boolean
   failure: string | null
+  diagnosis?: FailureDiagnosis | null
   verdicts: InvariantVerdict[]
   timings: StepTiming[]
   /** Optional while a browser is connected to an ARL server deployed before the audit-field migration. */
@@ -61,6 +62,7 @@ export interface TestSpecResetResponse {
   verified: boolean
   checks: Array<{ id: string; condition: string; observed: string; satisfied: boolean }>
   failure: string | null
+  diagnosis?: FailureDiagnosis | null
 }
 
 export interface TestSpecRunResponse {
@@ -80,6 +82,7 @@ export interface TestSpecRunResponse {
   startedAt: string | null
   completedAt: string | null
   failure: string | null
+  diagnosis?: FailureDiagnosis | null
   trials: TestSpecTrialResponse[]
   resets: TestSpecResetResponse[]
 }
@@ -116,4 +119,3 @@ export function runStatusLabel(status: TestSpecRunStatus): string {
 export function isRunPolling(status: TestSpecRunStatus): boolean {
   return status === 'PENDING' || status === 'RUNNING'
 }
-

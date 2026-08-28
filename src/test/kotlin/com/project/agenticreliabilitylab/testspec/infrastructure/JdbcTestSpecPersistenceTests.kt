@@ -1,11 +1,15 @@
 package com.project.agenticreliabilitylab.testspec.infrastructure
 
+import com.project.agenticreliabilitylab.diagnosis.FailureStage
 import com.project.agenticreliabilitylab.targetprofile.domain.TargetProfileStatus
 import com.project.agenticreliabilitylab.targetprofile.infrastructure.JdbcTargetProfileRepository
 import com.project.agenticreliabilitylab.testspec.application.port.TestSpecRunStore
 import com.project.agenticreliabilitylab.testspec.application.port.TestSpecificationStore
 import com.project.agenticreliabilitylab.testspec.domain.InvariantOutcome
 import com.project.agenticreliabilitylab.testspec.domain.InvariantVerdict
+import com.project.agenticreliabilitylab.testspec.domain.NotEvaluatedReason
+import com.project.agenticreliabilitylab.testspec.domain.FaultAuditAction
+import com.project.agenticreliabilitylab.testspec.domain.FaultAuditEvent
 import com.project.agenticreliabilitylab.testspec.domain.ObservedEvidence
 import com.project.agenticreliabilitylab.testspec.domain.RecordedResponse
 import com.project.agenticreliabilitylab.testspec.domain.ResetCheck
@@ -169,7 +173,32 @@ open class JdbcTestSpecPersistenceTests {
             0L,
             sensitiveValuesStored("test_spec_trial_result", "observations_json", null, sensitiveValue),
         )
+        assertEquals(0L, sensitiveValuesStored("test_spec_trial_result", "fault_events_json", null, sensitiveValue))
         assertEquals(0L, sensitiveValuesStored("test_spec_reset_result", "checks_json", null, sensitiveValue))
+    }
+
+    @Test
+    fun `redacts a verdict detail carrying Target data before it reaches the verdicts column`() {
+        val run = pendingRun(createSpecification())
+        val sensitiveValue = "verdict-secret-${UUID.randomUUID()}"
+        runStore.create(run)
+        assertTrue(runStore.markRunning(run.id, STARTED_AT))
+
+        // The pre-run reset reason reaches the failure column and the verdict detail as the same string.
+        // Only the failure column used to be filtered, so the detail carried the raw text to the API and the UI.
+        assertTrue(
+            runStore.complete(
+                run.id,
+                unrunnableOutcome(run.id, "The reset hook did not succeed: Authorization: Bearer $sensitiveValue"),
+                COMPLETED_AT,
+            ),
+        )
+
+        val trial = runStore.findTrials(run.id).single()
+        val verdict = trial.verdicts.single()
+        assertEquals("[REDACTED]", verdict.detail)
+        assertEquals("[REDACTED]", trial.failure)
+        assertEquals(0L, sensitiveValuesStored("test_spec_trial_result", "verdicts_json", "failure", sensitiveValue))
     }
 
     @Test
@@ -228,6 +257,29 @@ open class JdbcTestSpecPersistenceTests {
         assertEquals(TestSpecRunStatus.RECOVERY_REQUIRED, failed.status)
         assertEquals("Reset endpoint timed out", failed.failure)
         assertFalse(runStore.markFailed(failedRun.id, false, "Cannot rewrite terminal state", COMPLETED_AT))
+    }
+
+    @Test
+    fun `stores a redacted structured diagnosis when a run failure includes Target data`() {
+        val run = pendingRun(createSpecification())
+        runStore.create(run)
+        assertTrue(runStore.markRunning(run.id, STARTED_AT))
+
+        assertTrue(
+            runStore.markFailed(
+                run.id,
+                true,
+                "Authorization: Bearer seller-secret response body={\"access_token\":\"buyer-secret\"}",
+                COMPLETED_AT,
+            ),
+        )
+
+        val failed = assertNotNull(runStore.findById(run.id))
+        assertEquals("[REDACTED]", failed.failure)
+        val diagnosis = assertNotNull(failed.diagnosis)
+        assertEquals(FailureStage.RECOVERY, diagnosis.stage)
+        assertFalse(diagnosis.technicalDetail.contains("seller-secret"))
+        assertFalse(diagnosis.technicalDetail.contains("buyer-secret"))
     }
 
     @Test
@@ -326,6 +378,19 @@ open class JdbcTestSpecPersistenceTests {
             ),
             timings = listOf(StepTiming("workload", STARTED_AT, COMPLETED_AT)),
             stateChanged = true,
+            faultEvents = listOf(
+                FaultAuditEvent(
+                    action = FaultAuditAction.RELEASE_FAILED,
+                    faultId = "fault-1",
+                    faultType = "PAYMENT_FAILURE",
+                    scope = "next-1",
+                    ttlMs = 1_000,
+                    injectionPoint = null,
+                    description = "fault release failed",
+                    succeeded = false,
+                    failure = "Authorization: Bearer $sensitiveValue",
+                ),
+            ),
         )
         val reset = ResetOutcome(
             performed = true,
@@ -334,6 +399,35 @@ open class JdbcTestSpecPersistenceTests {
             failure = if (cleanupVerified) null else "Reset verification failed",
         )
         return SpecRunOutcome(runId.toString(), result, listOf(execution), listOf(reset), cleanupVerified)
+    }
+
+    private fun unrunnableOutcome(runId: UUID, reason: String): SpecRunOutcome {
+        val verdict = InvariantVerdict(
+            invariantId = "stock_never_negative",
+            description = "Stock never becomes negative",
+            outcome = InvariantOutcome.NOT_EVALUATED,
+            condition = "stock >= 0",
+            observedValues = emptyMap(),
+            notEvaluatedReason = NotEvaluatedReason.TRIAL_NOT_RUN,
+            detail = reason,
+        )
+        val trial = TrialResult(1, TrialOutcome.INCONCLUSIVE, listOf(verdict), emptyMap())
+        val execution = TrialExecution(
+            trialNumber = 1,
+            bindings = emptyMap(),
+            responses = emptyMap(),
+            timings = emptyList(),
+            stateChanged = false,
+            failure = reason,
+        )
+        val reset = ResetOutcome(performed = false, verified = false, checks = emptyList(), failure = reason)
+        return SpecRunOutcome(
+            runId.toString(),
+            SpecificationResult(TrialOutcome.INCONCLUSIVE, 1, 0, 1, listOf(trial)),
+            listOf(execution),
+            listOf(reset),
+            cleanupVerified = false,
+        )
     }
 
     private fun sensitiveValuesStored(

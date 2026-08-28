@@ -71,6 +71,37 @@ describe('TestSpecRunWorkspace', () => {
     expect(screen.getByText('no trace carries both spans')).toBeInTheDocument()
   })
 
+  it('저장된 실행 오류는 원문 대신 구조화된 복구 진단으로 보여준다', async () => {
+    vi.mocked(globalThis.fetch).mockImplementationOnce(async () => jsonResponse({
+      ...run,
+      status: 'RECOVERY_REQUIRED',
+      cleanupVerified: false,
+      failure: '[REDACTED]',
+      diagnosis: {
+        stage: 'RECOVERY',
+        summary: '이전 실행의 정리 상태를 확인해야 합니다.',
+        likelyCause: '상태 변경 실행이 중단됐습니다.',
+        nextAction: '정리 상태를 확인하세요.',
+        technicalDetail: 'code=TEST_SPEC_RUN_RECOVERY_REQUIRED',
+      },
+    }))
+
+    render(
+      <TestSpecRunWorkspace
+        api={new ApiClient({ viewer: '', profileEditor: '', executor: '' })}
+        selectedTargetId={null}
+        selectedPilotTestSessionId={null}
+        onSelectPilotTestSession={vi.fn()}
+        selectedRunId="run-1"
+        onSelectRun={vi.fn()}
+      />,
+    )
+
+    expect(await screen.findByText('복구 단계 진단')).toBeInTheDocument()
+    expect(screen.getByText('이전 실행의 정리 상태를 확인해야 합니다.')).toBeInTheDocument()
+    expect(screen.queryByText('[REDACTED]')).not.toBeInTheDocument()
+  })
+
   it('명세 실행은 세션 헤더 없이 쿠키로만 나간다', async () => {
     render(
       <TestSpecRunWorkspace
@@ -89,6 +120,24 @@ describe('TestSpecRunWorkspace', () => {
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled())
     const [, init] = vi.mocked(globalThis.fetch).mock.calls[0]
     expect(new Headers(init?.headers).get('X-ARL-Target-Credential-Session')).toBeNull()
+  })
+
+  it('clears a previously opened Run when the selected Pilot session replaces it', async () => {
+    const api = new ApiClient({ viewer: '', profileEditor: '', executor: '' })
+    const props = {
+      api,
+      selectedTargetId: null,
+      selectedPilotTestSessionId: 'session-1',
+      onSelectPilotTestSession: vi.fn(),
+      onSelectRun: vi.fn(),
+    }
+    const { rerender } = render(<TestSpecRunWorkspace {...props} selectedRunId="run-1" />)
+
+    expect(await screen.findByText('실행 판정 불가')).toBeInTheDocument()
+    rerender(<TestSpecRunWorkspace {...props} selectedRunId={null} />)
+
+    await waitFor(() => expect(screen.queryByText('실행 판정 불가')).not.toBeInTheDocument())
+    expect(screen.getByLabelText('Test Spec Run ID')).toHaveValue('')
   })
 })
 

@@ -99,6 +99,7 @@ export default function App() {
             setView('results')
           }}
           onOpenSession={(sessionId) => {
+            setSelectedTestSpecRunId(null)
             setSelectedPilotTestSessionId(sessionId)
             setView('results')
           }}

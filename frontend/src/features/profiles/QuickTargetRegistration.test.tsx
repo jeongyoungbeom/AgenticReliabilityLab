@@ -18,6 +18,7 @@ describe('QuickTargetRegistration', () => {
     const user = userEvent.setup()
     render(<QuickTargetRegistration api={api} busy={false} onRegistered={onRegistered} onError={vi.fn()} />)
 
+    expect(screen.getByRole('heading', { name: 'Target 이름, URL, 환경만 등록하세요' })).toBeInTheDocument()
     await user.type(screen.getByLabelText('Target 이름'), 'SideProject')
     await user.type(screen.getByLabelText('Target URL'), 'http://host.docker.internal:18080')
     await user.click(screen.getByRole('button', { name: '간편 등록' }))

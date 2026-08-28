@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ApiClient, ApiError } from '../../api/ApiClient'
+import { ApiClient, ApiError, formatApiError } from '../../api/ApiClient'
 import type { PilotDiscovery } from '../../api/pilotDiscovery'
 
 interface PilotDiscoveryPanelProps {
@@ -87,6 +87,6 @@ export function PilotDiscoveryPanel({ api, targetSystemId, refreshKey }: PilotDi
 }
 
 function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) return `${error.code}: ${error.message}`
+  if (error instanceof ApiError) return formatApiError(error)
   return error instanceof Error ? error.message : 'Swagger 발견 결과를 불러오지 못했습니다.'
 }

@@ -13,6 +13,7 @@ import java.net.http.HttpResponse
 import java.time.Duration
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 @ActiveProfiles("test")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -27,6 +28,13 @@ class ApiAuthorizationIntegrationTests {
         val unauthorizedRead = get("/api/targets")
         assertEquals(403, unauthorizedRead.statusCode())
         assertContains(unauthorizedRead.body(), "\"correlationId\":\"")
+        assertContains(unauthorizedRead.body(), "\"diagnosis\":{\"stage\":\"CREDENTIALS\"")
+        // A denied ARL role token is not a Target credential: the guidance points at the ARL access token, and
+        // the role the request needed survives redaction because the message names no credential value.
+        assertContains(unauthorizedRead.body(), "ARL 접근 권한을 확인하지 못했습니다.")
+        assertContains(unauthorizedRead.body(), "Viewer authorization is required")
+        assertFalse(unauthorizedRead.body().contains("preflight"))
+        assertFalse(unauthorizedRead.body().contains("viewer-test-token"))
         assertEquals(200, get("/api/targets", "viewer-test-token").statusCode())
 
         assertEquals(403, get("/api/targets/contract-test-target/health", "viewer-test-token").statusCode())

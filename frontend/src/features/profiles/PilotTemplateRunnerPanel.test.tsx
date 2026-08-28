@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ApiClient } from '../../api/ApiClient'
+import type { PilotTemplateExecution } from '../../api/pilotTemplates'
 import { PilotTemplateRunnerPanel } from './PilotTemplateRunnerPanel'
 
 const discovery = {
@@ -14,17 +15,19 @@ const discovery = {
   ],
 }
 
-function apiStub() {
+const completedSession: PilotTemplateExecution = {
+  id: 'session-1', targetSystemId: 'sideproject-local', profileVersionId: 'profile-1', status: 'COMPLETED',
+  resultOutcome: 'PASSED', cleanupVerified: true, createdAt: '2026-08-27T00:00:00Z', completedAt: '2026-08-27T00:00:01Z', failure: null,
+  outcomes: [{
+    candidateId: 'availability', specificationId: 'spec-1', testSpecRunId: 'run-1', status: 'COMPLETED',
+    resultOutcome: 'PASSED', cleanupVerified: true, failureCode: null, failureMessage: null, completedAt: '2026-08-27T00:00:01Z',
+  }],
+}
+
+function apiStub(execution: PilotTemplateExecution = completedSession) {
   return {
     get: vi.fn().mockResolvedValue(discovery),
-    post: vi.fn().mockResolvedValue({
-      id: 'session-1', targetSystemId: 'sideproject-local', profileVersionId: 'profile-1', status: 'COMPLETED',
-      resultOutcome: 'PASSED', cleanupVerified: true, createdAt: '2026-08-27T00:00:00Z', completedAt: '2026-08-27T00:00:01Z', failure: null,
-      outcomes: [{
-        candidateId: 'availability', specificationId: 'spec-1', testSpecRunId: 'run-1', status: 'COMPLETED',
-        resultOutcome: 'PASSED', cleanupVerified: true, failureCode: null, failureMessage: null, completedAt: '2026-08-27T00:00:01Z',
-      }],
-    }),
+    post: vi.fn().mockResolvedValue(execution),
   } as unknown as ApiClient
 }
 
@@ -58,7 +61,8 @@ describe('PilotTemplateRunnerPanel', () => {
       'executor',
       expect.stringMatching(/^pilot-template-/),
     )
-    expect(await screen.findByText(/cleanup VERIFIED/)).toBeInTheDocument()
+    expect(await screen.findByText(/파일럿 세션 .* 정리 확인됨/)).toBeInTheDocument()
+    expect(screen.getAllByText(/정리 확인됨/)).toHaveLength(2)
     expect(screen.getByRole('button', { name: '세션 결과 보기' })).toBeInTheDocument()
   })
 
@@ -111,6 +115,71 @@ describe('PilotTemplateRunnerPanel', () => {
     await userEvent.click(execute)
     expect(confirm).not.toHaveBeenCalled()
     expect(api.post).not.toHaveBeenCalled()
+  })
+
+  it('shows recovery-required execution separately from a passed run judgement', async () => {
+    const api = apiStub({
+      ...completedSession,
+      status: 'RECOVERY_REQUIRED',
+      cleanupVerified: false,
+      failure: 'Target cleanup requires recovery',
+      outcomes: [{
+        ...completedSession.outcomes[0],
+        status: 'RECOVERY_REQUIRED',
+        cleanupVerified: false,
+        failureCode: 'TEST_SPEC_RUN_RECOVERY_REQUIRED',
+        failureMessage: null,
+      }],
+    })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(
+      <PilotTemplateRunnerPanel
+        api={api}
+        targetSystemId="sideproject-local"
+        refreshKey={0}
+        harnessPreflight={{ role: 'harness', status: 'READY', method: 'GET', path: '/api/harness/state', httpStatus: 200 }}
+        onOpenRun={vi.fn()}
+        onOpenSession={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(await screen.findByRole('checkbox', { name: /가용성/ }))
+    await userEvent.click(screen.getByRole('button', { name: '선택한 템플릿 실행' }))
+
+    expect(await screen.findByText('상태 RECOVERY_REQUIRED')).toBeInTheDocument()
+    expect(screen.getByText('정리 미확인')).toBeInTheDocument()
+    expect(screen.getByText('TEST_SPEC_RUN_RECOVERY_REQUIRED')).toBeInTheDocument()
+    expect(screen.getByText('Target cleanup requires recovery')).toBeInTheDocument()
+  })
+
+  it('discards a late discovery response for a previously selected Target', async () => {
+    let resolveFirst!: (value: typeof discovery) => void
+    const first = new Promise<typeof discovery>((resolve) => { resolveFirst = resolve })
+    const second = {
+      ...discovery,
+      targetSystemId: 'second-target',
+      candidates: [{ ...discovery.candidates[0], title: '두 번째 Target 가용성' }],
+    }
+    const api = {
+      get: vi.fn().mockReturnValueOnce(first).mockResolvedValueOnce(second),
+      post: vi.fn(),
+    } as unknown as ApiClient
+    const props = {
+      api,
+      refreshKey: 0,
+      harnessPreflight: { role: 'harness', status: 'READY' as const, method: 'GET', path: '/api/harness/state', httpStatus: 200 },
+      onOpenRun: vi.fn(),
+      onOpenSession: vi.fn(),
+    }
+    const { rerender } = render(<PilotTemplateRunnerPanel {...props} targetSystemId="first-target" />)
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(1))
+    rerender(<PilotTemplateRunnerPanel {...props} targetSystemId="second-target" />)
+    expect(await screen.findByText('두 번째 Target 가용성')).toBeInTheDocument()
+    resolveFirst(discovery)
+
+    await waitFor(() => expect(screen.queryByText('가용성')).not.toBeInTheDocument())
+    expect(screen.getByText('두 번째 Target 가용성')).toBeInTheDocument()
   })
 
 })

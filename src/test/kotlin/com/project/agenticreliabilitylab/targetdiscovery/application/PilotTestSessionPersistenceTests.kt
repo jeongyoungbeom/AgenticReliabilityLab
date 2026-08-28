@@ -4,6 +4,7 @@ import com.project.agenticreliabilitylab.targetdiscovery.domain.PilotTestSession
 import com.project.agenticreliabilitylab.targetdiscovery.domain.PilotTestSessionItem
 import com.project.agenticreliabilitylab.targetdiscovery.domain.PilotTestSessionItemStatus
 import com.project.agenticreliabilitylab.targetdiscovery.domain.PilotTestSessionStatus
+import com.project.agenticreliabilitylab.diagnosis.FailureDiagnosisFactory
 import com.project.agenticreliabilitylab.targetdiscovery.infrastructure.JdbcPilotTestSessionRepository
 import com.project.agenticreliabilitylab.testspec.domain.TrialOutcome
 import org.junit.jupiter.api.BeforeEach
@@ -78,6 +79,7 @@ class PilotTestSessionPersistenceTests {
                 true,
                 completedAt,
                 null,
+                null,
                 listOf(item),
             ),
         )
@@ -104,6 +106,53 @@ class PilotTestSessionPersistenceTests {
         assertEquals(PilotTestSessionStatus.RECOVERY_REQUIRED, recovered.status)
         assertEquals(TrialOutcome.INCONCLUSIVE, recovered.resultOutcome)
         assertEquals(false, recovered.cleanupVerified)
+        assertEquals("RECOVERY", recovered.diagnosis?.stage?.name)
+        assertEquals("이전 실행의 정리 상태를 확인해야 합니다.", recovered.failure)
+    }
+
+    @Test
+    fun `persists an item diagnosis with no raw Target failure detail`() {
+        val createdAt = Instant.parse("2026-08-27T00:00:00Z")
+        val completedAt = createdAt.plusSeconds(5)
+        val session = newSession(createdAt)
+        val diagnosis = FailureDiagnosisFactory.fromCode("TARGET_UNREACHABLE").copy(
+            technicalDetail = "Authorization: Bearer seller-secret",
+        )
+        val item = PilotTestSessionItem(
+            sessionId = session.id,
+            sequenceNumber = 1,
+            candidateId = "availability",
+            specificationId = null,
+            testSpecRunId = null,
+            status = PilotTestSessionItemStatus.FAILED,
+            resultOutcome = TrialOutcome.INCONCLUSIVE,
+            cleanupVerified = null,
+            failureCode = "TARGET_UNREACHABLE",
+            failureMessage = "response body={\"access_token\":\"buyer-secret\"}",
+            completedAt = completedAt,
+            diagnosis = diagnosis,
+        )
+
+        sessions.create(session)
+        assertTrue(
+            sessions.complete(
+                session.id,
+                PilotTestSessionStatus.COMPLETED,
+                TrialOutcome.INCONCLUSIVE,
+                null,
+                completedAt,
+                "Cookie: session-secret",
+                diagnosis,
+                listOf(item),
+            ),
+        )
+
+        val storedSession = assertNotNull(sessions.findById(session.id))
+        val storedItem = sessions.findItems(session.id).single()
+        assertEquals("[REDACTED]", storedSession.failure)
+        assertEquals("[REDACTED]", storedSession.diagnosis?.technicalDetail)
+        assertEquals("[REDACTED]", storedItem.failureMessage)
+        assertEquals("[REDACTED]", storedItem.diagnosis?.technicalDetail)
     }
 
     private fun newSession(createdAt: Instant) = PilotTestSession(

@@ -2,6 +2,8 @@ package com.project.agenticreliabilitylab.targetdiscovery.application
 
 import com.project.agenticreliabilitylab.common.ClientRequestException
 import com.project.agenticreliabilitylab.common.IdentifierGenerator
+import com.project.agenticreliabilitylab.common.ResourceNotFoundException
+import com.project.agenticreliabilitylab.diagnosis.FailureDiagnosisFactory
 import com.project.agenticreliabilitylab.targetcredential.application.TargetCredentialPreflightService
 import com.project.agenticreliabilitylab.targetcredential.application.TargetCredentialPreflightStatus
 import com.project.agenticreliabilitylab.targetdiscovery.application.port.PilotTestSessionStore
@@ -123,22 +125,24 @@ class PilotTemplateExecutionService(
             items.any { item -> item.resultOutcome == TrialOutcome.VIOLATED } -> TrialOutcome.VIOLATED
             else -> TrialOutcome.INCONCLUSIVE
         }
-        val cleanupVerified = items.filter { item -> item.testSpecRunId != null }
-            .all { item -> item.cleanupVerified == true }
-        val failure = items.firstOrNull { item -> item.status == PilotTestSessionItemStatus.RECOVERY_REQUIRED }
-            ?.failureMessage
+        val executedItems = items.filter { item -> item.testSpecRunId != null }
+        val cleanupVerified = executedItems.takeIf { it.isNotEmpty() }
+            ?.all { item -> item.cleanupVerified == true }
+        val failureItem = items.firstOrNull { item -> item.status == PilotTestSessionItemStatus.RECOVERY_REQUIRED }
+            ?: items.firstOrNull { item -> item.status != PilotTestSessionItemStatus.COMPLETED }
+        val diagnosis = failureItem?.diagnosis
+        val failure = diagnosis?.summary ?: failureItem?.failureMessage ?: failureItem?.failureCode
         check(
-            sessions.complete(session.id, status, resultOutcome, cleanupVerified, completedAt, failure, items),
+            sessions.complete(
+                session.id, status, resultOutcome, cleanupVerified, completedAt, failure, diagnosis, items,
+            ),
         ) { "Pilot test session '${session.id}' could not be completed" }
         return findSession(session.id)
     }
 
     fun findSession(sessionId: UUID): PilotTestSessionView = view(
         sessions.findById(sessionId)
-            ?: throw ClientRequestException(
-                "PILOT_TEST_SESSION_NOT_FOUND",
-                "Pilot test session '$sessionId' was not found",
-            ),
+            ?: throw ResourceNotFoundException("Pilot test session", sessionId),
     )
 
     fun findSessions(targetSystemId: String): List<PilotTestSessionView> =
@@ -191,7 +195,10 @@ class PilotTemplateExecutionService(
         }
     }
 
-    @Suppress("TooGenericExceptionCaught") // A batch reports each candidate instead of dropping completed ones.
+    @Suppress(
+        "TooGenericExceptionCaught",
+        "SwallowedException", // Never persist unknown exception details that could contain Target secrets.
+    )
     private fun executeOne(
         command: ExecutePilotTemplates,
         candidateId: String,
@@ -228,14 +235,11 @@ class PilotTemplateExecutionService(
             failureMessage = null,
         )
     } catch (exception: ClientRequestException) {
-        PilotTemplateExecutionOutcome(candidateId, null, null, exception.code, exception.message)
+        failedPilotOutcome(candidateId, exception.code)
     } catch (exception: IllegalArgumentException) {
-        PilotTemplateExecutionOutcome(candidateId, null, null, "PILOT_TEMPLATE_REJECTED", exception.message)
+        failedPilotOutcome(candidateId, "PILOT_TEMPLATE_REJECTED")
     } catch (exception: Exception) {
-        PilotTemplateExecutionOutcome(
-            candidateId, null, null, "PILOT_TEMPLATE_EXECUTION_FAILED",
-            exception.message ?: exception.javaClass.simpleName,
-        )
+        failedPilotOutcome(candidateId, "PILOT_TEMPLATE_EXECUTION_FAILED")
     }
 
     private fun nextTemplateVersion(targetSystemId: String, candidateId: String): Int {
@@ -264,6 +268,12 @@ private fun String.sha256(): String = MessageDigest.getInstance("SHA-256")
     .digest(toByteArray(StandardCharsets.UTF_8))
     .joinToString("") { byte -> "%02x".format(byte) }
 
+/** The caught message can originate from a Target client, so persistence keeps only mapped safe diagnostics. */
+private fun failedPilotOutcome(candidateId: String, code: String): PilotTemplateExecutionOutcome {
+    val diagnosis = FailureDiagnosisFactory.fromCode(code)
+    return PilotTemplateExecutionOutcome(candidateId, null, null, code, diagnosis.summary, diagnosis)
+}
+
 private fun PilotTemplateExecutionOutcome.toSessionItem(
     sessionId: UUID,
     sequenceNumber: Int,
@@ -280,9 +290,13 @@ private fun PilotTemplateExecutionOutcome.toSessionItem(
         TestSpecRunStatus.FAILED -> PilotTestSessionItemStatus.FAILED
         TestSpecRunStatus.COMPLETED -> PilotTestSessionItemStatus.COMPLETED
     }
-    val runFailureCode = if (status == PilotTestSessionItemStatus.COMPLETED) null else {
-        run?.let { value -> "TEST_SPEC_RUN_${value.status.name}" }
+    val runFailureCode = when (status) {
+        PilotTestSessionItemStatus.COMPLETED -> null
+        PilotTestSessionItemStatus.RECOVERY_REQUIRED -> "TEST_SPEC_RUN_RECOVERY_REQUIRED"
+        PilotTestSessionItemStatus.FAILED -> "TEST_SPEC_RUN_FAILED"
     }
+    val failureCode = failureCode ?: runFailureCode
+    val diagnosis = diagnosis ?: run?.diagnosis ?: failureCode?.let(FailureDiagnosisFactory::fromCode)
     return PilotTestSessionItem(
         sessionId = sessionId,
         sequenceNumber = sequenceNumber,
@@ -292,9 +306,10 @@ private fun PilotTemplateExecutionOutcome.toSessionItem(
         status = status,
         resultOutcome = run?.resultOutcome,
         cleanupVerified = run?.cleanupVerified,
-        failureCode = failureCode ?: runFailureCode,
-        failureMessage = failureMessage ?: run?.failure,
+        failureCode = failureCode,
+        failureMessage = diagnosis?.summary ?: failureMessage,
         completedAt = completedAt,
+        diagnosis = diagnosis,
     )
 }
 

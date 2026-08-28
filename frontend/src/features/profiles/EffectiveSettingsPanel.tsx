@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ApiClient, ApiError } from '../../api/ApiClient'
+import { ApiClient, ApiError, formatApiError } from '../../api/ApiClient'
 import type { EffectiveTargetProfile } from '../../api/effectiveSettings'
 import type { TargetProfile } from '../../api/targetProfile'
 
@@ -30,7 +30,7 @@ export function EffectiveSettingsPanel({ api, profile, onUseGeneratedYaml }: Eff
         if (!disposed) setSettings(loaded)
       } catch (error) {
         if (!disposed) {
-          setMessage(error instanceof ApiError ? `${error.code}: ${error.message}` : '적용 설정을 불러오지 못했습니다.')
+          setMessage(error instanceof ApiError ? formatApiError(error) : '적용 설정을 불러오지 못했습니다.')
         }
       }
     })()

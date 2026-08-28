@@ -1,5 +1,6 @@
 package com.project.agenticreliabilitylab.testspec.domain
 
+import com.project.agenticreliabilitylab.diagnosis.FailureDiagnosis
 import java.time.Instant
 import java.util.UUID
 
@@ -60,6 +61,7 @@ data class TestSpecRun(
     val startedAt: Instant? = null,
     val completedAt: Instant? = null,
     val failure: String? = null,
+    val diagnosis: FailureDiagnosis? = null,
 )
 
 data class StoredTrialResult(
@@ -73,6 +75,7 @@ data class StoredTrialResult(
     val timings: List<StepTiming>,
     val observations: Map<String, ObservedEvidence> = emptyMap(),
     val faultEvents: List<FaultAuditEvent> = emptyList(),
+    val diagnosis: FailureDiagnosis? = null,
 )
 
 data class StoredResetResult(
@@ -82,4 +85,5 @@ data class StoredResetResult(
     val verified: Boolean,
     val checks: List<ResetCheck>,
     val failure: String?,
+    val diagnosis: FailureDiagnosis? = null,
 )

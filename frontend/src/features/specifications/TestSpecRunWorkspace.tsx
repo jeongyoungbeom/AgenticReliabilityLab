@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ApiClient, ApiError } from '../../api/ApiClient'
+import { ApiClient, ApiError, formatApiError } from '../../api/ApiClient'
 import {
   executeTestSpecification,
   findRun,
@@ -8,8 +8,8 @@ import {
   type TestSpecRunResponse,
 } from '../../api/testSpecifications'
 import { NotEvaluatedReasonBadge, TestSpecJudgementBadge } from '../../components/TestSpecJudgement'
+import { FailureDiagnosisDetails } from '../../components/FailureDiagnosisDetails'
 import { useIdempotencyKey } from '../../hooks/useIdempotencyKey'
-import { useSessionStorageState } from '../../hooks/useSessionStorageState'
 import { PilotTestSessionResultsPanel } from './PilotTestSessionResultsPanel'
 
 interface TestSpecRunWorkspaceProps {
@@ -24,8 +24,7 @@ interface TestSpecRunWorkspaceProps {
 export function TestSpecRunWorkspace({
   api, selectedTargetId, selectedPilotTestSessionId, onSelectPilotTestSession, selectedRunId, onSelectRun,
 }: TestSpecRunWorkspaceProps) {
-  const [storedRunId, setStoredRunId] = useSessionStorageState<string>('arl.test-spec-run-id', '')
-  const [runInput, setRunInput] = useState(selectedRunId ?? storedRunId)
+  const [runInput, setRunInput] = useState(selectedRunId ?? '')
   const [specificationInput, setSpecificationInput] = useState('')
   const [run, setRun] = useState<TestSpecRunResponse | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -44,18 +43,20 @@ export function TestSpecRunWorkspace({
   useEffect(() => {
     if (selectedRunId) {
       setRunInput(selectedRunId)
-      setStoredRunId(selectedRunId)
+    } else {
+      setRunInput('')
+      setRun(null)
     }
-  }, [selectedRunId, setStoredRunId])
+  }, [selectedRunId])
 
   useEffect(() => {
     let current = true
-    if (!storedRunId) {
+    if (!selectedRunId) {
       setRun(null)
       return () => { current = false }
     }
     setBusy(true)
-    findRun(api, storedRunId)
+    findRun(api, selectedRunId)
       .then((loaded) => {
         if (!current) return
         setRun(loaded)
@@ -69,7 +70,7 @@ export function TestSpecRunWorkspace({
       .catch((error: unknown) => { if (current) report(error) })
       .finally(() => { if (current) setBusy(false) })
     return () => { current = false }
-  }, [api, storedRunId, reloadNonce])
+  }, [api, selectedRunId, reloadNonce])
 
   async function execute() {
     const specificationId = specificationInput.trim()
@@ -81,7 +82,6 @@ export function TestSpecRunWorkspace({
       if (!mounted.current) return
       setRun(created)
       setRunInput(created.id)
-      setStoredRunId(created.id)
       onSelectRun(created.id)
       renew()
       setFailed(false)
@@ -102,7 +102,6 @@ export function TestSpecRunWorkspace({
   function loadRun() {
     const next = runInput.trim()
     if (next) {
-      setStoredRunId(next)
       onSelectRun(next)
     }
   }
@@ -145,7 +144,7 @@ export function TestSpecRunWorkspace({
             type="button"
             className="secondary-button"
             onClick={() => setReloadNonce((value) => value + 1)}
-            disabled={busy || storedRunId === ''}
+            disabled={busy || selectedRunId === null}
           >
             새로고침
           </button>
@@ -179,7 +178,8 @@ function RunResult({ run }: { run: TestSpecRunResponse }) {
           정리가 검증되지 않았습니다. 이 Target의 다음 판정은 이전 실행의 상태에 오염될 수 있으므로 복구가 우선입니다.
         </p>
       )}
-      {run.failure && <p className="notice error">{run.failure}</p>}
+      <FailureDiagnosisDetails diagnosis={run.diagnosis} />
+      {!run.diagnosis && run.failure && <p className="notice error">{run.failure}</p>}
 
       <dl className="meta-grid">
         <div><dt>요청 시행</dt><dd>{run.requestedTrials}</dd></div>
@@ -199,7 +199,8 @@ function RunResult({ run }: { run: TestSpecRunResponse }) {
                 <TestSpecJudgementBadge kind="trial" value={trial.outcome} />
               </div>
               {!trial.completed && <p className="notice warning">이 시행은 완료되지 않았습니다.</p>}
-              {trial.failure && <p className="notice error">{trial.failure}</p>}
+              <FailureDiagnosisDetails diagnosis={trial.diagnosis} />
+              {!trial.diagnosis && trial.failure && <p className="notice error">{trial.failure}</p>}
               <ul className="verdict-list">
                 {trial.verdicts.map((verdict) => (
                   <li key={verdict.invariantId} className={`verdict ${verdict.outcome.toLowerCase()}`}>
@@ -256,7 +257,8 @@ function RunResult({ run }: { run: TestSpecRunResponse }) {
           {run.resets.map((reset) => (
             <li key={reset.sequenceNumber}>
               <strong>{reset.sequenceNumber}번째 리셋</strong> · {reset.performed ? '수행됨' : '미수행'} · {reset.verified ? '검증됨' : '미검증'}
-              {reset.failure && <p className="notice error">{reset.failure}</p>}
+              <FailureDiagnosisDetails diagnosis={reset.diagnosis} />
+              {!reset.diagnosis && reset.failure && <p className="notice error">{reset.failure}</p>}
               {reset.checks.length > 0 && <ul>{reset.checks.map((check) => <li key={check.id}>{check.id}: <code>{check.condition}</code> → {check.observed} ({check.satisfied ? '충족' : '불충족'})</li>)}</ul>}
             </li>
           ))}
@@ -278,6 +280,6 @@ function faultAuditLabel(action: 'INJECTED' | 'RELEASED' | 'RELEASE_FAILED'): st
 }
 
 function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) return `${error.code}: ${error.message}`
+  if (error instanceof ApiError) return formatApiError(error)
   return error instanceof Error ? error.message : '실행 정보를 불러오지 못했습니다.'
 }

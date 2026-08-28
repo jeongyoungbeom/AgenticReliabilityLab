@@ -1,65 +1,54 @@
-# Current Task — pilot-ux-simplification
+# Current Task — error-diagnosis-model
 
 > 이 문서는 **지금 무엇을 해야 하는가**의 기준이다.
 > 코드가 이 문서와 다르게 구현돼 있으면 코드가 정답이 아니라 **요구사항 불일치**를 의심한다.
 > 현재 진행 상태는 `HANDOFF.md`, 유지해야 하는 설계 판단은 `DECISIONS.md`를 본다.
 
-Task ID: `pilot-ux-simplification`
-Review 디렉터리: `reviews/pilot-ux-simplification/`
-Updated: 2026-08-27
+Task ID: `error-diagnosis-model`
+Updated: 2026-08-28
 
 ## Goal
 
-SideProject 같은 Target을 **처음 보는 사용자가 화면만 보고 한 사이클을 끝낼 수 있게** 만든다.
-
-```text
-Target 등록(이름·URL·환경 3개)
-→ Swagger 자동 발견
-→ 역할별 Target 자격증명 입력·preflight
-→ Harness 계약 확인 후 실행 후보 노출
-→ 고정 템플릿 선택·명시 승인·순차 실행
-→ 저장된 세션 결과 확인
-```
+실행·preflight·정리 과정의 실패를 사용자가 즉시 조치할 수 있도록, 실패를 **단계 / 한국어 설명 /
+예상 원인 / 다음 행동 / 기술 정보**로 구조화해 저장·표시한다. 기술 정보에는 토큰, Authorization 값,
+응답 본문 등 민감값이 남지 않아야 한다.
 
 ## Requirements
 
-1. 등록 입력은 `name` / `baseUrl` / `environment` 세 개다. 나머지 표준값은 ARL이 완전한 Profile로 생성하고
-   그 완전본을 버전으로 고정한다. 표준에서 벗어나는 Target만 고급 YAML로 덮어쓴다.
-2. 실행은 Profile에 선언된 경로만 호출한다. URL 하나를 받았다고 임의 내부망이나 임의 API를 호출하지 않는다.
-3. Harness `state` / `reset` / `fault` / `fault release` 네 경로가 모두 선언되지 않으면 모든 후보는 `NOT_READY`이고,
-   **어느 API가 빠졌는지** 화면에 보여 준다. 비변경 `GET state` preflight가 성공해야 실행 선택지를 노출한다.
-   상태를 바꾸는 POST는 진단 목적으로 호출하지 않는다.
-4. ARL 접근 토큰과 Target 테스트 토큰은 분리한다. Target 토큰은 서버 메모리에만 두고 DB·YAML·로그·응답·
-   Evidence에 남기지 않는다. 세션은 HttpOnly 쿠키로 식별하고 새로고침을 넘겨 복구된다.
-5. UI는 사용자가 실제로 쓰는 경로만 남긴다. 백엔드 기능을 지우는 것이 아니라 진입점을 줄인다.
-6. 사람이 명시 승인한 선택 1회는 하나의 세션으로 영속된다. 같은 Idempotency-Key 재요청은 Target을 다시 건드리지 않고
-   저장된 결과를 재생한다. 재기동으로 끊긴 세션이 완료된 것처럼 보이면 안 된다.
-7. **화면이 실패·미검증을 성공처럼 보여 주지 않는다.** 이 제품의 존재 이유이므로 다른 편의보다 우선한다.
+1. 실패를 발생한 단계와 구분해 영속화한다. 단계별 한국어 설명, 예상 원인, 다음 권장 행동, 안전하게
+   축약·정제한 기술 정보를 함께 보존하고 결과 화면에서 보여 준다.
+2. 사용자가 영어 예외 코드 한 줄을 해석해야 다음 행동을 알 수 있는 UI가 되면 안 된다. 실패·복구 필요·
+   설정 필요 상태마다 사용자가 바로 할 수 있는 다음 행동을 제시한다.
+3. HTTP 오류, 예외 메시지, 로그성 기술 정보에서 access token, bearer token, Authorization 헤더 값,
+   cookie, Harness key, 응답 본문 및 알려진 민감 키를 제거하거나 마스킹한다. 민감 원문을 DB·Evidence·
+   API 응답·브라우저 저장소에 저장하지 않는다.
+4. 기존 파일럿 세션의 `PASSED` / `VIOLATED` / `INCONCLUSIVE`, 실행 상태, 정리 검증 및 재기동 복구
+   의미를 바꾸지 않는다. 오류 진단은 사실을 보완할 뿐 실패를 성공이나 READY로 바꾸면 안 된다.
+5. 간편 등록, Swagger 발견, Harness·역할별 preflight, 템플릿 실행, 세션 결과 화면의 기존 성공 흐름을
+   회귀시키지 않는다.
 
 ## Non-goals
 
-- 7단계 오류 진단 모델, 8단계 SideProject 실제 Docker 통합 검증. 이번 TASK 범위가 아니다.
-- LLM 기반 후보 생성·회귀·AI 해석 화면 확장.
-- 실행 allowlist의 일반화(다른 모양의 Target 지원). `DECISIONS.md` D005의 미결 사항이다.
-- 삭제한 화면(수동 명세 등록·승인, 지식 스냅샷, 분석 워크스페이스 등)의 복구.
+- 8단계 실제 SideProject Docker 통합 검증의 실행·승인·상태 변경.
+- SideProject 제품 코드·보안 모델·운영 환경 변경, 실행 allowlist 일반화(D005), 새 테스트 시나리오 추가.
+- 독립 리뷰 실행. 이번 세션에서는 독립 리뷰를 하지 않는다.
+- commit·push 또는 이전 1–6단계 변경의 정리·되돌리기.
 
 ## Acceptance Criteria
 
-1. 1–6단계 구현이 위 Requirements를 만족한다. **(현재: 구현 완료)**
-2. `reviews/pilot-ux-simplification/REVIEW.md`의 각 REV finding이 현재 코드에서 재검증되고,
-   `ACCEPTED / REJECTED / ALREADY_RESOLVED / DEFERRED / STALE` 중 하나로 판정된다.
-3. ACCEPTED finding이 수정되고, 그 수정마다 회귀 테스트가 있다. 특히 Requirement 7을 지키는 테스트.
-4. 백엔드 `.\gradlew.bat check` 실패 0 / detekt findings 0, 프런트 `npm test` 전부 통과, `npm run build` 성공.
-   결과를 `HANDOFF.md`의 Verification에 실행 시점과 함께 기록한다.
-5. `reviews/pilot-ux-simplification/RESOLUTION.md`가 작성된다.
-6. 사용자 승인 뒤 1/2/3/4/5/6단계로 나눠 커밋한다. **승인 없이 커밋하지 않는다.**
+1. 대표 실패(최소 HTTP 인증/권한, 연결·타임아웃, Harness/preflight 실패, 실행 실패)를 단계·한국어 설명·
+   예상 원인·다음 행동·기술 정보 구조로 저장하고, 결과 또는 관련 화면에서 확인할 수 있다.
+2. 사용자는 영어 코드 한 줄만 보지 않고 바로 조치할 수 있다. 기술 세부 사항은 필요할 때만 보조 정보로
+   제공되며 결과 판정과 모순되지 않는다.
+3. 토큰, Authorization 값, cookie, Harness key 및 응답 본문이 테스트·저장소 파일·DB 기록·API 응답·
+   Evidence·브라우저 저장소에 남지 않음을 회귀 테스트로 확인한다.
+4. 영향받는 백엔드·프런트 테스트와 빌드를 실행하고, 기존 1–6단계 성공 흐름의 관련 테스트가 통과한다.
+5. 자체 리뷰를 수행하고 `HANDOFF.md`에 구현 범위·검증 결과·남은 위험을 갱신한다. 독립 리뷰·commit·push는 하지 않는다.
 
 ## Relevant Context
 
-- 현재 상태와 미커밋 범위: `HANDOFF.md`
-- 유지해야 하는 설계 판단: `DECISIONS.md`
-- 처리해야 할 리뷰: `reviews/pilot-ux-simplification/REVIEW.md`
-- 파일럿 계약 초안(계약 확정본 아님): `DESIGN4.md`
-- Target이 갖춰야 할 것: `TARGET_REQUIREMENTS.md`
-- 명세 스키마와 실행 계약: `TEST_SPEC.md`
-- 과거 개발 이력: `docs/history/HANDOFF-2026-08-27.md`
+- `DECISIONS.md` D003, D006, D008, D009, D010 — Harness 게이트, 자격증명 격리, 결과·세션·정리 표시 계약.
+- `src/main/kotlin/**/targetdiscovery/**` — 파일럿 후보·실행·세션·결과 모델.
+- `src/main/kotlin/**/targetcredential/**` — 세션 자격증명 및 preflight 경계.
+- `frontend/src/features/profiles/*`, `frontend/src/features/specifications/*` — 실패·결과 UI.
+- 8단계 Docker 환경 준비는 이미 되었지만, 이 Task의 구현·검증 완료 전에는 실제 Target 실행 단계로 진행하지 않는다.

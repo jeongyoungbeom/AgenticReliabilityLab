@@ -4,7 +4,9 @@ object TestSpecRunSql {
     private val SELECT_RUN = """
         select id, specification_id, target_system_id, profile_version_id, status, idempotency_key, request_hash,
                requested_trials, result_outcome, trials_run, trials_violated, trials_inconclusive, cleanup_verified,
-               created_by, created_correlation_id, created_at, started_at, completed_at, failure
+               created_by, created_correlation_id, created_at, started_at, completed_at, failure,
+               diagnostic_stage, diagnostic_summary, diagnostic_likely_cause, diagnostic_next_action,
+               diagnostic_technical_detail
         from test_spec_run
     """.trimIndent()
 
@@ -12,11 +14,14 @@ object TestSpecRunSql {
         insert into test_spec_run (
             id, specification_id, target_system_id, profile_version_id, status, idempotency_key, request_hash,
             requested_trials, result_outcome, trials_run, trials_violated, trials_inconclusive, cleanup_verified,
-            created_by, created_correlation_id, created_at, started_at, completed_at, failure, active_slot
+            created_by, created_correlation_id, created_at, started_at, completed_at, failure,
+            diagnostic_stage, diagnostic_summary, diagnostic_likely_cause, diagnostic_next_action,
+            diagnostic_technical_detail, active_slot
         ) values (
             :id, :specificationId, :targetSystemId, :profileVersionId, :status, :idempotencyKey, :requestHash,
             :requestedTrials, null, null, null, null, null,
-            :createdBy, :createdCorrelationId, :createdAt, null, null, null, :activeSlot
+            :createdBy, :createdCorrelationId, :createdAt, null, null, null, null, null, null, null, null,
+            :activeSlot
         )
     """.trimIndent()
 
@@ -41,59 +46,74 @@ object TestSpecRunSql {
         update test_spec_run
         set status = :status, result_outcome = :resultOutcome, trials_run = :trialsRun,
             trials_violated = :trialsViolated, trials_inconclusive = :trialsInconclusive,
-            cleanup_verified = :cleanupVerified, completed_at = :completedAt, active_slot = :activeSlot
+            cleanup_verified = :cleanupVerified, completed_at = :completedAt, failure = :failure,
+            diagnostic_stage = :diagnosticStage, diagnostic_summary = :diagnosticSummary,
+            diagnostic_likely_cause = :diagnosticLikelyCause, diagnostic_next_action = :diagnosticNextAction,
+            diagnostic_technical_detail = :diagnosticTechnicalDetail, active_slot = :activeSlot
         where id = :id and status = :running
     """.trimIndent()
 
     val MARK_FAILED = """
         update test_spec_run
         set status = :status, cleanup_verified = :cleanupVerified, completed_at = :completedAt, failure = :failure,
-            active_slot = :activeSlot
+            diagnostic_stage = :diagnosticStage, diagnostic_summary = :diagnosticSummary,
+            diagnostic_likely_cause = :diagnosticLikelyCause, diagnostic_next_action = :diagnosticNextAction,
+            diagnostic_technical_detail = :diagnosticTechnicalDetail, active_slot = :activeSlot
         where id = :id and status in (:pending, :running)
     """.trimIndent()
 
     val RECOVER_ORPHANED_RUNNING = """
         update test_spec_run
         set status = :recoveryRequired, cleanup_verified = false, completed_at = :completedAt,
-            failure = :failure, active_slot = :activeSlot
+            failure = :failure, diagnostic_stage = :diagnosticStage, diagnostic_summary = :diagnosticSummary,
+            diagnostic_likely_cause = :diagnosticLikelyCause, diagnostic_next_action = :diagnosticNextAction,
+            diagnostic_technical_detail = :diagnosticTechnicalDetail, active_slot = :activeSlot
         where status = :running
     """.trimIndent()
 
     val FAIL_ORPHANED_PENDING = """
         update test_spec_run
         set status = :failed, cleanup_verified = true, completed_at = :completedAt,
-            failure = :failure, active_slot = null
+            failure = :failure, diagnostic_stage = :diagnosticStage, diagnostic_summary = :diagnosticSummary,
+            diagnostic_likely_cause = :diagnosticLikelyCause, diagnostic_next_action = :diagnosticNextAction,
+            diagnostic_technical_detail = :diagnosticTechnicalDetail, active_slot = null
         where status = :pending
     """.trimIndent()
 
     val INSERT_TRIAL = """
         insert into test_spec_trial_result (
             run_id, trial_number, outcome, state_changed, completed, failure, verdicts_json, timings_json,
-            observations_json, fault_events_json
+            observations_json, fault_events_json, diagnostic_stage, diagnostic_summary, diagnostic_likely_cause,
+            diagnostic_next_action, diagnostic_technical_detail
         ) values (
             :runId, :trialNumber, :outcome, :stateChanged, :completed, :failure, :verdictsJson, :timingsJson,
-            :observationsJson, :faultEventsJson
+            :observationsJson, :faultEventsJson, :diagnosticStage, :diagnosticSummary, :diagnosticLikelyCause,
+            :diagnosticNextAction, :diagnosticTechnicalDetail
         )
     """.trimIndent()
 
     val INSERT_RESET = """
         insert into test_spec_reset_result (
-            run_id, sequence_number, performed, verified, checks_json, failure
+            run_id, sequence_number, performed, verified, checks_json, failure, diagnostic_stage,
+            diagnostic_summary, diagnostic_likely_cause, diagnostic_next_action, diagnostic_technical_detail
         ) values (
-            :runId, :sequenceNumber, :performed, :verified, :checksJson, :failure
+            :runId, :sequenceNumber, :performed, :verified, :checksJson, :failure, :diagnosticStage,
+            :diagnosticSummary, :diagnosticLikelyCause, :diagnosticNextAction, :diagnosticTechnicalDetail
         )
     """.trimIndent()
 
     val FIND_TRIALS = """
         select run_id, trial_number, outcome, state_changed, completed, failure, verdicts_json, timings_json,
-               observations_json, fault_events_json
+               observations_json, fault_events_json, diagnostic_stage, diagnostic_summary, diagnostic_likely_cause,
+               diagnostic_next_action, diagnostic_technical_detail
         from test_spec_trial_result
         where run_id = :runId
         order by trial_number
     """.trimIndent()
 
     val FIND_RESETS = """
-        select run_id, sequence_number, performed, verified, checks_json, failure
+        select run_id, sequence_number, performed, verified, checks_json, failure, diagnostic_stage,
+               diagnostic_summary, diagnostic_likely_cause, diagnostic_next_action, diagnostic_technical_detail
         from test_spec_reset_result
         where run_id = :runId
         order by sequence_number

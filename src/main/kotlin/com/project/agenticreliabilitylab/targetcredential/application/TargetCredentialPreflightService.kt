@@ -3,6 +3,7 @@ package com.project.agenticreliabilitylab.targetcredential.application
 import com.project.agenticreliabilitylab.target.domain.TargetReadTransport
 import com.project.agenticreliabilitylab.target.domain.TargetReadTransportException
 import com.project.agenticreliabilitylab.target.domain.TargetReadResponse
+import com.project.agenticreliabilitylab.diagnosis.FailureDiagnosisFactory
 import com.project.agenticreliabilitylab.targetprofile.application.TargetProfileService
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileHttpCallDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.ProfileObservationSourceKind
@@ -131,7 +132,17 @@ class TargetCredentialPreflightService(
         method = call?.method,
         path = call?.path,
         httpStatus = httpStatus,
+        diagnosis = status.failureCode()?.let { code -> FailureDiagnosisFactory.fromCode(code, httpStatus) },
     )
+
+    private fun TargetCredentialPreflightStatus.failureCode(): String? = when (this) {
+        TargetCredentialPreflightStatus.READY -> null
+        TargetCredentialPreflightStatus.TARGET_CREDENTIAL_MISSING -> "TARGET_CREDENTIAL_MISSING"
+        TargetCredentialPreflightStatus.TARGET_CREDENTIAL_EXPIRED -> "TARGET_CREDENTIAL_EXPIRED"
+        TargetCredentialPreflightStatus.PREFLIGHT_NOT_CONFIGURED -> "PREFLIGHT_NOT_CONFIGURED"
+        TargetCredentialPreflightStatus.TARGET_PREFLIGHT_FAILED -> "TARGET_PREFLIGHT_FAILED"
+        TargetCredentialPreflightStatus.TARGET_UNREACHABLE -> "TARGET_UNREACHABLE"
+    }
 
     private companion object {
         const val RUN_ID_HEADER = "X-ARL-Run-Id"

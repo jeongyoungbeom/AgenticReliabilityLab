@@ -1,3 +1,5 @@
+import type { FailureDiagnosis } from './ApiClient'
+
 /**
  * The credential session id is intentionally absent: it lives only in an HttpOnly cookie the browser attaches
  * automatically, so no page script can read it and a reload keeps reaching the same server-side session.
@@ -22,6 +24,7 @@ export interface TargetCredentialPreflightResult {
   method: string | null
   path: string | null
   httpStatus: number | null
+  diagnosis?: FailureDiagnosis | null
 }
 
 const PREFLIGHT_LABELS: Record<TargetCredentialPreflightStatus, string> = {

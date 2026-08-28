@@ -1,4 +1,4 @@
-import type { ApiClient } from './ApiClient'
+import type { ApiClient, FailureDiagnosis } from './ApiClient'
 
 export type PilotTestSessionStatus = 'RUNNING' | 'COMPLETED' | 'RECOVERY_REQUIRED'
 export type PilotTestSessionItemStatus = 'COMPLETED' | 'FAILED' | 'RECOVERY_REQUIRED'
@@ -14,6 +14,7 @@ export interface PilotTestSessionItem {
   failureCode: string | null
   failureMessage: string | null
   completedAt: string
+  diagnosis?: FailureDiagnosis | null
 }
 
 /** One explicitly approved, serial selection of Pilot templates. */
@@ -27,6 +28,7 @@ export interface PilotTestSession {
   createdAt: string
   completedAt: string | null
   failure: string | null
+  diagnosis?: FailureDiagnosis | null
   outcomes: PilotTestSessionItem[]
 }
 
@@ -35,8 +37,4 @@ export type PilotTemplateExecution = PilotTestSession
 
 export function listPilotTestSessions(api: ApiClient, targetSystemId: string): Promise<PilotTestSession[]> {
   return api.get<PilotTestSession[]>(`/api/targets/${targetSystemId}/pilot-test-sessions`)
-}
-
-export function findPilotTestSession(api: ApiClient, sessionId: string): Promise<PilotTestSession> {
-  return api.get<PilotTestSession>(`/api/pilot-test-sessions/${sessionId}`)
 }

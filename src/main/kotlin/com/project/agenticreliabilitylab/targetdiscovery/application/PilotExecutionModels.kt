@@ -1,5 +1,6 @@
 package com.project.agenticreliabilitylab.targetdiscovery.application
 
+import com.project.agenticreliabilitylab.diagnosis.FailureDiagnosis
 import com.project.agenticreliabilitylab.testspec.application.TestSpecRunView
 import java.util.UUID
 
@@ -18,4 +19,5 @@ data class PilotTemplateExecutionOutcome(
     val run: TestSpecRunView?,
     val failureCode: String?,
     val failureMessage: String?,
+    val diagnosis: FailureDiagnosis? = null,
 )

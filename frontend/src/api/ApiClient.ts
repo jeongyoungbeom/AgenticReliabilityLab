@@ -2,11 +2,22 @@ export type AccessRole = 'viewer' | 'profileEditor' | 'executor'
 
 export type AccessTokens = Record<AccessRole, string>
 
+export type FailureStage = 'CREDENTIALS' | 'PREFLIGHT' | 'EXECUTION' | 'CLEANUP' | 'RECOVERY' | 'CONFIGURATION' | 'SYSTEM'
+
+export interface FailureDiagnosis {
+  stage: FailureStage
+  summary: string
+  likelyCause: string
+  nextAction: string
+  technicalDetail: string
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
     message: string,
+    readonly diagnosis: FailureDiagnosis | null = null,
   ) {
     super(message)
   }
@@ -64,11 +75,25 @@ export class ApiClient {
 async function toApiError(response: Response): Promise<ApiError> {
   const fallback = `Request failed with HTTP ${response.status}`
   try {
-    const problem = (await response.json()) as { code?: string; message?: string }
-    return new ApiError(response.status, problem.code ?? 'HTTP_ERROR', problem.message ?? fallback)
+    const problem = (await response.json()) as { code?: string; message?: string; diagnosis?: FailureDiagnosis }
+    return new ApiError(response.status, problem.code ?? 'HTTP_ERROR', problem.message ?? fallback, problem.diagnosis ?? null)
   } catch {
     return new ApiError(response.status, 'HTTP_ERROR', fallback)
   }
+}
+
+/**
+ * Leads with the server's Korean action guidance, then keeps the server message and the stable code as
+ * supporting detail. Only a handful of codes have a mapped diagnosis; for the rest the generic guidance says
+ * "check the technical information", so the message and the code have to stay on screen for it to mean anything.
+ */
+export function formatApiError(error: ApiError): string {
+  if (!error.diagnosis) return `${error.code}: ${error.message}`
+  const { summary, likelyCause, nextAction, technicalDetail } = error.diagnosis
+  const parts = [summary, `예상 원인: ${likelyCause}`, `다음 행동: ${nextAction}`]
+  if (error.message && error.message !== summary) parts.push(`서버 메시지: ${error.message}`)
+  if (technicalDetail) parts.push(`기술 정보: ${technicalDetail}`)
+  return parts.join(' ')
 }
 
 export function newIdempotencyKey(scope: string): string {
