@@ -9,6 +9,7 @@ import {
 } from '../../api/testSpecifications'
 import { NotEvaluatedReasonBadge, TestSpecJudgementBadge } from '../../components/TestSpecJudgement'
 import { FailureDiagnosisDetails } from '../../components/FailureDiagnosisDetails'
+import { cleanupLabel } from '../../components/cleanupStatus'
 import { useIdempotencyKey } from '../../hooks/useIdempotencyKey'
 import { PilotTestSessionResultsPanel } from './PilotTestSessionResultsPanel'
 
@@ -186,7 +187,7 @@ function RunResult({ run }: { run: TestSpecRunResponse }) {
         <div><dt>실행 시행</dt><dd>{run.trialsRun ?? '-'}</dd></div>
         <div><dt>위반 시행</dt><dd>{run.trialsViolated ?? '-'}</dd></div>
         <div><dt>판정 불가 시행</dt><dd>{run.trialsInconclusive ?? '-'}</dd></div>
-        <div><dt>정리 검증</dt><dd>{run.cleanupVerified === null ? '-' : run.cleanupVerified ? '확인됨' : '미확인'}</dd></div>
+        <div><dt>정리 검증</dt><dd>{cleanupLabel(run.cleanupVerified)}</dd></div>
       </dl>
 
       <h3>시행별 판정</h3>

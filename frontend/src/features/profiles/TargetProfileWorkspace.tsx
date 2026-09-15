@@ -34,6 +34,7 @@ export function TargetProfileWorkspace({
   const [draft, setDraft] = useState<TargetProfile | null>(null)
   const [activeProfiles, setActiveProfiles] = useState<TargetProfile[]>([])
   const [message, setMessage] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [discoveryRefreshKey, setDiscoveryRefreshKey] = useState(0)
 
@@ -41,11 +42,23 @@ export function TargetProfileWorkspace({
     void refreshActiveProfiles()
   }, [api])
 
+  /**
+   * Every notification carries its own outcome.
+   *
+   * Deriving it from the message text rendered failures in the success style whenever a diagnosis summary
+   * happened to start with a success word - "안전한 preflight 경로가 설정되지 않았습니다." is a failure that
+   * began with 안전 - which is exactly the false reassurance D010 forbids.
+   */
+  function notify(text: string, isFailure: boolean) {
+    setMessage(text)
+    setFailed(isFailure)
+  }
+
   async function refreshActiveProfiles() {
     try {
       setActiveProfiles(await api.get<TargetProfile[]>('/api/target-profiles?source=USER_IMPORT'))
     } catch (error) {
-      setMessage(errorMessage(error))
+      notify(errorMessage(error), true)
     }
   }
 
@@ -58,7 +71,7 @@ export function TargetProfileWorkspace({
       )
       setValidation(result)
       setDraft(null)
-      setMessage('안전 정책 검증을 통과했습니다. 아직 Target에는 아무 요청도 보내지 않았습니다.')
+      notify('안전 정책 검증을 통과했습니다. 아직 Target에는 아무 요청도 보내지 않았습니다.', false)
     })
   }
 
@@ -66,7 +79,7 @@ export function TargetProfileWorkspace({
     await run(async () => {
       const result = await api.post<TargetProfile>('/api/target-profiles', { yaml }, 'profileEditor')
       setDraft(result)
-      setMessage(`Draft Version ${result.id.slice(0, 8)}이 저장되었습니다. 활성화 전에는 실행에 사용되지 않습니다.`)
+      notify(`Draft Version ${result.id.slice(0, 8)}이 저장되었습니다. 활성화 전에는 실행에 사용되지 않습니다.`, false)
     })
   }
 
@@ -84,7 +97,10 @@ export function TargetProfileWorkspace({
         'profileEditor',
       )
       setDraft(activated)
-      setMessage(`Profile Version이 활성화되었습니다. Target '${activated.targetSystemId}'을 선택해 다음 단계로 진행할 수 있습니다.`)
+      notify(
+        `Profile Version이 활성화되었습니다. Target '${activated.targetSystemId}'을 선택해 다음 단계로 진행할 수 있습니다.`,
+        false,
+      )
       onSelectTarget(activated.targetSystemId)
       setDiscoveryRefreshKey((key) => key + 1)
       await refreshActiveProfiles()
@@ -95,9 +111,10 @@ export function TargetProfileWorkspace({
     try {
       setBusy(true)
       setMessage(null)
+      setFailed(false)
       await action()
     } catch (error) {
-      setMessage(errorMessage(error))
+      notify(errorMessage(error), true)
     } finally {
       setBusy(false)
     }
@@ -105,23 +122,23 @@ export function TargetProfileWorkspace({
 
   const selectedProfile = activeProfiles.find((profile) => profile.targetSystemId === selectedTargetId) ?? null
 
-  const successfulMessage = message?.startsWith('안전') || message?.startsWith('Draft') || message?.startsWith('Profile') ||
-    message?.includes('등록하고 Swagger')
-
   return (
     <div className="workspace-grid profile-workspace">
       <QuickTargetRegistration
         api={api}
         busy={busy}
-        onError={setMessage}
+        onError={(text) => notify(text, true)}
         onRegistered={async (profile) => {
-          setMessage(`'${profile.targetName}'을 등록하고 Swagger 문서 ${profile.openApiPaths?.length ?? 0}개를 확인했습니다.`)
+          notify(
+            `'${profile.targetName}'을 등록하고 Swagger 문서 ${profile.openApiPaths?.length ?? 0}개를 확인했습니다.`,
+            false,
+          )
           onSelectTarget(profile.targetSystemId)
           setDiscoveryRefreshKey((key) => key + 1)
           await refreshActiveProfiles()
         }}
       />
-      <ProfileYamlInput yaml={yaml} onChange={onYamlChange} onError={setMessage} />
+      <ProfileYamlInput yaml={yaml} onChange={onYamlChange} onError={(text) => notify(text, true)} />
       <section className="card profile-actions">
         <p className="eyebrow">고급 설정</p>
         <h2>직접 작성한 Profile YAML</h2>
@@ -143,7 +160,7 @@ export function TargetProfileWorkspace({
             </button>
           </div>
         )}
-        {message && <p className={successfulMessage ? 'notice success' : 'notice error'}>{message}</p>}
+        {message && <p className={failed ? 'notice error' : 'notice success'}>{message}</p>}
       </section>
       <section className="card active-profiles">
         <div className="section-heading">
@@ -166,7 +183,7 @@ export function TargetProfileWorkspace({
           onYamlChange(generatedYaml)
           setValidation(null)
           setDraft(null)
-          setMessage('현재 적용 설정을 고급 YAML로 불러왔습니다. 필요한 경로만 수정한 뒤 정책 검증을 실행하세요.')
+          notify('현재 적용 설정을 고급 YAML로 불러왔습니다. 필요한 경로만 수정한 뒤 정책 검증을 실행하세요.', false)
         }}
       />
       <PilotDiscoveryPanel api={api} targetSystemId={selectedTargetId} refreshKey={discoveryRefreshKey} />

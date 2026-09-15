@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { ApiClient, ApiError, formatApiError, newIdempotencyKey } from '../../api/ApiClient'
+import { ApiClient, ApiError, formatApiError } from '../../api/ApiClient'
 import type { PilotDiscovery } from '../../api/pilotDiscovery'
 import type { PilotTemplateExecution } from '../../api/pilotTemplates'
 import { preflightLabel, type TargetCredentialPreflightResult } from '../../api/targetCredentials'
 import { FailureDiagnosisDetails } from '../../components/FailureDiagnosisDetails'
 import { cleanupLabel } from '../../components/cleanupStatus'
+import { useIdempotencyKey } from '../../hooks/useIdempotencyKey'
 
 interface PilotTemplateRunnerPanelProps {
   api: ApiClient
@@ -26,6 +27,11 @@ export function PilotTemplateRunnerPanel({
   const currentTargetId = useRef<string | null>(targetSystemId)
   currentTargetId.current = targetSystemId
   const harnessReady = harnessPreflight?.status === 'READY'
+  // Kept across a failed attempt on purpose: re-sending the same key replays the stored session instead of
+  // executing against the Target a second time. It is renewed only when the request itself changes - a
+  // different selection (toggle) or a completed execution - because the server rejects a reused key that
+  // carries a different selection.
+  const { key: idempotencyKey, renew: renewIdempotencyKey } = useIdempotencyKey('pilot-template')
 
   useEffect(() => {
     let current = true
@@ -57,6 +63,8 @@ export function PilotTemplateRunnerPanel({
   }
 
   function toggle(candidateId: string) {
+    // The stored session is keyed by Target + selection, so a changed selection is a different request.
+    renewIdempotencyKey()
     setSelected((current) => current.includes(candidateId)
       ? current.filter((id) => id !== candidateId)
       : [...current, candidateId])
@@ -77,10 +85,11 @@ export function PilotTemplateRunnerPanel({
         `/api/targets/${targetId}/pilot-template-runs`,
         { candidateIds, confirmation: 'EXECUTE_PILOT_TEMPLATES' },
         'executor',
-        newIdempotencyKey('pilot-template'),
+        idempotencyKey,
       )
       if (currentTargetId.current !== targetId) return
       setResult(completed)
+      renewIdempotencyKey()
     } catch (error) {
       if (currentTargetId.current === targetId) setMessage(errorMessage(error))
     } finally {
