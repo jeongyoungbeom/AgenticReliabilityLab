@@ -102,29 +102,12 @@ class QuickTargetProfileFactory(
     private val addressResolver: TargetOriginAddressResolver,
 ) {
     fun create(request: QuickTargetProfileRegistration): TargetProfileDefinition {
-        require(request.environment in EXECUTABLE_ENVIRONMENTS) {
-            "Quick registration supports LOCAL or TEST Targets only; use the advanced Profile for other environments"
-        }
-        val origin = request.baseUrl.toHttpOrigin()
-        val targetId = generatedTargetId(request.name, origin)
+        val target = createTarget(request)
         return TargetProfileDefinition(
-            target = TargetRegistrationDefinition(
-                id = targetId,
-                name = request.name.trim(),
-                adapterType = HTTP_TARGET,
-                environment = request.environment,
-                baseUrl = origin.toString(),
-                allowedOrigin = origin.toString(),
-                allowedCidrs = addressResolver.resolveExactCidrs(origin),
-                healthPath = HEALTH_PATH,
-                sourceRepository = "quick-registration:${origin.host}",
-                identityVerification = IdentityVerificationStatus.CONFIGURATION_ONLY,
-                capabilities = setOf(TargetCapability.HEALTH, TargetCapability.HTTP_API),
-                enabled = true,
-            ),
+            target = target,
             genericHttp = GenericHttpProfileDefinition(
                 executionEnabled = true,
-                hostResourceGroup = targetId,
+                hostResourceGroup = target.id,
                 maxBatchSize = 5,
                 requestTimeout = Duration.ofSeconds(STANDARD_REQUEST_TIMEOUT_SECONDS),
                 readOnlyOperations = listOf(
@@ -144,6 +127,29 @@ class QuickTargetProfileFactory(
         )
     }
 
+    /** Shared origin and CIDR boundary; the generic proposal supplies its own operations and roles. */
+    fun createTarget(request: QuickTargetProfileRegistration): TargetRegistrationDefinition {
+        require(request.environment in EXECUTABLE_ENVIRONMENTS) {
+            "Quick registration supports LOCAL or TEST Targets only; use the advanced Profile for other environments"
+        }
+        val origin = request.baseUrl.toHttpOrigin()
+        val targetId = generatedTargetId(request.name, origin)
+        return TargetRegistrationDefinition(
+                id = targetId,
+                name = request.name.trim(),
+                adapterType = HTTP_TARGET,
+                environment = request.environment,
+                baseUrl = origin.toString(),
+                allowedOrigin = origin.toString(),
+                allowedCidrs = addressResolver.resolveExactCidrs(origin),
+                healthPath = HEALTH_PATH,
+                sourceRepository = "quick-registration:${origin.host}",
+                identityVerification = IdentityVerificationStatus.CONFIGURATION_ONLY,
+                capabilities = setOf(TargetCapability.HEALTH, TargetCapability.HTTP_API),
+                enabled = true,
+        )
+    }
+
     private fun standardExecutionProfile() = TestSpecExecutionProfileDefinition(
         executionEnabled = true,
         allowedCalls = listOf(
@@ -154,6 +160,8 @@ class QuickTargetProfileFactory(
             ProfileHttpCallDefinition("POST", PRODUCT_PATH, "seller", "createProduct_1"),
             ProfileHttpCallDefinition("POST", "/api/orders", "buyer", "orders"),
             ProfileHttpCallDefinition("POST", PAYMENT_PATH, operationId = "webhook"),
+            ProfileHttpCallDefinition("GET", "/api/harness/readiness/products/{productId}", "harness"),
+            ProfileHttpCallDefinition("GET", "/api/harness/readiness/payments/{orderId}", "harness"),
         ),
         authProfiles = setOf("seller", "buyer", "harness"),
         observationSources = listOf(
@@ -179,14 +187,17 @@ class QuickTargetProfileFactory(
             hook = ProfileHttpCallDefinition("POST", HARNESS_RESET_PATH, "harness"),
             expectedDuration = Duration.ofSeconds(STANDARD_RESET_DURATION_SECONDS),
             verifications = listOf(
+                "productCount", "orderCount", "paymentCount", "completedPaymentCount",
+                "failedPaymentCount", "activeFaultCount",
+            ).map { field ->
                 ProfileResetVerificationDefinition(
-                    id = "runDataCleared",
+                    id = field,
                     call = ProfileHttpCallDefinition("GET", HARNESS_STATE_PATH, "harness"),
-                    expression = "response.body.state.orderCount",
-                    condition = "runDataCleared == 0",
+                    expression = "response.body.$field",
+                    condition = "$field == 0",
                     readTiming = ProfileReadTimingDefinition(StabilityRule.IMMEDIATE, Duration.ZERO, Duration.ZERO),
-                ),
-            ),
+                )
+            },
         ),
         faultInjection = ProfileFaultInjectionDefinition(
             injectEndpoint = ProfileHttpCallDefinition("POST", HARNESS_FAULT_PATH, "harness"),

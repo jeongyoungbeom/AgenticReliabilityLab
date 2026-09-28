@@ -133,7 +133,7 @@ class PinnedTargetHttpTransport(
             headers["content-length"] != null -> input.readExactlyBounded(headers.getValue("content-length"), maxBytes)
             else -> input.readUntilEndBounded(maxBytes)
         }
-        return TargetReadResponse(statusCode, body)
+        return TargetReadResponse(statusCode, body, headers)
     }
 
     private fun BufferedInputStream.readHeaderLine(): String? {

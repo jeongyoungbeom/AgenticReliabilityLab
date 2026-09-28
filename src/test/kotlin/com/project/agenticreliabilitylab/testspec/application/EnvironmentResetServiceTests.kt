@@ -100,6 +100,81 @@ class EnvironmentResetServiceTests {
         assertTrue(transport.requests.isEmpty())
     }
 
+    @Test
+    fun `rejects foreign run or partial V1 reset result before checking state`() {
+        listOf(
+            v1ResetBody(runId = OTHER_RUN_ID),
+            v1ResetBody(clean = false),
+            v1ResetBody(activeFaultCount = 1),
+            "{}",
+        ).forEach { body ->
+            val transport = RecordingTransport { jsonResponse(200, body) }
+            val outcome = service(transport).reset(v1Plan(), testTarget(), RUN_ID)
+            assertTrue(outcome.performed)
+            assertFalse(outcome.verified)
+            assertEquals(1, transport.requests.size)
+        }
+    }
+
+    @Test
+    fun `rejects foreign run state after a valid V1 reset`() {
+        val transport = RecordingTransport { request ->
+            if (request.uri.path.endsWith("/reset")) jsonResponse(200, v1ResetBody())
+            else jsonResponse(200, v1StateBody(runId = OTHER_RUN_ID))
+        }
+        val outcome = service(transport).reset(v1Plan(), testTarget(), RUN_ID)
+        assertFalse(outcome.verified)
+        assertTrue(outcome.checks.all { !it.satisfied })
+    }
+
+    @Test
+    fun `accepts matching V1 reset and clean state`() {
+        val transport = RecordingTransport { request ->
+            if (request.uri.path.endsWith("/reset")) jsonResponse(200, v1ResetBody())
+            else jsonResponse(200, v1StateBody())
+        }
+        assertTrue(service(transport).reset(v1Plan(), testTarget(), RUN_ID).verified)
+    }
+
+    @Test
+    fun `rejects a remaining product although orders are clean`() {
+        val transport = RecordingTransport { request ->
+            if (request.uri.path.endsWith("/reset")) jsonResponse(200, v1ResetBody())
+            else jsonResponse(200, v1StateBody(productCount = 1))
+        }
+        val outcome = service(transport).reset(v1Plan(), testTarget(), RUN_ID)
+        assertFalse(outcome.verified)
+        assertTrue(outcome.checks.any { it.id == "productCount" && !it.satisfied })
+    }
+
+    private fun v1ResetBody(
+        runId: String = RUN_ID, clean: Boolean = true, activeFaultCount: Int = 0,
+    ) = """{"version":"1.0","runId":"$runId","clean":$clean,"removedFixtureCount":0,"activeFaultCount":$activeFaultCount}"""
+
+    private fun v1StateBody(runId: String = RUN_ID, productCount: Int = 0) =
+        """{"version":"1.0","runId":"$runId","productCount":$productCount,"orderCount":0,"paymentCount":0,"completedPaymentCount":0,"failedPaymentCount":0,"activeFaultCount":0}"""
+
+    private fun v1Plan() = plan().copy(
+        hook = SpecHttpCall("POST", "/api/harness/reset", null, emptyMap(), null),
+        verifications = listOf(
+            "productCount", "orderCount", "paymentCount", "completedPaymentCount",
+            "failedPaymentCount", "activeFaultCount",
+        ).map { field ->
+            ResetVerification(
+                id = field,
+                call = SpecHttpCall("GET", "/api/harness/state", null, emptyMap(), null),
+                expression = "response.body.$field",
+                condition = "$field == 0",
+                readTiming = ReadTiming.IMMEDIATE,
+            )
+        },
+    )
+
+    private companion object {
+        const val RUN_ID = "00000000-0000-4000-8000-000000000001"
+        const val OTHER_RUN_ID = "00000000-0000-4000-8000-000000000002"
+    }
+
     private fun service(transport: RecordingTransport) = EnvironmentResetService(
         caller = SpecHttpCaller(
             transport = transport,

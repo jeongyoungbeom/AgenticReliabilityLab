@@ -93,7 +93,9 @@ class TestSpecValidatorTests {
     fun `refuses credential and runner managed headers in a specification`() {
         val unsafe = specification(
             workload = listOf(
-                callStep(orderCall().copy(headers = mapOf("Authorization" to "literal", "Host" to "elsewhere"))),
+                callStep(orderCall().copy(headers = mapOf(
+                    "Authorization" to "literal", "Host" to "elsewhere", "x-arl-harness-version" to "2",
+                ))),
             ),
         )
 
@@ -101,6 +103,7 @@ class TestSpecValidatorTests {
 
         assertTrue(failure.violations.any { it.contains("authProfile") })
         assertTrue(failure.violations.any { it.contains("managed by the Runner") })
+        assertTrue(failure.violations.any { it.contains("x-arl-harness-version") })
     }
 
     /**

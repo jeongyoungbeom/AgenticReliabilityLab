@@ -30,12 +30,15 @@ class TargetCredentialPreflightService(
         val profile = requireNotNull(profiles.findActive(targetSystemId)) {
             "Target '$targetSystemId' has no active Profile"
         }
-        return TargetCredentialRole.entries.map { role -> check(profile, role, credentialSessionId) }
+        val roles = if (profile.definition.target.harnessManifestPath != null) {
+            profile.definition.testSpecExecution?.authProfiles.orEmpty().sorted()
+        } else TargetCredentialRole.entries.map(TargetCredentialRole::profileName)
+        return roles.map { role -> check(profile, role, credentialSessionId) }
     }
 
     private fun check(
         profile: TargetProfileVersion,
-        role: TargetCredentialRole,
+        role: String,
         credentialSessionId: String?,
     ): TargetCredentialPreflightResult {
         val call = profile.preflightCall(role)
@@ -49,17 +52,17 @@ class TargetCredentialPreflightService(
 
     private fun credentialHeaders(
         profile: TargetProfileVersion,
-        role: TargetCredentialRole,
+        role: String,
         credentialSessionId: String?,
     ): Map<String, String>? = try {
-        authProvider.headersFor(profile.targetSystemId, role.profileName, credentialSessionId)
+        authProvider.headersFor(profile.targetSystemId, role, credentialSessionId)
     } catch (_: SpecAuthUnavailableException) {
         null
     }
 
     private fun preflightCall(
         profile: TargetProfileVersion,
-        role: TargetCredentialRole,
+        role: String,
         call: ProfileHttpCallDefinition,
         headers: Map<String, String>,
     ): TargetCredentialPreflightResult {
@@ -71,7 +74,7 @@ class TargetCredentialPreflightService(
 
     private fun sendPreflightRequest(
         profile: TargetProfileVersion,
-        role: TargetCredentialRole,
+        role: String,
         call: ProfileHttpCallDefinition,
         headers: Map<String, String>,
     ): TargetReadResponse? = try {
@@ -90,12 +93,15 @@ class TargetCredentialPreflightService(
     }
 
     private fun requestHeaders(
-        role: TargetCredentialRole,
+        role: String,
         headers: Map<String, String>,
     ): Map<String, String> = buildMap {
         put("Accept", "application/json")
         putAll(headers)
-        if (role == TargetCredentialRole.HARNESS) put(RUN_ID_HEADER, UUID.randomUUID().toString())
+        if (role == TargetCredentialRole.HARNESS.profileName) {
+            put(RUN_ID_HEADER, UUID.randomUUID().toString())
+            put("X-ARL-Harness-Version", "1")
+        }
     }
 
     private fun TargetReadResponse.preflightStatus(): TargetCredentialPreflightStatus =
@@ -105,29 +111,29 @@ class TargetCredentialPreflightService(
             else -> TargetCredentialPreflightStatus.TARGET_PREFLIGHT_FAILED
         }
 
-    private fun TargetProfileVersion.preflightCall(role: TargetCredentialRole): ProfileHttpCallDefinition? =
+    private fun TargetProfileVersion.preflightCall(role: String): ProfileHttpCallDefinition? =
         definition.testSpecExecution
-            ?.takeIf { execution -> role.profileName in execution.authProfiles }
+            ?.takeIf { execution -> role in execution.authProfiles }
             ?.let { execution ->
                 when (role) {
-                    TargetCredentialRole.HARNESS -> execution.observationSources.firstOrNull { source ->
+                    TargetCredentialRole.HARNESS.profileName -> execution.observationSources.firstOrNull { source ->
                         source.kind == ProfileObservationSourceKind.HARNESS_STATE &&
-                            source.authProfile == role.profileName
-                    }?.let { source -> ProfileHttpCallDefinition("GET", source.endpoint, role.profileName) }
+                            source.authProfile == role
+                    }?.let { source -> ProfileHttpCallDefinition("GET", source.endpoint, role) }
 
                     else -> execution.allowedCalls.firstOrNull { call ->
-                        call.method.uppercase() == "GET" && call.authProfile == role.profileName
+                        call.method.uppercase() == "GET" && call.authProfile == role
                     }
                 }
             }
 
     private fun result(
-        role: TargetCredentialRole,
+        role: String,
         status: TargetCredentialPreflightStatus,
         call: ProfileHttpCallDefinition? = null,
         httpStatus: Int? = null,
     ) = TargetCredentialPreflightResult(
-        role = role.profileName,
+        role = role,
         status = status,
         method = call?.method,
         path = call?.path,

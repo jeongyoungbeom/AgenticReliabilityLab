@@ -19,6 +19,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -42,6 +43,283 @@ class TargetProfileApiIntegrationTests {
     private lateinit var openApiParser: BoundedOpenApiDocumentParser
 
     private val httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build()
+
+    @Test
+    fun `generic proposals require explicit activation for two unrelated contracts`() {
+        listOf(
+            GenericFixture("widgets", "POST", "writer", "widgetCount"),
+            GenericFixture("tasks", "PUT", "operator", "taskCount"),
+        ).forEach { fixture ->
+            val manifest = AtomicReference(genericManifest(fixture))
+            val target = genericTarget(fixture, manifest)
+            target.start()
+            try {
+                val name = "Generic ${fixture.resource} ${UUID.randomUUID().toString().take(8)}"
+                val request = genericProposal(name, target.address.port)
+                val proposed = post("/api/target-profiles/proposals", request, authorizationHeader())
+                assertEquals(202, proposed.statusCode(), proposed.body())
+                assertContains(proposed.body(), "\"status\":\"DRAFT\"")
+                val versionId = objectMapper.readTree(proposed.body()).path("id").asString()
+                val targetId = objectMapper.readTree(proposed.body()).path("targetSystemId").asString()
+                val effective = get("/api/target-profiles/$versionId/effective-settings")
+                val settings = objectMapper.readTree(effective.body())
+                assertEquals("/health", settings.path("healthPath").asString())
+                val calls = settings.path("allowedCalls").toString()
+                assertContains(calls, "GET /health")
+                assertContains(effective.body(), "${fixture.method} /api/${fixture.resource}")
+                assertContains(effective.body(), fixture.role)
+                assertFalse(effective.body().contains("/api/products"))
+                assertEquals(404, get("/api/targets/$targetId/test-candidates").statusCode())
+
+                val cookie = proposed.headers().firstValue("Set-Cookie").orElseThrow().substringBefore(';')
+                val activated = post(
+                    "/api/target-profiles/$versionId/activate",
+                    "{\"confirmation\":\"ACTIVATE_TARGET_PROFILE_VERSION\"}",
+                    authorizationHeader() + mapOf("Cookie" to cookie),
+                )
+                assertEquals(202, activated.statusCode(), activated.body())
+                assertContains(activated.body(), "\"status\":\"ACTIVE\"")
+                val candidates = get("/api/targets/$targetId/test-candidates")
+                assertEquals(200, candidates.statusCode(), candidates.body())
+                assertFalse(candidates.body().contains("\"path\":\"/api/${fixture.resource}\""))
+                assertTrue(testSpecProfiles.requireActive(targetId).capabilities.allows(
+                    SpecHttpCall(fixture.method, "/api/${fixture.resource}", fixture.role, emptyMap(), null),
+                ))
+                val credentials = put(
+                    "/api/targets/$targetId/runtime-credentials",
+                    objectMapper.writeValueAsString(mapOf("roles" to mapOf(fixture.role to "role-test-token"))),
+                    executorAuthorizationHeader() + mapOf("Cookie" to cookie),
+                )
+                assertEquals(200, credentials.statusCode(), credentials.body())
+                assertContains(credentials.body(), fixture.role)
+                val preflight = post(
+                    "/api/targets/$targetId/runtime-credentials/preflight", "{}",
+                    executorAuthorizationHeader() + mapOf("Cookie" to cookie),
+                )
+                assertEquals(200, preflight.statusCode(), preflight.body())
+                assertContains(preflight.body(), "\"role\":\"${fixture.role}\",\"status\":\"READY\"")
+            } finally {
+                target.stop(0)
+            }
+        }
+    }
+
+    @Test
+    fun `generic proposal rejects mismatches and activation rejects manifest drift`() {
+        val fixture = GenericFixture("records", "POST", "creator", "recordCount")
+        val manifest = AtomicReference(genericManifest(fixture))
+        val target = genericTarget(fixture, manifest)
+        target.start()
+        try {
+            val request = genericProposal("Reject ${UUID.randomUUID()}", target.address.port)
+            manifest.set(genericManifest(fixture).replace("/api/records", "/api/missing"))
+            val mismatch = post("/api/target-profiles/proposals", request, authorizationHeader())
+            assertEquals(400, mismatch.statusCode(), mismatch.body())
+            assertContains(mismatch.body(), "absent or ambiguous")
+
+            manifest.set(genericManifest(fixture).replace("\"1.0\"", "\"2.0\""))
+            val version = post("/api/target-profiles/proposals", request, authorizationHeader())
+            assertEquals(400, version.statusCode(), version.body())
+            assertContains(version.body(), "Unsupported Harness manifest version")
+
+            manifest.set("{broken-json")
+            val malformed = post("/api/target-profiles/proposals", request, authorizationHeader())
+            assertEquals(400, malformed.statusCode(), malformed.body())
+            assertContains(malformed.body(), "Harness manifest must be valid JSON")
+
+            manifest.set(genericManifest(fixture).replace("RUN_TAGGED_STRING", "LITERAL"))
+            val unsupportedRecipe = post("/api/target-profiles/proposals", request, authorizationHeader())
+            assertEquals(400, unsupportedRecipe.statusCode(), unsupportedRecipe.body())
+            assertContains(unsupportedRecipe.body(), "Unsupported fixture input source")
+
+            manifest.set(genericManifest(fixture).replace("\"/name\"", "\"/unknown\""))
+            val missingField = post("/api/target-profiles/proposals", request, authorizationHeader())
+            assertEquals(400, missingField.statusCode(), missingField.body())
+            assertContains(missingField.body(), "OpenAPI property")
+
+            manifest.set(genericManifest(fixture).replace("\"captures\":{}", "\"captures\":{\"id\":\"/items\"}"))
+            val nonScalarCapture = post("/api/target-profiles/proposals", request, authorizationHeader())
+            assertEquals(400, nonScalarCapture.statusCode(), nonScalarCapture.body())
+            assertContains(nonScalarCapture.body(), "scalar OpenAPI response field")
+
+            manifest.set(genericManifest(fixture).replace("creator", "harness"))
+            val harnessBusinessRole = post("/api/target-profiles/proposals", request, authorizationHeader())
+            assertEquals(400, harnessBusinessRole.statusCode(), harnessBusinessRole.body())
+            assertContains(harnessBusinessRole.body(), "cannot use the Harness credential")
+
+            manifest.set(genericManifest(fixture))
+            val proposed = post("/api/target-profiles/proposals", request, authorizationHeader())
+            assertEquals(202, proposed.statusCode(), proposed.body())
+            val versionId = objectMapper.readTree(proposed.body()).path("id").asString()
+            val cookie = proposed.headers().firstValue("Set-Cookie").orElseThrow().substringBefore(';')
+            manifest.set(genericManifest(fixture).replace("creator", "otherrole"))
+            val activation = post(
+                "/api/target-profiles/$versionId/activate",
+                "{\"confirmation\":\"ACTIVATE_TARGET_PROFILE_VERSION\"}",
+                authorizationHeader() + mapOf("Cookie" to cookie),
+            )
+            assertEquals(400, activation.statusCode(), activation.body())
+            assertContains(activation.body(), "changed since Profile proposal")
+            assertContains(get("/api/target-profiles/$versionId").body(), "\"status\":\"DRAFT\"")
+        } finally {
+            target.stop(0)
+        }
+    }
+
+    @Test
+    fun `activation rejects changes to fixture and observation semantics`() {
+        val fixture = GenericFixture("drift", "POST", "creator", "recordCount")
+        val original = genericManifest(fixture)
+        val manifest = AtomicReference(original)
+        val target = genericTarget(fixture, manifest)
+        target.start()
+        try {
+            listOf(
+                original.replace("arl-drift", "other-drift"),
+                original.replace("\"expected\":1", "\"expected\":2"),
+                original.replace("\"idempotency\":\"NONE\"", "\"idempotency\":\"KEYED\""),
+            ).forEach { changed ->
+                manifest.set(original)
+                val proposed = post(
+                    "/api/target-profiles/proposals",
+                    genericProposal("Drift ${UUID.randomUUID()}", target.address.port),
+                    authorizationHeader(),
+                )
+                assertEquals(202, proposed.statusCode(), proposed.body())
+                val versionId = objectMapper.readTree(proposed.body()).path("id").asString()
+                val cookie = proposed.headers().firstValue("Set-Cookie").orElseThrow().substringBefore(';')
+                manifest.set(changed)
+                val activation = post(
+                    "/api/target-profiles/$versionId/activate",
+                    "{\"confirmation\":\"ACTIVATE_TARGET_PROFILE_VERSION\"}",
+                    authorizationHeader() + mapOf("Cookie" to cookie),
+                )
+                assertEquals(400, activation.statusCode(), activation.body())
+                assertContains(activation.body(), "changed since Profile proposal")
+                assertContains(get("/api/target-profiles/$versionId").body(), "\"status\":\"DRAFT\"")
+            }
+        } finally {
+            target.stop(0)
+        }
+    }
+
+    @Test
+    fun `generic proposal rejects missing nested required fixture field`() {
+        val fixture = GenericFixture("nested", "POST", "creator", "recordCount")
+        val original = genericManifest(fixture)
+        val manifest = AtomicReference(original.replace("\"/name\"", "\"/address/street\""))
+        val openApi = AtomicReference(genericOpenApi(fixture).replace(
+            "\"required\":[\"name\"],\"properties\":{\"name\":{\"type\":\"string\"}}",
+            "\"required\":[\"address\"],\"properties\":{\"address\":{\"type\":\"object\"," +
+                "\"required\":[\"street\",\"city\"],\"properties\":{\"street\":{\"type\":\"string\"}," +
+                "\"city\":{\"type\":\"string\"}}}}",
+        ))
+        val target = genericTarget(fixture, manifest, openApi)
+        target.start()
+        try {
+            val request = genericProposal("Nested ${UUID.randomUUID()}", target.address.port)
+            val missing = post("/api/target-profiles/proposals", request, authorizationHeader())
+            assertEquals(400, missing.statusCode(), missing.body())
+            assertContains(missing.body(), "does not cover required OpenAPI request fields")
+
+            manifest.set(manifest.get().replace(
+                "\"prefix\":\"arl-nested\"",
+                "\"prefix\":\"arl-nested\"},{\"pointer\":\"/address/city\"," +
+                    "\"source\":\"RUN_TAGGED_STRING\",\"prefix\":\"arl-city\"",
+            ))
+            val complete = post("/api/target-profiles/proposals", request, authorizationHeader())
+            assertEquals(202, complete.statusCode(), complete.body())
+        } finally {
+            target.stop(0)
+        }
+    }
+
+    @Test
+    fun `generic proposal rejects a target with only protected GET operations`() {
+        val fixture = GenericFixture("private", "POST", "creator", "recordCount")
+        val manifest = AtomicReference(genericManifest(fixture))
+        val openApi = AtomicReference(genericOpenApi(fixture).replace(
+            "\"/health\":{\"get\":{\"operationId\":\"health\",\"responses\":{\"200\":{\"description\":\"ok\"}}}},",
+            "",
+        ))
+        val target = genericTarget(fixture, manifest, openApi)
+        target.start()
+        try {
+            val response = post(
+                "/api/target-profiles/proposals",
+                genericProposal("Protected ${UUID.randomUUID()}", target.address.port),
+                authorizationHeader(),
+            )
+            assertEquals(400, response.statusCode(), response.body())
+            assertContains(response.body(), "publicly reachable static GET")
+        } finally {
+            target.stop(0)
+        }
+    }
+
+    private data class GenericFixture(val resource: String, val method: String, val role: String, val field: String)
+
+    private fun genericProposal(name: String, port: Int): String = objectMapper.writeValueAsString(mapOf(
+        "name" to name, "baseUrl" to "http://127.0.0.1:$port", "environment" to "TEST",
+        "openApiPaths" to listOf("/openapi.json"), "harnessKey" to "test-harness-key",
+    ))
+
+    private fun genericManifest(fixture: GenericFixture): String = """
+        {"version":"1.0","capabilities":{"state":true,"reset":true,"readinessKinds":[],"faultTypes":[]},
+         "operations":[{"operationId":"write${fixture.resource}","method":"${fixture.method}",
+         "path":"/api/${fixture.resource}","authProfile":"${fixture.role}",
+         "fixtureRecipe":{"kind":"SYNTHETIC_JSON_V1","inputs":[
+           {"pointer":"/name","source":"RUN_TAGGED_STRING","prefix":"arl-${fixture.resource}"}]},
+         "captures":{},"observations":[{"field":"${fixture.field}","expected":1}],"idempotency":"NONE"}]}
+    """.trimIndent()
+
+    private fun genericOpenApi(fixture: GenericFixture): String = """
+        {"openapi":"3.0.1","info":{"title":"Generic","version":"1"},"paths":{
+        "/health":{"get":{"operationId":"health","responses":{"200":{"description":"ok"}}}},
+        "/api/${fixture.resource}":{
+        "get":{"operationId":"read${fixture.resource}",
+        "responses":{"200":{"description":"ok"}}},
+        "${fixture.method.lowercase()}":{"operationId":"write${fixture.resource}",
+        "requestBody":{"content":{"application/json":{"schema":{"type":"object",
+        "required":["name"],"properties":{"name":{"type":"string"}}}}}},
+        "responses":{"201":{"description":"created"}}}}}}
+    """.trimIndent()
+
+    private fun genericTarget(
+        fixture: GenericFixture,
+        manifest: AtomicReference<String>,
+        openApi: AtomicReference<String> = AtomicReference(genericOpenApi(fixture)),
+    ): HttpServer =
+        HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+            createContext("/openapi.json") { exchange ->
+                val document = openApi.get().toByteArray()
+                exchange.sendResponseHeaders(200, document.size.toLong())
+                exchange.responseBody.use { it.write(document) }
+            }
+            createContext("/health") { exchange ->
+                exchange.sendResponseHeaders(200, -1)
+            }
+            createContext("/api/harness/manifest") { exchange ->
+                val document = manifest.get().toByteArray()
+                val valid = exchange.requestHeaders.getFirst("X-ARL-Harness-Key") == "test-harness-key"
+                exchange.responseHeaders.add("X-ARL-Harness-Version", "1")
+                exchange.responseHeaders.add("Content-Type", "application/json")
+                exchange.sendResponseHeaders(if (valid) 200 else 401, if (valid) document.size.toLong() else -1)
+                if (valid) exchange.responseBody.use { it.write(document) }
+            }
+            createContext("/api/harness/state") { exchange ->
+                val runId = exchange.requestHeaders.getFirst("X-ARL-Run-Id")
+                val document = """{"version":"1.0","runId":"$runId","${fixture.field}":0}""".toByteArray()
+                exchange.responseHeaders.add("X-ARL-Harness-Version", "1")
+                exchange.responseHeaders.add("Content-Type", "application/json")
+                exchange.sendResponseHeaders(200, document.size.toLong())
+                exchange.responseBody.use { it.write(document) }
+            }
+            createContext("/api/${fixture.resource}") { exchange ->
+                val valid = exchange.requestHeaders.getFirst("Authorization") == "Bearer role-test-token"
+                exchange.sendResponseHeaders(if (valid) 200 else 401, -1)
+            }
+        }
 
     @Test
     fun `validates imports and explicitly activates a versioned profile`() {
@@ -135,6 +413,10 @@ class TargetProfileApiIntegrationTests {
             val generatedYaml = objectMapper.readTree(effective.body()).path("generatedYaml").asString()
             assertContains(generatedYaml, "source-repository")
             assertContains(generatedYaml, "fault-injection")
+            listOf(
+                "productCount", "orderCount", "paymentCount", "completedPaymentCount",
+                "failedPaymentCount", "activeFaultCount",
+            ).forEach { field -> assertContains(generatedYaml, "response.body.$field") }
             val advancedImport = post(
                 "/api/target-profiles",
                 objectMapper.writeValueAsString(mapOf("yaml" to generatedYaml)),
@@ -356,6 +638,15 @@ class TargetProfileApiIntegrationTests {
         headers.forEach { (name, value) -> request.header(name, value) }
         return httpClient.send(
             request.POST(HttpRequest.BodyPublishers.ofString(body)).build(),
+            HttpResponse.BodyHandlers.ofString(),
+        )
+    }
+
+    private fun put(path: String, body: String, headers: Map<String, String>): HttpResponse<String> {
+        val request = request(path).header("Content-Type", "application/json")
+        headers.forEach { (name, value) -> request.header(name, value) }
+        return httpClient.send(
+            request.PUT(HttpRequest.BodyPublishers.ofString(body)).build(),
             HttpResponse.BodyHandlers.ofString(),
         )
     }

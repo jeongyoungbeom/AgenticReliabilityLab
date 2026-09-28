@@ -87,6 +87,27 @@ class TestSpecParserTests {
     }
 
     @Test
+    fun `keeps readiness on a call workload`() {
+        val document = CONCURRENCY_SPEC.replace(
+            "\"kind\": \"CALL\",",
+            "\"kind\": \"CALL\", \"readiness\": {\"method\": \"GET\", \"path\": \"/ready\"},",
+        )
+
+        assertEquals("/ready", parse(document).workload.single().readiness?.path)
+    }
+
+    @Test
+    fun `refuses readiness on a non call workload`() {
+        val document = CONCURRENCY_SPEC.replace(
+            "\"kind\": \"CALL\",",
+            "\"kind\": \"WAIT\", \"readiness\": {\"method\": \"GET\", \"path\": \"/ready\"},",
+        )
+
+        val failure = assertFailsWith<SpecParseException> { parse(document) }
+        assertTrue(failure.message.orEmpty().contains("CALL workload"))
+    }
+
+    @Test
     fun `refuses an unknown category`() {
         assertFailsWith<SpecParseException> {
             parse(CONCURRENCY_SPEC.replace("\"CONCURRENCY\"", "\"CHAOS\""))

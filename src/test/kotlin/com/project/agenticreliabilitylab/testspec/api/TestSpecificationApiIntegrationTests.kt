@@ -257,18 +257,21 @@ open class TestSpecificationApiIntegrationTests {
         val specificationId = field(createSpecification(WAIT_FOR_OVERLAP_MILLIS).body(), "id")
         approve(specificationId)
 
-        val responses = concurrently { execute(specificationId, "phase17-concurrent-run") }
-        val bodies = responses.joinToString { response -> "${response.statusCode()} ${response.body()}" }
+        repeat(10) { attempt ->
+            val key = "phase17-concurrent-run-$attempt"
+            val responses = concurrently { execute(specificationId, key) }
+            val bodies = responses.joinToString { response -> "${response.statusCode()} ${response.body()}" }
 
-        assertTrue(responses.none { response -> response.statusCode() >= 500 }, bodies)
-        assertEquals(1, responses.map { response -> field(response.body(), "id") }.distinct().size, bodies)
-        assertEquals(
-            1L,
-            jdbcClient.sql("select count(*) from test_spec_run where idempotency_key = :key")
-                .param("key", "phase17-concurrent-run")
-                .query(Long::class.java)
-                .single(),
-        )
+            assertTrue(responses.all { response -> response.statusCode() == 201 }, bodies)
+            assertEquals(1, responses.map { response -> field(response.body(), "id") }.distinct().size, bodies)
+            assertEquals(
+                1L,
+                jdbcClient.sql("select count(*) from test_spec_run where idempotency_key = :key")
+                    .param("key", key)
+                    .query(Long::class.java)
+                    .single(),
+            )
+        }
     }
 
     private fun createSpecification(waitMillis: Int = 0): HttpResponse<String> = post(

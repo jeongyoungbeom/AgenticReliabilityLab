@@ -136,6 +136,7 @@ data class SetupStep(
     val name: String,
     val call: SpecHttpCall,
     val captures: Map<String, String>,
+    val readiness: SpecHttpCall? = null,
 )
 
 /** The kinds of step a workload can contain. This build executes CALL and WAIT; the rest are declared but rejected. */
@@ -165,6 +166,7 @@ data class WorkloadStep(
     val captureAs: String? = null,
     /** Response fields a single-request CALL makes available to later workload steps. */
     val captures: Map<String, String> = emptyMap(),
+    val readiness: SpecHttpCall? = null,
     val wait: Duration? = null,
     val faultType: String? = null,
     val faultScope: String? = null,

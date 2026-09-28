@@ -1,6 +1,10 @@
 # DESIGN4 — YAML 기반 자동 신뢰성 테스트 파일럿
 
-**상태:** 2026-08-26 합의 완료. 다음 구현 세션의 최우선 설계다.
+**상태:** 2026-08-26 Eventful Commerce 파일럿 설계 이력.
+
+**현재 위치:** Eventful Commerce 파일럿 설계 이력이다. 다음 제품화 단계의 활성 요구사항과 순서는
+`TARGET_ONBOARDING_V1.md`, 당장 구현할 범위는 `TASK.md`를 따른다. 이 문서의 P1~P5와
+아래 '다음 세션의 시작 규칙'은 당시 순서를 보존한 것이다.
 
 `DESIGN.md`의 안전 경계, `DESIGN2.md`의 후보·승인 개념, `DESIGN3.md`의 선언형 실행 엔진을
 버리지 않는다. 다만 고객이 실제로 겪는 앞단 흐름을 하나로 묶고, SideProject를 그 첫 파일럿으로
@@ -254,8 +258,8 @@ trial별 결과 표시.
 - SideProject에서 이미 만든 Harness 네 API는 이 파일럿의 제어면이다. 일반 고객도 같은 개념의 네
   endpoint(또는 동등한 인증된 control plane)를 제공해야 P3/P4까지 할 수 있다.
 
-## 7. 다음 세션의 시작 규칙
+## 7. 당시 다음 세션의 시작 규칙 (이력)
 
-다음 구현 세션은 `AGENTS.md`, `.agents/skills/develop-with-user/SKILL.md`, 이 문서, `HANDOFF.md`를 먼저 읽는다.
+당시 다음 구현 세션은 `AGENTS.md`, `.agents/skills/develop-with-user/SKILL.md`, 이 문서, `HANDOFF.md`를 먼저 읽도록 했다.
 P1만 먼저 조사·구현·검증하고, P2의 실제 UI 사이클이 확인되기 전에는 구조를 넓히거나 새 일반화 계층을
 추가하지 않는다. 구현 중 새 사실이 이 계약을 바꾸면 코드보다 먼저 이 문서와 handoff를 갱신한다.

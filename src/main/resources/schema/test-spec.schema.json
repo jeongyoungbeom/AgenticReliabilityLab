@@ -35,6 +35,7 @@
         "properties": {
           "name": { "type": "string", "minLength": 1 },
           "call": { "$ref": "#/$defs/call" },
+          "readiness": { "$ref": "#/$defs/call" },
           "captures": {
             "type": "object",
             "additionalProperties": { "type": "string" }
@@ -62,6 +63,7 @@
           },
           "name": { "type": "string", "minLength": 1 },
           "call": { "$ref": "#/$defs/call" },
+          "readiness": { "$ref": "#/$defs/call" },
           "requestCount": { "type": "integer", "minimum": 1 },
           "concurrency": { "type": "integer", "minimum": 1 },
           "captureAs": { "type": "string", "minLength": 1 },

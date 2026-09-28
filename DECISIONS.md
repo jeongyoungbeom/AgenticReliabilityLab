@@ -43,7 +43,7 @@ Status: Accepted
 ### Decision
 
 실행은 Profile에 선언된 것만 한다. `base-url`, 안전 환경, 허용 origin/CIDR, OpenAPI 문서 경로,
-허용 operation·역할, Harness 4경로, 실행 상한만 선언하며 그 밖은 호출하지 않는다.
+허용 operation·역할, 해당 후보가 요구하는 Harness 경로, 실행 상한만 선언하며 그 밖은 호출하지 않는다.
 Swagger fetch도 허용 origin 안에서만 하고 redirect·다른 host·외부 `$ref`를 따라가지 않는다.
 Swagger에 있다는 이유로 자동 실행하지 않고, 임의 POST를 실행하지 않는다.
 
@@ -60,7 +60,9 @@ URL 하나를 입력받아 임의 내부망·임의 API를 호출하면 SSRF와 
 
 ## D003 — Harness API 4개는 정식 테스트의 필수 계약이다
 
-Status: Accepted
+Status: Superseded
+
+D011이 Target Onboarding V1의 기준이다. 아래 내용은 기존 Eventful Commerce 파일럿의 동작 기록이다.
 
 ### Decision
 
@@ -86,7 +88,7 @@ Status: Accepted
 
 ### Decision
 
-등록 입력은 `name` / `baseUrl` / `environment` 세 개다. 표준 Swagger·Harness 경로, 역할 프로필, 관측 필드,
+현재 파일럿의 등록 입력은 `name` / `baseUrl` / `environment` 세 개다. 표준 Swagger·Harness 경로, 역할 프로필, 관측 필드,
 실행 상한은 ARL이 내부에서 **완전한 Profile로 생성**하고 그 완전본을 버전으로 고정한다.
 URL은 순수 origin만 허용하고, 허용 CIDR은 추측하지 않고 등록 시점의 DNS 해석 결과만 `/32`(또는 `/128`)로 넣는다.
 환경은 `LOCAL` / `TEST`만 허용한다. 부분 merge API는 만들지 않는다 —
@@ -99,13 +101,15 @@ URL은 순수 origin만 허용하고, 허용 CIDR은 추측하지 않고 등록 
 
 ### Detailed Specification
 
-- `HANDOFF.md`의 Completed 1·5단계, `docs/history/HANDOFF-2026-08-27.md`
+- `docs/history/HANDOFF-2026-08-27.md`의 파일럿 이력
 
 ---
 
 ## D005 — 실행 allowlist는 code-owned이며 현재 SideProject 모양이다
 
-Status: Open
+Status: Superseded
+
+D012가 범용 등록의 기준이다. 아래 내용은 기존 파일럿의 제약을 기록한다.
 
 ### Decision
 
@@ -211,3 +215,48 @@ Status: Accepted
 
 이 제품의 목적은 신뢰성 판정을 사람에게 정확히 전달하는 것이다.
 거짓 안심은 기능 부족보다 나쁘다. 리뷰에서 반복해서 발견된 결함 유형이기도 하다.
+
+---
+
+## D011 — 범용 Harness는 기능별 계약이며 후보별로 준비 여부를 판단한다
+
+Status: Accepted
+
+### Decision
+
+쓰기 후보 자동 구성을 위한 Harness V1에는 기능 선언, run별 상태 조회와 검증 가능한 reset이 필요하다.
+readiness는 비동기 후보, fault 주입·해제는 장애 후보에만 필요하다. 빠진 선택 기능 때문에 무관한 후보까지
+막지 않는다. Harness가 없는 읽기 전용 점검은 유지한다. Target 개발자는 표준 endpoint를 직접 설계하거나
+Test Spec을 작성하지 않고 Harness adapter의 타겟별 연결 로직을 구현한다. 정확한 경로와 schema는 H1에서 고정한다.
+
+### Reason
+
+기존 네 제어 API를 모든 후보에 요구하면 장애 주입이 필요 없는 Target도 기본 테스트를 시작할 수 없다.
+후보별 의존성을 분리해야 `최소 준비`라는 제품 약속과 안전한 판정이 동시에 성립한다.
+
+### Detailed Specification
+
+- `TARGET_ONBOARDING_V1.md` 1·2·5절
+
+---
+
+## D012 — 범용 Profile은 제안 후 명시 승인하며 AI는 권한을 늘리지 않는다
+
+Status: Accepted
+
+### Decision
+
+ARL은 OpenAPI와 Harness manifest의 교집합으로 범용 기본 후보와 Profile 완전본을 **제안**한다.
+쓰기 operation·역할의 실행 허용은 사용자가 명시적으로 확인한 활성 Profile만 결정한다.
+기존 Eventful Commerce 경로 고정은 범용 계약이 아니라 전환 기간의 호환 구현이다.
+AI가 만든 명세는 같은 schema·allowlist·환경·정리 검증을 통과하고 사람이 승인해야 실행된다.
+모델이 없거나 유효한 새 후보를 못 찾으면 기본 후보는 그대로 실행된다.
+
+### Reason
+
+Swagger나 모델의 출력만으로 쓰기 권한을 넓히면 간편 등록이 임의 API 실행으로 변한다.
+반대로 프로젝트별 경로를 ARL 코드에 계속 추가하면 두 번째 Target에서 이미 제품 약속을 실패한다.
+
+### Detailed Specification
+
+- `TARGET_ONBOARDING_V1.md` 3·4·5절

@@ -5,12 +5,16 @@ import com.project.agenticreliabilitylab.targetdiscovery.application.TargetProfi
 import com.project.agenticreliabilitylab.targetprofile.api.dto.ActivateTargetProfileRequest
 import com.project.agenticreliabilitylab.targetprofile.api.dto.ImportTargetProfileRequest
 import com.project.agenticreliabilitylab.targetprofile.api.dto.QuickRegisterTargetProfileRequest
+import com.project.agenticreliabilitylab.targetprofile.api.dto.ProposeTargetProfileRequest
 import com.project.agenticreliabilitylab.targetprofile.api.dto.TargetProfileResponse
 import com.project.agenticreliabilitylab.targetprofile.api.dto.TargetProfileValidationResponse
 import com.project.agenticreliabilitylab.targetprofile.application.EffectiveTargetProfile
 import com.project.agenticreliabilitylab.targetprofile.application.EffectiveTargetProfileRenderer
 import com.project.agenticreliabilitylab.targetprofile.application.QuickTargetProfileRegistration
 import com.project.agenticreliabilitylab.targetprofile.application.QuickTargetProfileRegistrationWorkflow
+import com.project.agenticreliabilitylab.targetprofile.application.GenericTargetProfileProposal
+import com.project.agenticreliabilitylab.targetprofile.application.GenericTargetProfileProposalWorkflow
+import com.project.agenticreliabilitylab.targetcredential.api.TargetCredentialSessionCookie
 import com.project.agenticreliabilitylab.targetprofile.application.TargetProfileService
 import com.project.agenticreliabilitylab.targetprofile.application.port.TargetProfileDocumentParser
 import com.project.agenticreliabilitylab.targetprofile.domain.TargetProfileSource
@@ -19,6 +23,8 @@ import org.slf4j.MDC
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.CookieValue
+import org.springframework.http.HttpHeaders
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -37,7 +43,27 @@ class TargetProfileController(
     private val quickRegistration: QuickTargetProfileRegistrationWorkflow,
     private val effectiveProfile: EffectiveTargetProfileRenderer,
     private val operatorAccessService: OperatorAccessService,
+    private val genericProposal: GenericTargetProfileProposalWorkflow,
+    private val sessionCookie: TargetCredentialSessionCookie,
 ) {
+    @PostMapping("/proposals")
+    fun propose(
+        @RequestHeader("Authorization", required = false) authorization: String?,
+        @CookieValue(TargetCredentialSessionCookie.NAME, required = false) credentialSessionId: String?,
+        @Valid @RequestBody request: ProposeTargetProfileRequest,
+    ): ResponseEntity<TargetProfileResponse> {
+        val actor = operatorAccessService.requireProfileEditor(authorization)
+        val proposed = genericProposal.propose(
+            GenericTargetProfileProposal(
+                request.name, request.baseUrl, request.environment,
+                request.openApiPaths, request.manifestPath ?: DEFAULT_MANIFEST_PATH, request.harnessKey,
+            ), actor, correlationId(), credentialSessionId,
+        )
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+            .header(HttpHeaders.SET_COOKIE, sessionCookie.issue(proposed.credentialSessionId).toString())
+            .body(TargetProfileResponse.from(proposed.version))
+    }
+
     @PostMapping("/validate")
     fun validate(@Valid @RequestBody request: ImportTargetProfileRequest): TargetProfileValidationResponse {
         val definition = parser.parse(request.yaml)
@@ -78,6 +104,7 @@ class TargetProfileController(
     fun activate(
         @PathVariable versionId: UUID,
         @RequestHeader("Authorization", required = false) authorization: String?,
+        @CookieValue(TargetCredentialSessionCookie.NAME, required = false) credentialSessionId: String?,
         @Valid @RequestBody request: ActivateTargetProfileRequest,
     ): ResponseEntity<TargetProfileResponse> {
         require(request.confirmation == ACTIVATION_CONFIRMATION) {
@@ -85,7 +112,9 @@ class TargetProfileController(
         }
         val actor = operatorAccessService.requireProfileEditor(authorization)
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(
-            TargetProfileResponse.from(activationWorkflow.activate(versionId, actor, correlationId())),
+            TargetProfileResponse.from(
+                activationWorkflow.activate(versionId, actor, correlationId(), credentialSessionId),
+            ),
         )
     }
 
@@ -125,6 +154,7 @@ class TargetProfileController(
 
     private companion object {
         const val ACTIVATION_CONFIRMATION = "ACTIVATE_TARGET_PROFILE_VERSION"
+        const val DEFAULT_MANIFEST_PATH = "/api/harness/manifest"
         const val CORRELATION_ID_KEY = "correlationId"
     }
 }

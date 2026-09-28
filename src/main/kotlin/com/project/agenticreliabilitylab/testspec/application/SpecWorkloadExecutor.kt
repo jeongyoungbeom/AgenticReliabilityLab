@@ -17,6 +17,7 @@ import com.project.agenticreliabilitylab.testspec.domain.WorkloadStep
 import com.project.agenticreliabilitylab.testspec.domain.WorkloadStepKind
 import org.springframework.stereotype.Component
 import java.time.Clock
+import java.time.Duration
 import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutionException
@@ -108,6 +109,7 @@ class SpecWorkloadExecutor(
         step.captures.forEach { (name, expression) ->
             state.bindings["$prefix.$name"] = evaluator.evaluate(expression, scope).toString()
         }
+        awaitReadiness(step.name, step.readiness, target, state, runId, credentialSessionId)
     }
 
     @Suppress("ThrowsCount", "LongParameterList") // Each missing piece names itself; the plan travels per call.
@@ -128,6 +130,7 @@ class SpecWorkloadExecutor(
                 val responses = runCall(step, call, target, state, runId, trialScope, credentialSessionId)
                 state.responses[step.captureAs ?: step.name] = responses
                 captureWorkloadResponse(step, responses, state)
+                awaitReadiness(step.name, step.readiness, target, state, runId, credentialSessionId)
             }
             WorkloadStepKind.WAIT -> Thread.sleep(
                 (step.wait ?: throw SpecExecutionException("Step '${step.name}' declares no duration")).toMillis(),
@@ -160,6 +163,59 @@ class SpecWorkloadExecutor(
         step.captures.forEach { (name, expression) ->
             state.bindings["workload.${step.name}.$name"] = evaluator.evaluate(expression, scope).toString()
         }
+    }
+
+    @Suppress("ThrowsCount") // Each failure is a distinct terminal readiness state.
+    private fun awaitReadiness(
+        stepName: String,
+        readiness: SpecHttpCall?,
+        target: RegisteredTarget,
+        state: TrialState,
+        runId: String,
+        credentialSessionId: String?,
+    ) {
+        if (readiness == null) return
+        val deadline = System.nanoTime() + READINESS_TIMEOUT.toNanos()
+        var lastReason = "NOT_READY"
+        while (true) {
+            val remaining = deadline - System.nanoTime()
+            if (remaining <= 0) {
+                throw SpecExecutionException(
+                    "Readiness for '$stepName' timed out after ${READINESS_TIMEOUT.toMillis()}ms: $lastReason",
+                )
+            }
+            val response = caller.send(
+                target, readiness, state.bindings.toMap(), FIRST_REQUEST, runId,
+                credentialSessionId = credentialSessionId, timeout = Duration.ofNanos(remaining),
+                harnessRequest = true,
+            )
+            when {
+                response.statusCode in SUCCESS_STATUS -> {
+                    val (ready, reason) = readinessFields(response, stepName, runId)
+                    if (ready) return
+                    lastReason = reason.takeIf { SAFE_READINESS_REASON.matches(it) } ?: "NOT_READY"
+                }
+                response.statusCode == 0 || response.statusCode >= SERVER_ERROR_START ->
+                    lastReason = "HTTP_${response.statusCode}"
+                else -> throw SpecExecutionException(
+                    "Readiness for '$stepName' failed with HTTP ${response.statusCode}",
+                )
+            }
+            val pause = minOf(READINESS_INTERVAL.toNanos(), deadline - System.nanoTime())
+            if (pause > 0) TimeUnit.NANOSECONDS.sleep(pause)
+        }
+    }
+
+    private fun readinessFields(response: RecordedResponse, stepName: String, runId: String): Pair<Boolean, String> {
+        val scope = evaluator.responseScope(response)
+        val version = runCatching { evaluator.evaluate("response.body.version", scope) }.getOrNull()
+        val responseRunId = runCatching { evaluator.evaluate("response.body.runId", scope) }.getOrNull()
+        val ready = runCatching { evaluator.evaluate("response.body.ready", scope) }.getOrNull()
+        val reason = runCatching { evaluator.evaluate("response.body.reason", scope) }.getOrNull()
+        val failure = SpecExecutionException("Readiness for '$stepName' returned an invalid V1 response")
+        if (version != HARNESS_RESPONSE_VERSION || responseRunId != runId) throw failure
+        if (ready !is Boolean || reason !is String) throw failure
+        return ready to reason
     }
 
     /**
@@ -416,5 +472,11 @@ class SpecWorkloadExecutor(
         const val TERMINATION_POLL_SECONDS = 1L
         const val FIRST_REQUEST = 1
         val SUCCESS_STATUS = 200..299
+        val READINESS_TIMEOUT: Duration = Duration.ofSeconds(10)
+        val READINESS_INTERVAL: Duration = Duration.ofMillis(200)
+        const val MAX_READINESS_REASON_LENGTH = 64
+        const val SERVER_ERROR_START = 500
+        const val HARNESS_RESPONSE_VERSION = "1.0"
+        val SAFE_READINESS_REASON = Regex("[A-Z_]{1,$MAX_READINESS_REASON_LENGTH}")
     }
 }

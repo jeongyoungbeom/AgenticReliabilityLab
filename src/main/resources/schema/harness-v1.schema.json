@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-reliability-lab.local/schema/harness-v1.schema.json",
+  "title": "ARL Harness V1 response bodies",
+  "$defs": {
+    "version": { "type": "string", "const": "1.0" },
+    "runId": { "type": "string", "format": "uuid" },
+    "capabilities": {
+      "type": "object",
+      "required": ["state", "reset", "readinessKinds", "faultTypes"],
+      "properties": {
+        "state": { "type": "boolean" },
+        "reset": { "type": "boolean" },
+        "readinessKinds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "faultTypes": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" } }
+      },
+      "additionalProperties": false
+    },
+    "fixtureInput": {
+      "oneOf": [
+        {
+          "type": "object", "required": ["pointer", "source", "prefix"],
+          "properties": {
+            "pointer": { "type": "string", "pattern": "^/(?:[A-Za-z][A-Za-z0-9_-]*/)*[A-Za-z][A-Za-z0-9_-]*$" },
+            "source": { "const": "RUN_TAGGED_STRING" },
+            "prefix": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,31}$" }
+          }, "additionalProperties": false
+        },
+        {
+          "type": "object", "required": ["pointer", "source", "value"],
+          "properties": {
+            "pointer": { "type": "string", "pattern": "^/(?:[A-Za-z][A-Za-z0-9_-]*/)*[A-Za-z][A-Za-z0-9_-]*$" },
+            "source": { "const": "BOUNDED_INTEGER" },
+            "value": { "type": "integer", "minimum": 0, "maximum": 10000 }
+          }, "additionalProperties": false
+        },
+        {
+          "type": "object", "required": ["pointer", "source", "operationId", "capture"],
+          "properties": {
+            "pointer": { "type": "string", "pattern": "^/(?:[A-Za-z][A-Za-z0-9_-]*/)*[A-Za-z][A-Za-z0-9_-]*$" },
+            "source": { "const": "RUN_CAPTURE" },
+            "operationId": { "type": "string", "minLength": 1 },
+            "capture": { "type": "string", "minLength": 1 }
+          }, "additionalProperties": false
+        }
+      ]
+    },
+    "fixtureRecipe": {
+      "type": "object", "required": ["kind", "inputs"],
+      "properties": {
+        "kind": { "const": "SYNTHETIC_JSON_V1" },
+        "inputs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fixtureInput" } }
+      }, "additionalProperties": false
+    },
+    "operation": {
+      "type": "object",
+      "required": ["method", "path", "authProfile", "fixtureRecipe", "captures", "observations", "idempotency"],
+      "properties": {
+        "operationId": { "type": "string", "minLength": 1 },
+        "method": { "type": "string", "enum": ["POST", "PUT", "PATCH", "DELETE"] },
+        "path": { "type": "string", "pattern": "^/[^?#]*$" },
+        "authProfile": { "type": "string", "minLength": 1 },
+        "fixtureRecipe": { "$ref": "#/$defs/fixtureRecipe" },
+        "captures": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "pattern": "^/" }
+        },
+        "observations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["field", "expected"],
+            "properties": {
+              "field": { "type": "string", "minLength": 1 },
+              "expected": { "type": ["string", "number", "boolean"] }
+            },
+            "additionalProperties": false
+          }
+        },
+        "idempotency": { "type": "string", "enum": ["NONE", "KEYED"] },
+        "readinessKind": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "manifest": {
+      "type": "object",
+      "required": ["version", "capabilities", "operations"],
+      "properties": {
+        "version": { "$ref": "#/$defs/version" },
+        "capabilities": { "$ref": "#/$defs/capabilities" },
+        "operations": { "type": "array", "items": { "$ref": "#/$defs/operation" } }
+      },
+      "additionalProperties": false
+    },
+    "state": {
+      "type": "object",
+      "required": ["version", "runId"],
+      "properties": {
+        "version": { "$ref": "#/$defs/version" },
+        "runId": { "$ref": "#/$defs/runId" }
+      },
+      "additionalProperties": { "type": ["string", "number", "boolean", "null"] }
+    },
+    "reset": {
+      "type": "object",
+      "required": ["version", "runId", "clean", "removedFixtureCount", "activeFaultCount"],
+      "properties": {
+        "version": { "$ref": "#/$defs/version" },
+        "runId": { "$ref": "#/$defs/runId" },
+        "clean": { "const": true },
+        "removedFixtureCount": { "type": "integer", "minimum": 0 },
+        "activeFaultCount": { "type": "integer", "const": 0 }
+      },
+      "additionalProperties": false
+    },
+    "readiness": {
+      "type": "object",
+      "required": ["version", "runId", "ready", "reason"],
+      "properties": {
+        "version": { "$ref": "#/$defs/version" },
+        "runId": { "$ref": "#/$defs/runId" },
+        "ready": { "type": "boolean" },
+        "reason": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "faultRequest": {
+      "type": "object",
+      "required": ["runId", "trialScope", "faultType", "scope", "ttlMs"],
+      "properties": {
+        "runId": { "$ref": "#/$defs/runId" },
+        "trialScope": { "type": "string", "minLength": 1 },
+        "faultType": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+        "scope": { "type": "string" },
+        "ttlMs": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "faultReleaseRequest": {
+      "type": "object",
+      "required": ["runId", "faultId"],
+      "properties": {
+        "runId": { "$ref": "#/$defs/runId" },
+        "faultId": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "faultInjection": {
+      "type": "object",
+      "required": ["version", "runId", "faultId", "expiresAt"],
+      "properties": {
+        "version": { "$ref": "#/$defs/version" },
+        "runId": { "$ref": "#/$defs/runId" },
+        "faultId": { "type": "string", "minLength": 1 },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "faultRelease": {
+      "type": "object",
+      "required": ["version", "runId", "released", "activeFaultCount"],
+      "properties": {
+        "version": { "$ref": "#/$defs/version" },
+        "runId": { "$ref": "#/$defs/runId" },
+        "released": { "const": true },
+        "activeFaultCount": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "required": ["version", "error"],
+      "properties": {
+        "version": { "$ref": "#/$defs/version" },
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "type": "string",
+              "enum": [
+                "UNAUTHORIZED", "UNSUPPORTED_HARNESS_VERSION", "INVALID_REQUEST",
+                "CAPABILITY_NOT_SUPPORTED", "RESOURCE_NOT_FOUND", "RUN_SCOPE_MISMATCH",
+                "UNSUPPORTED_FAULT", "INVALID_FAULT_TTL", "RESET_FAILED", "FAULT_RELEASE_FAILED"
+              ]
+            },
+            "message": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

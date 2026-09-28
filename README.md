@@ -6,19 +6,19 @@
 
 ## 먼저 알아둘 현재 범위
 
-현재 구현 범위는 `DESIGN.md`의 Phase 0–10.7, `DESIGN2.md`의 Phase 11–15, `DESIGN3.md`의 Phase 17–19입니다. `DESIGN2.md`의 Phase 16 실제 파일럿은 후속 Phase 구현 뒤 마지막에 수행합니다.
+Eventful Commerce local 파일럿의 고정 후보 7개는 실제 실행·정리까지 검증했습니다. H3의 범용 Profile 제안 API는 다른 HTTP 타겟의 OpenAPI와 Harness manifest를 읽어 DRAFT 권한을 만들지만, 범용 후보·실행 화면은 아직 H4/H5 단계입니다. 기존 간편 등록과 고정 후보는 상품·주문·결제 계약에 묶여 있습니다. 요구사항과 구현 순서는 `TARGET_ONBOARDING_V1.md`, 현재 범위는 `TASK.md`를 봅니다. 과거 Phase 문서는 설계 이력입니다.
 
 | 할 수 있는 일 | 아직 할 수 없는 일 |
 | --- | --- |
 | Target의 health와 등록한 읽기 전용 HTTP endpoint를 여러 개 선택해 점검 | Target 저장소를 직접 읽어 코드·DB 구조를 자동 이해 |
 | 제공한 OpenAPI·README·설명에서 Target 이해 모델(Knowledge Snapshot)을 만들기 | AI가 스스로 테스트를 설계해 승인 없이 실행 |
 | 이해 모델을 근거로 테스트 후보를 생성하고 Test Plan으로 묶어 승인·실행 | POST/PUT/PATCH/DELETE, DB, Docker, 셸 명령으로 Target을 임의 변경 |
-| 규칙 기반 후보가 놓친 유효한 테스트를 LLM이 제안 — 기존 검증기를 그대로 통과해야 저장 (Phase 20) | 인프라 제어 - 정지·재시작 (Phase 21에서 장애 주입만 구현, 인프라 제어는 별도 어댑터로 계속 보류) |
+| 규칙 기반 후보가 놓친 테스트의 LLM 제안 API — 기존 검증기를 통과해야 저장, 기본 UI 연결 전 | 인프라 제어 - 정지·재시작 (Phase 21에서 장애 주입만 구현, 인프라 제어는 별도 어댑터로 계속 보류) |
 | Test Harness 또는 허용된 선언형 명세로 상태 변경 실험을 실행하고 불변식으로 판정 | `STAGING`·`PRODUCTION` 환경에서 실행 |
 | Tempo trace를 관측 소스로 읽고 시간축 불변식으로 끼어듦·순서·지연을 판정 | |
 | 선언형 명세로 결함을 주입·해제하고 해제 실패 시 다음 실행을 차단 (Phase 21) | |
 
-일반 HTTP Batch는 여전히 **Profile에 등록한 읽기 전용 `GET`만** 실행합니다. 선언형 명세 경로는 활성 Profile의 `test-spec-execution` 권한 안에서 승인된 JSON 명세만 실행하고, 상태를 바꾸는 각 시행 뒤 환경 reset과 reset 검증을 요구합니다. 후보 생성은 규칙 기반이며 LLM이 판정을 내리지 않습니다.
+일반 HTTP Batch는 여전히 **Profile에 등록한 읽기 전용 `GET`만** 실행합니다. 선언형 명세 경로는 활성 Profile의 `test-spec-execution` 권한 안에서 승인된 JSON 명세만 실행하고, 상태를 바꾸는 각 시행 뒤 환경 reset과 reset 검증을 요구합니다. 기본 후보는 결정적 규칙으로 만들고, 선택형 AI 제안은 검증·사람의 승인을 거쳐야 합니다. LLM은 판정을 내리지 않습니다.
 
 ## 주요 특징
 
@@ -145,12 +145,18 @@ docker compose --profile arl down
 
 1. **테스트** 화면의 간편 등록에서 Target 이름, 순수 origin URL, 환경(`LOCAL` 또는 `TEST`)을 입력합니다. ARL은 표준 Profile을 생성·활성화하고 허용된 Swagger/OpenAPI 경로만 자동 확인합니다.
 2. 등록한 Target을 선택하고, **현재 적용 설정**에서 ARL이 생성한 경로와 실행 상한을 확인합니다. 표준에서 벗어나는 Target만 여기서 생성된 전체 YAML을 고급 설정의 출발점으로 사용합니다.
-3. **Swagger 발견과 기본 후보**에서 allowlist 안의 후보와 막힌 이유를 확인합니다. Profile에 Harness `state`·`reset`·`fault`·`fault release`가 모두 선언되지 않으면 후보는 실행할 수 없습니다.
+3. **Swagger 발견과 기본 후보**에서 allowlist 안의 후보와 막힌 이유를 확인합니다. 읽기 전용 가용성 후보에는 Harness가 필요하지 않습니다. 쓰기 후보는 `state`·`reset`, 비동기 후보는 해당 readiness, 장애 후보는 `fault`·`fault release`가 있어야 합니다.
 4. seller, buyer, harness 테스트 자격증명을 붙여넣고 역할별 preflight를 실행합니다. Harness의 비변경 `GET state` preflight가 성공할 때만 실행 후보가 표시됩니다. 진단을 위해 상태 변경 요청을 보내지 않습니다.
 5. READY 고정 템플릿을 고르고 확인 대화상자에서 명시 승인합니다. 선택한 후보는 순서대로 실행되며, 같은 멱등 키 요청은 Target을 다시 호출하지 않고 저장된 세션을 재생합니다.
 6. **결과** 화면에서 저장된 파일럿 세션을 엽니다. 판정, 실행 상태, 정리 검증을 별도로 확인하고, `RECOVERY_REQUIRED` 또는 미검증 정리가 있으면 성공으로 해석하지 마세요. 각 후보의 **시행 상세 보기**에서 연결된 Test Spec Run 증거를 확인할 수 있습니다.
 
 새로고침 뒤에도 쿠키로 식별되는 런타임 세션과 저장된 파일럿 세션을 복구합니다. ARL 재시작으로 중단된 실행은 `RECOVERY_REQUIRED`로 표시되며, 완료된 세션처럼 표시되지 않습니다.
+
+### H3 범용 Profile 제안 API
+
+`PROFILE_EDITOR` 권한으로 `POST /api/target-profiles/proposals`에 `name`, 순수 origin `baseUrl`, `LOCAL`/`TEST` `environment`, 명시적 `openApiPaths` 목록, `harnessKey`를 보냅니다. 기본 manifest 경로는 `/api/harness/manifest`이며 필요하면 `manifestPath`로 지정합니다. Harness 키는 응답·Profile·Snapshot에 저장하지 않고 런타임 세션 쿠키로만 연결됩니다. 제안 응답은 `DRAFT` 버전입니다. `GET /api/target-profiles/{versionId}/effective-settings`에서 전체 YAML과 쓰기 method/path/역할을 확인한 뒤 `POST /api/target-profiles/{versionId}/activate`에 `{"confirmation":"ACTIVATE_TARGET_PROFILE_VERSION"}`를 보내야 활성화됩니다. 활성화 요청에도 제안 응답의 쿠키가 필요하며 그 사이의 OpenAPI/manifest 변경은 거부됩니다.
+
+범용 역할의 토큰은 `PUT /api/targets/{targetSystemId}/runtime-credentials`의 `roles` 객체로 세션에 추가하고 `POST /api/targets/{targetSystemId}/runtime-credentials/preflight`로 확인합니다. H3는 inline JSON object 요청 schema의 중첩 필수 필드를 포함해 안전한 fixture 매핑을 확인하고, 진단 run에서 0으로 확인된 숫자 관측 필드가 있는 쓰기 operation만 제안합니다. health와 기존 읽기 Batch에는 OpenAPI에 선언되고 무인증 GET에서 성공 응답을 확인한 고정 경로만 넣습니다. 이런 경로가 없으면 제안을 거부합니다. 지원하지 않는 매핑은 거부합니다. H4 전에는 범용 후보 생성과 실행 버튼이 없으며 기존 7개 파일럿 경로는 그대로 사용합니다.
 
 ## Target Profile 작성법
 
@@ -403,6 +409,9 @@ DESIGN2.md        Phase 11-16 설계 계약
 DESIGN3.md        Phase 17 이후 선언형 명세·관측·피드백 설계
 TEST_SPEC.md      Phase 17 선언형 테스트 명세 계약
 TARGET_REQUIREMENTS.md  Target이 준비해야 할 관측·인증·리셋 요구사항
+TARGET_ONBOARDING_V1.md  다음 제품화 단계의 표준 Harness·범용 후보·AI 추천 요구사항과 구현 순서
+TASK.md           현재 착수할 작은 작업 범위와 완료 조건
+DECISIONS.md      유지할 설계 판단
 UI_BACKLOG.md     명세 엔진 화면에 아직 없는 것
 HANDOFF.md        현재 완료 상태와 다음 Phase 인수인계
 compose.yaml      로컬 Docker Compose 구성
@@ -413,14 +422,12 @@ start.ps1         로컬 통합 기동 스크립트
 
 ## 다음 핵심 개발 방향
 
-Phase 19까지 `/harness/state` capability 협상, Prometheus 관측, 관측 실패 국소화, Tempo trace 조회와 시간축 판정을 구현했습니다. 다음은 Phase 20의 LLM 명세 제안입니다. 완료 조건은 **규칙 생성기가 찾지 못한 유효한 테스트를 LLM이 하나 이상 찾아내는 것**이며, 찾지 못하면 붙이지 않습니다. 이후 Phase 21–22를 진행하고, 실제 프로젝트 파일럿은 마지막에 수행합니다.
+다음 순서는 **Harness V1 계약과 참조 구현 → 범용 Profile 등록·기본 후보 → AI 추가 추천 UI → 두 번째 Target 검증**입니다. 두 번째 Target을 붙일 때 ARL에 그 프로젝트 전용 경로·템플릿 코드를 추가하지 않는 것이 제품화 완료 기준입니다. 자세한 단계별 기준은 `TARGET_ONBOARDING_V1.md`에 있습니다.
 
 아직 없는 기능과 검증되지 않은 부분은 다음과 같습니다.
 
-- **선언형 명세 인증만 지원합니다.** auth profile의 credential은 Runner 환경 변수에서 주입되며, 일반 read-only Batch와 기존 Harness에는 범용 Target 인증 전달 수단이 없습니다.
-- **실제 프로젝트 파일럿은 아직입니다.** Harness와 선언형 명세는 로컬 HTTP Target·스텁으로 검증했으며, 실제 프로젝트 계약의 부족한 점은 마지막 파일럿에서 확인해야 합니다.
-- **후보 생성은 규칙 기반입니다.** LLM이 후보를 제안하는 경로는 안전 검증기까지만 준비되어 있고 모델은 연결하지 않았습니다.
-- **Phase 17 API는 아직 Workbench UI에 연결하지 않았습니다.** 현재는 API로 명세를 등록·승인·실행·조회합니다.
-- 프로세스가 실제로 죽는 상황의 복구는 저장소 상태를 직접 만들어 검증했습니다. 실제 강제 종료를 재현한 검증은 아닙니다.
+- **범용 onboarding은 아직 없습니다.** 현재 quick registration과 고정 7개 템플릿은 Eventful Commerce 경로·역할에 맞춰져 있습니다.
+- **AI 명세 제안은 백엔드 API 단계입니다.** Ollama 연동과 명세 검증은 있지만 기본 파일럿 UI에는 없고, 여러 Swagger Snapshot을 하나의 추천 근거로 묶는 작업도 남아 있습니다.
+- **H0 검증 기준선이 회복됐습니다.** PostgreSQL 동시 실행 API 경로를 수정한 뒤 ARL 전체 `check`가 통과했습니다. Eventful Commerce 7개 local 파일럿의 PASS·cleanup 결과는 이전 실행 결과이며 H0에서는 재실행하지 않았습니다. 검증 시점은 `HANDOFF.md`에 기록했습니다.
 
 추가 쓰기 요청과 테스트 데이터 생성은 Phase 17의 Profile 권한·환경 격리·승인·reset 검증·감사 규칙을 통과하는 경우에만 확장합니다.

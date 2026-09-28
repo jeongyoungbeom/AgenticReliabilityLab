@@ -12,6 +12,7 @@ import com.project.agenticreliabilitylab.testspec.domain.TraceScope
 import org.springframework.stereotype.Component
 import java.net.URI
 import java.nio.charset.StandardCharsets
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 /**
@@ -38,15 +39,19 @@ class SpecHttpCaller(
         runId: String,
         trialScope: String? = null,
         credentialSessionId: String? = null,
+        timeout: Duration = settings.requestTimeout,
+        harnessRequest: Boolean = false,
     ): RecordedResponse {
         val uri = resolveUri(target, call, bindings)
-        val headers = buildHeaders(target, call, bindings, runId, trialScope, credentialSessionId)
+        val headers = buildHeaders(target, call, bindings, runId, trialScope, credentialSessionId, harnessRequest)
         val body = call.bodyJson?.let { references.resolve(it, bindings) }
             ?.toByteArray(StandardCharsets.UTF_8) ?: ByteArray(0)
 
         val startedAt = System.nanoTime()
         return try {
-            val response = transport.send(target, uri, call.method, headers, body, settings.requestTimeout)
+            val response = transport.send(
+                target, uri, call.method, headers, body, minOf(timeout, settings.requestTimeout),
+            )
             RecordedResponse(
                 requestNumber = requestNumber,
                 statusCode = response.statusCode,
@@ -89,10 +94,12 @@ class SpecHttpCaller(
         runId: String,
         trialScope: String?,
         credentialSessionId: String?,
+        harnessRequest: Boolean,
     ): Map<String, String> = buildMap {
         put("Accept", "application/json")
         if (call.bodyJson != null) put("Content-Type", "application/json")
         put(RUN_HEADER, runId)
+        if (harnessRequest) put(HARNESS_VERSION_HEADER, HARNESS_VERSION)
         // Only the workload carries this. Setup shares the run and the trial, so a Target that recorded it for
         // setup too would make fixture creation indistinguishable from the requests being judged.
         trialScope?.let { scope -> put(TraceScope.HEADER, scope) }
@@ -128,6 +135,8 @@ class SpecHttpCaller(
     private companion object {
         /** Lets an operator find every request a run made in the Target's own logs. */
         const val RUN_HEADER = "X-ARL-Run-Id"
+        const val HARNESS_VERSION_HEADER = "X-ARL-Harness-Version"
+        const val HARNESS_VERSION = "1"
         const val HTTPS_PORT = 443
         const val HTTP_PORT = 80
     }

@@ -20,19 +20,28 @@ class RuntimeTargetCredentialStore(
         targetSystemId: String,
         credentialSessionId: String?,
         values: Map<TargetCredentialRole, String>,
+    ): TargetRuntimeCredentialStatus = saveNamed(
+        targetSystemId, credentialSessionId, values.mapKeys { it.key.profileName },
+    )
+
+    fun saveNamed(
+        targetSystemId: String,
+        credentialSessionId: String?,
+        values: Map<String, String>,
     ): TargetRuntimeCredentialStatus {
         require(values.isNotEmpty()) { "At least one Target credential is required" }
+        require(values.size <= MAX_ROLES && values.keys.all(ROLE_PATTERN::matches)) { "Invalid Target credential role" }
         dropSessions(sessions.reclaimable())
         val sessionId = resolveSessionId(credentialSessionId)
         values.forEach { (role, rawValue) ->
             val value = rawValue.trim()
             require(value.isNotEmpty() && value.length <= MAX_CREDENTIAL_LENGTH) {
-                "Target credential '${role.profileName}' must contain 1 to $MAX_CREDENTIAL_LENGTH characters"
+                "Target credential '$role' must contain 1 to $MAX_CREDENTIAL_LENGTH characters"
             }
             require(value.none { character -> character == '\r' || character == '\n' }) {
-                "Target credential '${role.profileName}' contains an invalid line break"
+                "Target credential '$role' contains an invalid line break"
             }
-            credentials[CredentialKey(targetSystemId, sessionId, role.profileName)] = StoredCredential(value)
+            credentials[CredentialKey(targetSystemId, sessionId, role)] = StoredCredential(value)
         }
         sessions.touch(sessionId)
         dropSessions(sessions.reclaimable())
@@ -126,6 +135,8 @@ class RuntimeTargetCredentialStore(
         const val HARNESS_HEADER = "X-ARL-Harness-Key"
         const val BEARER_PREFIX = "Bearer "
         const val MAX_CREDENTIAL_LENGTH = 8_192
+        const val MAX_ROLES = 20
         val SESSION_ID_PATTERN = Regex("[A-Za-z0-9-]{16,64}")
+        val ROLE_PATTERN = Regex("[A-Za-z][A-Za-z0-9_-]{0,99}")
     }
 }

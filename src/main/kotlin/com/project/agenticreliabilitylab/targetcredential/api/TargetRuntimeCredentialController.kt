@@ -34,7 +34,7 @@ class TargetRuntimeCredentialController(
         @RequestBody request: SaveTargetRuntimeCredentialsRequest,
     ): ResponseEntity<TargetRuntimeCredentialResponse> {
         access.requireExecutor(authorization)
-        val status = credentials.save(targetSystemId, credentialSessionId, request.values())
+        val status = credentials.saveNamed(targetSystemId, credentialSessionId, request.namedValues())
         return ResponseEntity.ok()
             .header(HttpHeaders.SET_COOKIE, sessionCookie.issue(status.credentialSessionId).toString())
             .body(TargetRuntimeCredentialResponse.from(status))

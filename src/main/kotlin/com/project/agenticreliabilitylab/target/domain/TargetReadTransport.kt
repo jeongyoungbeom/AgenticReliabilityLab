@@ -18,6 +18,7 @@ interface TargetReadTransport {
 data class TargetReadResponse(
     val statusCode: Int,
     val body: ByteArray,
+    val headers: Map<String, String> = emptyMap(),
 )
 
 class TargetReadTransportException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)

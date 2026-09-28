@@ -26,8 +26,7 @@ class HttpDeclaredObservationSourceClientTests {
         val transport = RecordingTransport {
             jsonResponse(
                 200,
-                """{"contractVersion":"HARNESS_STATE_V1","fields":["dbStock","orderCount"],"state":{
-                    "dbStock":7,"orderCount":2}}""".trimIndent(),
+                """{"version":"1.0","runId":"$RUN_ID","dbStock":7,"orderCount":2}""",
             )
         }
         val client = client(transport, mapOf("seller" to mapOf("Authorization" to "test-secret")))
@@ -40,7 +39,8 @@ class HttpDeclaredObservationSourceClientTests {
         assertEquals(2L, result.getValue("orderCount").value)
         assertEquals("/harness/state", transport.requests.single().uri.path)
         assertEquals("test-secret", transport.requests.single().headers["Authorization"])
-        assertEquals("run-18", transport.requests.single().headers["X-ARL-Run-Id"])
+        assertEquals(RUN_ID, transport.requests.single().headers["X-ARL-Run-Id"])
+        assertEquals("1", transport.requests.single().headers["X-ARL-Harness-Version"])
     }
 
     @Test
@@ -48,7 +48,7 @@ class HttpDeclaredObservationSourceClientTests {
         val transport = RecordingTransport {
             jsonResponse(
                 200,
-                """{"contractVersion":"HARNESS_STATE_V1","fields":["orderCount"],"state":{"orderCount":0}}""",
+                """{"version":"1.0","runId":"$RUN_ID","orderCount":0}""",
             )
         }
 
@@ -58,6 +58,18 @@ class HttpDeclaredObservationSourceClientTests {
 
         assertFalse(result.present)
         assertTrue(result.failure.orEmpty().contains("does not provide 'dbStock'"))
+    }
+
+    @Test
+    fun `rejects observations from a different run`() {
+        val transport = RecordingTransport {
+            jsonResponse(200, """{"version":"1.0","runId":"00000000-0000-4000-8000-000000000099","orderCount":0}""")
+        }
+
+        val result = client(transport).read(request(harnessSource(), setOf("orderCount"))).getValue("orderCount")
+
+        assertFalse(result.present)
+        assertTrue(result.failure.orEmpty().contains("different run ID"))
     }
 
     @Test
@@ -180,7 +192,7 @@ class HttpDeclaredObservationSourceClientTests {
         target = testTarget(),
         source = source,
         fields = fields,
-        runId = "run-18",
+        runId = RUN_ID,
         trialScope = TRIAL_SCOPE,
         timeout = timeout,
         window = window,
@@ -231,6 +243,7 @@ class HttpDeclaredObservationSourceClientTests {
     )
 
     private companion object {
+        const val RUN_ID = "00000000-0000-4000-8000-000000000018"
         const val RESERVE_START_MILLIS = 1_700_000_000_000L
         const val RESERVE_START_NANOS = 1_700_000_000_000_000_000L
         const val HOUR_NANOS = 3_600_000_000_000L

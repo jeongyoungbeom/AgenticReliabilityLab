@@ -126,7 +126,16 @@ class TestSpecificationService(
             ensureSameRunRequest(existing, requestHash)
             return runView(existing)
         }
-        requireExecutionSlot(specification.targetSystemId)
+        try {
+            requireExecutionSlot(specification.targetSystemId)
+        } catch (exception: ClientRequestException) {
+            // A matching request may have claimed the slot after our last idempotency lookup.
+            runStore.findByTargetAndIdempotencyKey(specification.targetSystemId, idempotencyKey)?.let { existing ->
+                ensureSameRunRequest(existing, requestHash)
+                return runView(existing)
+            }
+            throw exception
+        }
         val target = targetSystems.findById(specification.targetSystemId)
         val run = TestSpecRun(
             id = identifiers.next(),

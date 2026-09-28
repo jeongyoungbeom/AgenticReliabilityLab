@@ -148,30 +148,19 @@ class HttpDeclaredObservationSourceClient(
                 requestedFields,
                 "HARNESS_STATE source '${source.name}' returned unreadable JSON",
             )
-        if (root[CONTRACT_VERSION] != HARNESS_STATE_CONTRACT) {
+        if (root[VERSION] != HARNESS_VERSION) {
             return missingAll(
                 requestedFields,
-                "HARNESS_STATE source '${source.name}' did not negotiate $HARNESS_STATE_CONTRACT",
+                "HARNESS_STATE source '${source.name}' did not negotiate $HARNESS_VERSION",
             )
         }
-        val rawFields = root[FIELDS] as? List<*>
-            ?: return missingAll(
-                requestedFields,
-                "HARNESS_STATE source '${source.name}' returned no fields array",
-            )
-        if (rawFields.any { field -> field !is String }) {
+        if (root[RUN_ID_FIELD] != runId) {
             return missingAll(
                 requestedFields,
-                "HARNESS_STATE source '${source.name}' returned a malformed fields array",
+                "HARNESS_STATE source '${source.name}' returned a different run ID",
             )
         }
-        val providedFields = rawFields.filterIsInstance<String>().toSet()
-        val state = root[STATE] as? Map<*, *>
-            ?: return missingAll(
-                requestedFields,
-                "HARNESS_STATE source '${source.name}' returned no state object",
-            )
-        return requestedFields.associateWith { field -> harnessField(source, field, providedFields, state) }
+        return requestedFields.associateWith { field -> harnessField(source, field, root) }
     }
 
     @Suppress("TooGenericExceptionCaught") // One failed Prometheus query must not hide the other requested fields.
@@ -275,6 +264,9 @@ class HttpDeclaredObservationSourceClient(
     ): Map<String, String> = buildMap {
         put("Accept", "application/json")
         put(RUN_HEADER, runId)
+        if (source.kind == DeclaredObservationSourceKind.HARNESS_STATE) {
+            put("X-ARL-Harness-Version", "1")
+        }
         source.authProfile?.let { profile ->
             val authHeaders = authProvider.headersFor(target.id, profile, credentialSessionId)
             authHeaders.keys.forEach { name ->
@@ -295,10 +287,9 @@ class HttpDeclaredObservationSourceClient(
     private fun harnessField(
         source: DeclaredObservationSource,
         field: String,
-        providedFields: Set<String>,
         state: Map<*, *>,
     ): DeclaredObservationRead {
-        if (field !in providedFields) {
+        if (field !in state) {
             return DeclaredObservationRead.missing("HARNESS_STATE source '${source.name}' does not provide '$field'")
         }
         val value = state[field]
@@ -345,10 +336,9 @@ class HttpDeclaredObservationSourceClient(
         "${source.kind} source '${source.name}' could not be read: ${exception.javaClass.simpleName}"
 
     private companion object {
-        const val HARNESS_STATE_CONTRACT = "HARNESS_STATE_V1"
-        const val CONTRACT_VERSION = "contractVersion"
-        const val FIELDS = "fields"
-        const val STATE = "state"
+        const val HARNESS_VERSION = "1.0"
+        const val VERSION = "version"
+        const val RUN_ID_FIELD = "runId"
         const val STATUS = "status"
         const val SUCCESS = "success"
         const val DATA = "data"

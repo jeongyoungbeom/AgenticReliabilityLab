@@ -246,6 +246,7 @@ private object PilotTemplateConfigurationReadiness {
         healthPath: String,
     ): List<String> = basicRequirementsMissing(requirements) +
         harnessRequirementsMissing(requirements) +
+        readinessRequirementsMissing(requirements) +
         faultRequirementsMissing(requirements) +
         healthRequirementMissing(candidateId, healthPath)
 
@@ -261,29 +262,43 @@ private object PilotTemplateConfigurationReadiness {
     private fun TestSpecExecutionProfileDefinition.harnessRequirementsMissing(
         requirements: PilotTemplateRequirements,
     ): List<String> = buildList {
+        if (!requirements.stateChanging) return@buildList
         val resetPlan = reset
-        if (
-            resetPlan?.method != CleanupMethod.ENVIRONMENT_RESET || !resetPlan.hook.isHarnessPost() ||
-            resetPlan.verifications.isEmpty()
-        ) add("Harness POST reset with verification")
-
         val harness = observationSources.firstOrNull { source ->
             source.kind == ProfileObservationSourceKind.HARNESS_STATE && source.authProfile == HARNESS
         }
+        val verifiesRunState = harness != null && resetPlan?.verifications?.any { verification ->
+            verification.call.method.equals("GET", ignoreCase = true) &&
+                verification.call.path == harness.endpoint &&
+                verification.call.authProfile == HARNESS
+        } == true
+        if (
+            resetPlan?.method != CleanupMethod.ENVIRONMENT_RESET || !resetPlan.hook.isHarnessPost() ||
+            !verifiesRunState
+        ) add("Harness POST reset with verification")
+
         if (harness == null) add("Harness GET state observation")
         else (requirements.requiredHarnessFields - harness.fields).sorted().forEach { field ->
             add("Harness field '$field'")
         }
 
-        val fault = faultInjection
-        if (!fault?.injectEndpoint.isHarnessPost()) add("Harness POST fault injection")
-        if (!fault?.releaseEndpoint.isHarnessPost()) add("Harness POST fault release")
     }
+
+    private fun TestSpecExecutionProfileDefinition.readinessRequirementsMissing(
+        requirements: PilotTemplateRequirements,
+    ): List<String> = requirements.requiredReadinessPaths.sorted().filterNot { path ->
+        allowedCalls.any { call ->
+            call.method.equals("GET", ignoreCase = true) && call.path == path && call.authProfile == HARNESS
+        }
+    }.map { path -> "Harness GET readiness $path" }
 
     private fun TestSpecExecutionProfileDefinition.faultRequirementsMissing(
         requirements: PilotTemplateRequirements,
     ): List<String> = requirements.requiredFaultType?.let { faultType ->
         buildList {
+            val fault = faultInjection
+            if (!fault?.injectEndpoint.isHarnessPost()) add("Harness POST fault injection")
+            if (!fault?.releaseEndpoint.isHarnessPost()) add("Harness POST fault release")
             if (faultType !in supportedFaults) add("supported fault '$faultType'")
         }
     } ?: emptyList()

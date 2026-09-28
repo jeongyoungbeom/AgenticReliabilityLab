@@ -58,9 +58,16 @@ class PilotTestTemplateFactory(
         key = ORDER_WORKFLOW, version = version, title = "상품 생성 → 구매자 주문", category = "WORKFLOW", risk = "MODERATE",
         setup = listOf(productSetup()),
         workload = listOf(call("createOrder", "POST", ORDER_PATH, BUYER, orderBody("{{setup.product.productId}}"), headers = idempotency("workflow"))),
-        observations = listOf(response("orderStatus", "createOrder[*].status"), harness("orderCount")),
+        observations = listOf(
+            response("orderStatus", "createOrder[*].status"),
+            response("orderState", "createOrder[*].body.status"),
+            response("orderIdCount", "count(createOrder[*].body.orderId)"),
+            response("failedItemCount", "count(createOrder[*].body.failedItems[*])"),
+            harness("orderCount"),
+        ),
         invariants = listOf(
             invariant("orderCreated", "주문 요청은 2xx여야 합니다", "orderStatus >= 200 && orderStatus < 300"),
+            invariant("orderReserved", "주문이 예약되어야 합니다", "orderState == \"ORDER_RESERVED\" && orderIdCount == 1 && failedItemCount == 0"),
             invariant("orderState", "Harness run 범위 주문 수는 하나여야 합니다", "orderCount == 1"),
         ),
     )
@@ -85,8 +92,15 @@ class PilotTestTemplateFactory(
                 headers = idempotency("same-intention"), requestCount = 2,
             ),
         ),
-        observations = listOf(harness("orderCount")),
-        invariants = listOf(invariant("oneOrderOnly", "동일 body와 key는 주문 하나만 만들어야 합니다", "orderCount == 1")),
+        observations = listOf(
+            response("orderIdCount", "count(duplicateOrder[*].body.orderId)"),
+            response("failedItemCount", "count(duplicateOrder[*].body.failedItems[*])"),
+            harness("orderCount"),
+        ),
+        invariants = listOf(
+            invariant("ordersReserved", "두 요청 모두 주문 ID를 반환하고 실패 상품이 없어야 합니다", "orderIdCount == 2 && failedItemCount == 0"),
+            invariant("oneOrderOnly", "동일 body와 key는 주문 하나만 만들어야 합니다", "orderCount == 1"),
+        ),
     )
 
     private fun orderConcurrency(version: Int) = spec(
@@ -99,8 +113,15 @@ class PilotTestTemplateFactory(
                 requestCount = 20, concurrency = 20,
             ),
         ),
-        observations = listOf(harness("orderCount")),
-        invariants = listOf(invariant("allConcurrentOrdersRecorded", "20개 병렬 주문이 모두 run 범위에서 관측되어야 합니다", "orderCount == 20")),
+        observations = listOf(
+            response("orderIdCount", "count(parallelOrders[*].body.orderId)"),
+            response("failedItemCount", "count(parallelOrders[*].body.failedItems[*])"),
+            harness("orderCount"),
+        ),
+        invariants = listOf(
+            invariant("ordersReserved", "20개 요청 모두 주문 ID를 반환하고 실패 상품이 없어야 합니다", "orderIdCount == 20 && failedItemCount == 0"),
+            invariant("allConcurrentOrdersRecorded", "20개 병렬 주문이 모두 run 범위에서 관측되어야 합니다", "orderCount == 20"),
+        ),
         trials = 3,
         cleanupTiming = "EACH_TRIAL",
         stopPolicy = "RUN_ALL",
@@ -113,6 +134,7 @@ class PilotTestTemplateFactory(
             call(
                 "createFailedOrder", "POST", ORDER_PATH, BUYER, orderBody("{{setup.product.productId}}"),
                 headers = idempotency("failure"), captures = mapOf("orderId" to "response.body.orderId"),
+                readiness = paymentReadiness("{{workload.createFailedOrder.orderId}}"),
             ),
             linkedMapOf("kind" to "INJECT_FAULT", "name" to "paymentFailure", "faultType" to "PAYMENT_FAILURE", "scope" to "next-1", "ttl" to 30000),
             call("forcedFailure", "POST", PAYMENT_PATH, body = paymentBody("{{workload.createFailedOrder.orderId}}", "SUCCESS")),
@@ -120,6 +142,7 @@ class PilotTestTemplateFactory(
             call(
                 "createRecoveryOrder", "POST", ORDER_PATH, BUYER, orderBody("{{setup.product.productId}}"),
                 headers = idempotency("recovery"), captures = mapOf("orderId" to "response.body.orderId"),
+                readiness = paymentReadiness("{{workload.createRecoveryOrder.orderId}}"),
             ),
             call("recoveredPayment", "POST", PAYMENT_PATH, body = paymentBody("{{workload.createRecoveryOrder.orderId}}", "SUCCESS")),
         ),
@@ -172,22 +195,26 @@ class PilotTestTemplateFactory(
         "name" to "product",
         "call" to callValue("POST", PRODUCT_PATH, SELLER, productBody(stock)),
         "captures" to mapOf("productId" to "response.body.productId"),
+        "readiness" to productReadiness("{{setup.product.productId}}"),
     )
 
     private fun orderSetup(name: String) = linkedMapOf(
         "name" to name,
         "call" to callValue("POST", ORDER_PATH, BUYER, orderBody("{{setup.product.productId}}"), idempotency(name)),
         "captures" to mapOf("orderId" to "response.body.orderId"),
+        "readiness" to paymentReadiness("{{setup.$name.orderId}}"),
     )
 
     private fun call(
         name: String, method: String, path: String, authProfile: String? = null, body: Map<String, Any>? = null,
         headers: Map<String, String> = emptyMap(), requestCount: Int = 1, concurrency: Int = 1,
         captures: Map<String, String> = emptyMap(),
+        readiness: Map<String, Any>? = null,
     ): Map<String, Any> = linkedMapOf<String, Any>("kind" to "CALL", "name" to name, "call" to callValue(method, path, authProfile, body, headers)).apply {
         if (requestCount != 1) put("requestCount", requestCount)
         if (concurrency != 1) put("concurrency", concurrency)
         if (captures.isNotEmpty()) put("captures", captures)
+        if (readiness != null) put("readiness", readiness)
     }
 
     private fun callValue(
@@ -201,6 +228,12 @@ class PilotTestTemplateFactory(
 
     private fun response(id: String, expression: String): Map<String, Any> =
         linkedMapOf("id" to id, "source" to "RESPONSES", "expr" to expression)
+
+    private fun productReadiness(productId: String): Map<String, Any> =
+        callValue("GET", "/api/harness/readiness/products/$productId", HARNESS)
+
+    private fun paymentReadiness(orderId: String): Map<String, Any> =
+        callValue("GET", "/api/harness/readiness/payments/$orderId", HARNESS)
 
     private fun harness(field: String): Map<String, Any> =
         linkedMapOf("id" to field, "source" to "DECLARED_SOURCE", "sourceName" to "harness", "expr" to field)
@@ -251,7 +284,7 @@ class PilotTestTemplateFactory(
          */
         fun requirements(candidateId: String): PilotTemplateRequirements = when (candidateId) {
             AVAILABILITY -> PilotTemplateRequirements(
-                requiredAuthProfiles = setOf(HARNESS),
+                requiredAuthProfiles = emptySet(),
                 requiredHarnessFields = emptySet(),
                 stateChanging = false,
             )
@@ -264,32 +297,40 @@ class PilotTestTemplateFactory(
                 requiredAuthProfiles = setOf(SELLER, BUYER, HARNESS),
                 requiredHarnessFields = setOf("orderCount"),
                 stateChanging = true,
+                requiredReadinessPaths = setOf(PRODUCT_READINESS_PATH),
             )
             PAYMENT_SUCCESS -> PilotTemplateRequirements(
                 requiredAuthProfiles = setOf(SELLER, BUYER, HARNESS),
                 requiredHarnessFields = setOf("completedPaymentCount"),
                 stateChanging = true,
+                requiredReadinessPaths = setOf(PRODUCT_READINESS_PATH, PAYMENT_READINESS_PATH),
             )
             ORDER_IDEMPOTENCY -> PilotTemplateRequirements(
                 requiredAuthProfiles = setOf(SELLER, BUYER, HARNESS),
                 requiredHarnessFields = setOf("orderCount"),
                 stateChanging = true,
+                requiredReadinessPaths = setOf(PRODUCT_READINESS_PATH),
             )
             ORDER_CONCURRENCY -> PilotTemplateRequirements(
                 requiredAuthProfiles = setOf(SELLER, BUYER, HARNESS),
                 requiredHarnessFields = setOf("orderCount"),
                 stateChanging = true,
+                requiredReadinessPaths = setOf(PRODUCT_READINESS_PATH),
             )
             PAYMENT_FAILURE_RECOVERY -> PilotTemplateRequirements(
                 requiredAuthProfiles = setOf(SELLER, BUYER, HARNESS),
                 requiredHarnessFields = setOf("paymentCount", "failedPaymentCount", "completedPaymentCount", "activeFaultCount"),
                 stateChanging = true,
                 requiredFaultType = "PAYMENT_FAILURE",
+                requiredReadinessPaths = setOf(PRODUCT_READINESS_PATH, PAYMENT_READINESS_PATH),
             )
             else -> throw IllegalArgumentException("Unknown pilot candidate '$candidateId'")
         }
 
         fun requiredAuthProfiles(candidateId: String): Set<String> = requirements(candidateId).requiredAuthProfiles
+
+        const val PRODUCT_READINESS_PATH = "/api/harness/readiness/products/{productId}"
+        const val PAYMENT_READINESS_PATH = "/api/harness/readiness/payments/{orderId}"
     }
 }
 
@@ -298,4 +339,5 @@ data class PilotTemplateRequirements(
     val requiredHarnessFields: Set<String>,
     val stateChanging: Boolean,
     val requiredFaultType: String? = null,
+    val requiredReadinessPaths: Set<String> = emptySet(),
 )

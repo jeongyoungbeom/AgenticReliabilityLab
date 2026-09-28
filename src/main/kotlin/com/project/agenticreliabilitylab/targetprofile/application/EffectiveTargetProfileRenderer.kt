@@ -33,6 +33,7 @@ class EffectiveTargetProfileRenderer(
             allowedCidrs = target.allowedCidrs.toList(),
             healthPath = target.healthPath,
             openApiPaths = target.declaredOpenApiPaths(),
+            harnessManifestPath = target.harnessManifestPath,
             harnessStatePath = harnessState?.endpoint,
             harnessStateFields = harnessState?.fields?.toList().orEmpty(),
             harnessResetPath = execution?.reset?.hook?.path,

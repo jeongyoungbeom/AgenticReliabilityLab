@@ -1,139 +1,57 @@
 # HANDOFF
 
-> 이 문서는 **현재 어디까지 되어 있는가**만 전달한다.
-> 해야 할 일은 `TASK.md`, 유지해야 하는 설계 판단은 `DECISIONS.md`,
-> 독립 리뷰 결과는 `reviews/<task>/REVIEW.md`에 있다.
-> 이 문서는 코드나 요구사항보다 우선하지 않는다. 여기 적힌 완료 주장과 실제 코드가 다르면 **코드가 사실**이다.
-> 2026-08-27 이전의 전체 개발 이력은 `docs/history/HANDOFF-2026-08-27.md`에 보존돼 있다.
-
-Updated: 2026-08-28
-
-## Current Goal
-
-7단계 오류 진단 모델은 구현과 **독립 리뷰 반영까지 완료**했다. 파일럿 세션과 Test Spec 실행·시행·정리 결과의
-실패를 단계·한국어 설명·예상 원인·다음 행동·기술 정보로 저장·표시하며, 민감값은 저장·API·화면 경계에서
-마스킹한다. 다음 작업은 사용자가 재개를 명시할 때의 8단계 실제 Docker 통합 검증이다.
-
-현재 TASK는 `TASK.md`를 본다.
+Updated: 2026-09-29
+Task ID: `target-onboarding-h3`
+Status: inactive
 
 ## Repository State
 
-- Branch: `master`
-- HEAD: `8ecbba5` (`feat: streamline pilot target setup`)
-- Working tree: 1–7단계 구현과 두 번의 `apply-review` 반영분이 모두 미커밋 상태다. 파일럿 세션 집계·오류 노출·
-  결과 UI, 간편 등록의 3개 입력 문구·회귀 테스트, 7단계 오류 진단 모델(`diagnosis/` 패키지, V30·V31 migration,
-  `FailureDiagnosisDetails.tsx`), 이번 세션의 7단계 리뷰 반영(아래 Completed), `README.md`, `TASK.md`,
-  `reviews/*/RESOLUTION.md` 및 이 문서를 변경했다. 되돌리거나 덮어쓰지 않는다.
-- 이 저장소는 OneDrive 위에 있어 `git checkout --`가 unlink 권한 오류로 실패할 수 있다. 파일을 되돌려야 하면 삭제 대신 내용을 직접 고친다.
-- 커밋·push는 이 세션에서 수행하지 않았다.
+- ARL master에서 이전 readiness 및 H0-H3 작업 변경과 H-3 리뷰 수정분을 함께 커밋했다. 기존 Claude outputs/verify.yml도 사용자의 전체 변경 커밋 요청에 포함했다.
+- Eventful Commerce SideProject는 이번 확인 시점에 작업 트리가 깨끗하다. H2 V1 adapter·Gateway 변경과 회귀 테스트는 앞선 작업에서 적용했다.
+- 현재 TASK는 H3 범용 Profile 등록이며 리뷰 수정과 검증을 마쳤다. H4-H6은 미착수이고 push는 하지 않았다.
 
 ## Completed
 
-UX 단순화 계획의 **1–7단계 구현 완료**.
+- H3에서 `/api/target-profiles/proposals`가 명시된 OpenAPI 경로와 Harness V1 manifest를 CIDR 고정 전송으로 수집한다. method/path/operationId, 역할, 지원 fixture와 관측 필드를 대조해 범용 DRAFT Profile 완전본을 만든다. 활성화 전에 문서를 다시 읽고 제안 당시 계약과 달라지면 거부한다.
+- H-3 리뷰 REV-001~003을 수용했다. 계약 원문의 SHA-256을 버전에 고정하고 중첩 필수 필드를 검사한다. health/Batch 읽기 후보는 실제 무인증 성공 GET으로 한정하고, 역할별 preflight용 인증 GET은 유지한다. 판정 근거는 `reviews/target-onboarding-h3/RESOLUTION.md`에 기록했다.
+- 범용 제안은 기존 quick registration과 별도로 동작하며, 명시적 버전 활성화 전에는 쓰기 권한이 없다. 런타임 자격증명 저장·preflight가 임의의 안전한 역할 이름을 지원한다. Harness 키는 Profile에 저장하지 않는다.
 
-| 단계 | 내용 | 상태 |
-| --- | --- | --- |
-| 1 | 간편 등록 — `name`/`baseUrl`/`environment` 3개로 표준 Profile 생성·Swagger 자동 발견·즉시 활성화 | 구현 완료 |
-| 2 | Target 목록 정리 — 사용자 등록 Target만 노출, 이름·URL·환경·문서 수 표시 | 구현 완료 |
-| 3 | 세션 자격증명 — HttpOnly 쿠키 세션, 유휴 TTL 8시간, 새로고침 복구 | 구현 완료 |
-| 4 | UI 축소 — 상단 nav 3개(테스트/결과/세션 종료), 미사용 화면 32개 삭제 | 구현 완료 |
-| 5 | Harness 4개 계약 게이트 + 생성된 전체 YAML을 고급 편집 출발점으로 제공 | 구현 완료 |
-| 6 | 파일럿 테스트 세션 저장 모델 — 승인한 선택 1회를 세션으로 영속, 멱등 재생, 재기동 복구 | 구현 완료 |
-| 7 | 오류 진단 모델 — 실패 단계·한국어 조치 안내·안전한 기술 정보의 저장과 표시 | 구현·리뷰 반영 완료 |
-
-1–5단계는 독립 리뷰 2회와 그 반영까지 끝났다. **6단계 독립 리뷰 REV-001~REV-016도 현재 코드 기준으로
-재검증·반영을 완료했다.** 판정과 근거는 `reviews/pilot-ux-simplification/RESOLUTION.md`에 있다.
-
-**7단계 독립 리뷰 REV-001~REV-008도 이번 세션에 재검증·반영했다(8건 전부 ACCEPTED).**
-판정과 근거는 `reviews/error-diagnosis-model/RESOLUTION.md`에 있다. 반영 내용 요약:
-
-- `ACCESS_DENIED`를 Target 자격증명 템플릿에서 분리해 ARL 접근 토큰 안내로 바꿨다(D006).
-- `formatApiError`가 서버 메시지와 오류 코드를 버리지 않고 한국어 안내 뒤에 함께 보여 준다.
-- `InvariantVerdict`의 `detail`·`observedValues`·`appliedException`을 `verdicts_json` 쓰기·읽기 양쪽에서 마스킹한다.
-- redactor를 "키워드 단독 → 전체 삭제"에서 **값이 붙은 비밀값 / 구조로 판별한 응답 본문**으로 바꿔
-  오탐(`Viewer authorization is required` 전체 삭제)과 미탐(라벨 없는 JSON 본문 통과)을 함께 없앴다.
-- `cleanupVerified`의 세 상태 라벨을 `components/cleanupStatus.ts` 한 곳에서 정의해 두 화면이 공유한다.
-- 오류 핸들러 안의 `require`를 fallback으로 바꾸고, 예외 메시지 없이 원인 체인·스택 프레임만 로깅한다.
+- 이전 pilot-async-readiness 작업은 상품과 결제의 비동기 수렴을 polling으로 확인하도록 구현했고, local Docker의 Eventful Commerce 파일럿 7개가 모두 PASSED, cleanupVerified=true였다.
+- 사용자와 다음 방향을 정했다: 타겟에 표준 Harness adapter와 소수의 연결 로직·테스트 계정·OpenAPI를 준비하면 기본 테스트를 실행하고, AI가 추가 후보를 제안한다. 명세 작성과 AI 자동 실행은 요구하지 않는다.
+- 이 방향을 TARGET_ONBOARDING_V1.md에 단계 H0-H6으로 정리하고, TASK.md를 H0-H2 착수 범위로 갱신했다. DECISIONS.md의 구형 필수 Harness 계약을 폐기하고 후보별 capability 기준을 기록했다. README.md와 기존 설계·타겟 요구사항 문서에 현재 기준 링크를 반영했다.
+- H0에서 같은 멱등 키의 동시 run 요청이 기존 run 조회와 실행 슬롯 검사 사이에 끼어들면 두 번째 요청이 슬롯 점유를 먼저 보고 거절될 수 있는 경로를 수정했다. 슬롯이 차단되면 같은 키의 저장된 run을 다시 조회하고, 다른 키의 점유는 계속 거절한다. 경쟁 테스트는 10회 반복하며 양쪽 응답의 201·동일 ID·DB 단일 run을 확인한다.
+- H1에서 `docs/harness-v1.md`와 `schema/harness-v1.schema.json`에 버전·인증·run 격리·manifest/state/reset/readiness/fault 응답 및 오류 계약을 고정했다. 타겟 adapter 연결 안내는 Test Spec JSON이나 신규 business API 작성을 필수로 요구하지 않는다.
+- 기존 7개 파일럿의 설정 게이트를 템플릿별 실제 의존성에 맞췄다. availability는 Harness 없이 가능하며, fault는 장애 후보, readiness는 해당 비동기 후보에만 요구한다. 쓰기는 기존 Profile 허용 범위와 reset/state 검증을 계속 요구한다.
+- H1 리뷰 REV-001~003을 모두 수용했다. Harness 요청의 Runner 관리 버전 헤더, readiness의 V1 버전·run ID·필수 필드 검증, 구조화된 안전 fixture 입력 매핑을 추가했다. finding별 근거와 범위는 `reviews/target-onboarding-harness-v1/RESOLUTION.md`에 기록했다.
+- H2에서 ARL의 Harness state 관측을 V1 최상위 필드·버전·run ID 검증으로 전환했다. REV-005를 반영해 표준 reset 응답의 정리 결과와 후속 state의 run ID를 확인하고, quick Profile에서 상품·주문·결제·fault 잔여량 6개를 모두 검사한다.
+- REV-004를 반영해 SideProject의 참조 Harness와 결제 fault API를 V1으로 변경하고 Gateway local manifest route·보안 정책을 추가했다. 기존 run별 정리·준비 판정을 유지했다. 참조 manifest의 operation 매핑은 안전한 입력을 충분히 선언할 수 없어 빈 배열로 두었으며, 범용 매핑·소비는 H3/H4 범위다.
+- local Gateway HTTP, production-profile 비노출, ARL의 7개 local 파일럿과 정리를 실제로 확인했다.
 
 ## Verification
 
-Last verified at the current working tree, 2026-08-28 16:00–16:35 KST (7단계 리뷰 반영 이후):
-
-- 백엔드 `.\gradlew.bat check` — **BUILD SUCCESSFUL** (16:33–16:35 KST, `5 executed, 2 up-to-date`).
-  detekt 0 findings, **359 tests / 0 failures / 0 errors / 0 skipped** (리뷰 반영 전 353 + 신규 6:
-  `FailureDiagnosisTests` 4개, `JdbcTestSpecPersistenceTests`의 verdict `detail` 마스킹 1개가 H2·PostgreSQL
-  양쪽에서 실행돼 2회 계산).
-  Testcontainers PostgreSQL 종료 뒤 `OutboxJobWorker` 스케줄러의 연결 거부 로그가 남지만 Gradle과 테스트
-  결과에는 실패가 없다(기존과 동일한 종료 시점 노이즈).
-  이 실행에서 `FailureDiagnosisTests.kt:88`의 불필요한 `!!` 경고 2건이 나와 이후 로컬 변수로 정리했다.
-  **그 정리 이후 백엔드를 다시 실행하지 않았다** — 테스트 본문만 바뀐 변경이지만 재확인은 하지 않은 상태다.
-- 프런트 `npm test` — **12 files / 50 tests PASS** (16:00 KST). 신규 `ApiClient.test.ts`,
-  `components/cleanupStatus.test.ts` 포함.
-- 프런트 `npm run build` (`tsc -b && vite build`) — **PASS** (16:00 KST).
-  두 실행 모두 원격 세션 Linux VM에 `frontend` 소스를 그대로 복사하고 같은 `package-lock.json`으로 설치한
-  사본에서 수행했다(저장소의 `node_modules`는 Windows 네이티브 바이너리라 그 자리에서 실행되지 않는다).
-  소스 동일성은 `diff -rq`로 확인했다.
-- `git diff --check` — **PASS** (16:05 KST).
-- 7단계 대표 경로 — 인증/권한·연결/preflight·실행·정리/복구 진단, API 및 DB/Evidence의 민감값 마스킹을
-  `FailureDiagnosisTests`, `ApiAuthorizationIntegrationTests`, 파일럿·Test Spec 영속화 테스트로 확인했다.
-  이번 리뷰 반영으로 ARL 접근 안내 분리, 비밀값 없는 정상 문구 보존, 라벨 없는 JSON 본문 마스킹,
-  공백 메시지 fallback, verdict `detail` 마스킹이 회귀 테스트로 고정됐다.
-- 향후 8단계 사전 환경 대조 (13:00 KST) — SideProject source의 Harness 4개 경로, `HARNESS_STATE_V1` 필드,
-  JSON 상품 생성·주문·결제 webhook 계약은 ARL의 표준 Profile/고정 템플릿과 일치했다. 실제 Target 호출은
-  Docker 엔진이 중지되어 수행하지 못했다.
-- 향후 8단계 Docker 준비 (13:31–13:39 KST) — 사용자가 Docker Desktop Linux 엔진을 시작한 뒤,
-  SideProject의 `docker-compose.yml` + `docker-compose.arl-local.yml` overlay를 적용했다.
-  `reliability-harness`와 Nginx `127.0.0.1:18080`이 기동됐고, `/actuator/health`는 **200**이다.
-  ARL Workbench와 전용 PostgreSQL도 당시 소스로 재빌드·기동했으며 `127.0.0.1:8090/actuator/health`는 **200**이다.
-  현재 소스는 그 이후 바뀌었으므로 8단계 재개 전에 다시 빌드해야 한다. Target의 상태 변경 API·Harness
-  reset/fault·비즈니스 실행은 호출하지 않았다.
-
-실행 방법 메모:
-
-- 백엔드는 저장소 루트에서 `.\gradlew.bat check`. 소스가 그대로면 `7 actionable tasks: 7 up-to-date`로 끝나는데
-  이는 "안 돌았다"가 아니라 직전 성공 실행의 입력과 현재 소스가 같다는 뜻이다. 강제 재실행은 `--rerun-tasks`.
-- 프런트는 **반드시 `frontend` 디렉터리에서** `npm test` / `npm run build`. 루트에는 `package.json`이 없다.
+- 2026-09-29 02:06 KST, H-3 수정 뒤 ARL `gradlew.bat check --no-daemon` 성공: detekt, 컴파일, 전체 테스트 통과. 종료된 Testcontainers PostgreSQL을 백그라운드 worker가 다시 접속하려는 기존 로그가 있었지만 Gradle 결과는 성공이다. 이후 코드 변경은 없으며 문서만 갱신했다.
+- 2026-09-29 02:03 KST, `TargetProfileApiIntegrationTests`와 `detekt` targeted 실행 성공. 이후 보호된 GET만 있는 타겟의 거부 테스트를 추가했고 이 테스트는 위 전체 `check`에 포함됐다.
+- H3 통합 테스트에서 두 종류의 계약 제안·활성화와 역할 preflight, fixture·관측·멱등성 변경 거부, 중첩 필수 입력 누락 거부, 무인증 읽기 후보 선별을 확인했다. 실제 두 번째 Target 실행은 H6 범위다.
+- H2의 SideProject adapter/Gateway 테스트와 7개 local 파일럿 실행 결과는 이전 세션의 검증 기록이며 H-3 수정 후 재실행하지 않았다.
 
 ## Current Risks
 
-1. **`check` 통과 이후 테스트 파일 1개가 더 바뀌었다.** `FailureDiagnosisTests.kt`의 불필요한 `!!` 경고를
-   지운 정리이며 테스트 본문 밖의 동작은 건드리지 않았지만, 그 상태로는 아직 실행하지 않았다.
-   다음 세션의 첫 `.\gradlew.bat check`가 이를 함께 확인한다.
-2. **8단계 실제 UI 통합 검증은 아직 하지 않았다.** 7단계 완료 뒤에도 Target 상태 변경 API·Harness reset/fault·
-   비즈니스 실행은 호출하지 않았다.
-3. **실제 UI 검증이 아직 없다.** in-app browser가 ARL Workbench를 처음 열어 기존 화면을 읽은 뒤,
-   재빌드 후 reload 시 로컬 URL 정책으로 차단됐다. 이 세션에서는 다른 브라우저·직접 HTTP 호출로 UI 검증을
-   우회하지 않는다. 사용자가 `http://localhost:8090`을 열어 화면 확인/입력을 이어가야 한다.
-4. **실제 SideProject Docker Target에 대한 ARL 통합 검증이 아직 없다.** Docker health만 확인했으며
-   Harness state·자격증명 preflight·Swagger 등록은 아직 UI에서 실행하지 않았다.
-5. **간편 등록의 실행 allowlist가 SideProject 모양에 맞춰 코드에 고정돼 있다.**
-   다른 모양의 Target은 Swagger를 읽어도 실행 후보가 비게 된다. 일반화 여부는 미결이다(`DECISIONS.md` D005).
+1. Quick registration과 파일럿 후보·템플릿은 Eventful Commerce의 경로·필드를 유지한다. H3는 별도 범용 Profile 제안 경로를 제공하지만 범용 후보 생성·실행은 H4 작업이다.
+2. H3의 자동 쓰기 매핑은 inline JSON object 요청과 숫자 0 baseline만 지원한다. 지원하지 않는 recipe는 제안에서 거부하며 H4의 후보 생성에 추측값을 사용하지 않아야 한다.
+3. AI Test Spec 생성 백엔드는 있으나 단일 Snapshot 입력 중심이고 기본 후보와 결합된 검토 UI는 없다. 여러 문서의 확정 Snapshot 활용 여부도 검증되지 않았다.
+4. H1은 fixture recipe 형식을 확정했지만 manifest를 소비해 범용 쓰기 후보를 만드는 엔진은 H4 범위다. 현재 참조 manifest의 `operations`는 빈 배열이므로 범용 쓰기 후보는 아직 생성되지 않는다. 지원하지 않는 recipe나 필수 입력 누락은 H4에서 후보 제외로 구현·검증해야 한다.
 
 ## Next
 
-1. 저장소 루트에서 `.\gradlew.bat check`를 한 번 실행해 위 경고 정리 이후 상태를 확인한다.
-2. 사용자가 8단계 재개를 지시하면 `http://localhost:8090`의 UI에서 등록, Harness 4개 계약, 세 역할 preflight,
-   안전한 파일럿 실행, 결과 재조회·세션 종료를 순서대로 검증한다.
-3. in-app browser의 로컬 URL 정책이 계속 막히면 사용자가 같은 UI를 열어 조작해야 하며, 직접 HTTP 호출로
-   UI 검증을 우회하지 않는다.
-4. commit·push는 하지 않았다. 1–7단계의 미커밋 변경은 그대로 보존한다.
+1. 다음 작업은 H4 범용 후보 생성과 fixture recipe 소비다. H3의 활성 Profile과 fresh manifest를 교집합으로 사용하고 기존 7개 파일럿을 유지한다.
+2. H5의 AI/UI와 H6의 두 번째 실제 타겟 실행은 아직 수행하지 않았다.
 
 ## Relevant Files
 
-읽는 순서:
-
-1. `TASK.md` — 지금 무엇을 해야 하는가
-2. `DECISIONS.md` — 유지해야 하는 설계 판단
-3. `reviews/error-diagnosis-model/RESOLUTION.md` — 7단계 리뷰 finding의 판정과 반영 내용
-4. `reviews/pilot-ux-simplification/RESOLUTION.md` — 6단계 리뷰 finding의 판정과 반영 내용
-
-주요 코드:
-
-- 간편 등록: `targetprofile/application/QuickTargetProfileRegistrationWorkflow.kt`
-- 적용 설정·YAML 렌더: `targetprofile/application/EffectiveTargetProfile*.kt`
-- 자격증명 세션: `targetcredential/{api/TargetCredentialSessionCookie.kt,application/*}`
-- 파일럿 후보·실행·세션: `targetdiscovery/**`
-- 프런트 화면: `frontend/src/App.tsx`, `frontend/src/features/profiles/*`, `frontend/src/features/specifications/*`
-
-배경 문서(필요할 때만): `DESIGN4.md`(파일럿 계약 초안), `TARGET_REQUIREMENTS.md`(Target 요구사항),
-`TEST_SPEC.md`(명세 스키마), `docs/history/HANDOFF-2026-08-27.md`(과거 이력).
+- TARGET_ONBOARDING_V1.md: 제품 약속과 전체 H0-H6 계획
+- docs/harness-v1.md 및 src/main/resources/schema/harness-v1.schema.json: H1 HTTP 계약·schema
+- TASK.md: 완료된 H3 작업 범위와 검증 기준
+- DECISIONS.md: 승인된 안전·capability 결정
+- DESIGN4.md: Eventful Commerce 파일럿의 역사적 설계
+- TARGET_REQUIREMENTS.md: 기존 타겟 연동 요구사항
+- docs/history/HANDOFF-2026-08-27.md: 이전 인수인계 이력

@@ -10,6 +10,7 @@ data class EffectiveTargetProfile(
     val allowedCidrs: List<String>,
     val healthPath: String?,
     val openApiPaths: List<String>,
+    val harnessManifestPath: String?,
     val harnessStatePath: String?,
     val harnessStateFields: List<String>,
     val harnessResetPath: String?,

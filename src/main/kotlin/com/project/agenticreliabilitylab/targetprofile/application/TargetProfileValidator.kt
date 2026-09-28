@@ -45,6 +45,11 @@ class TargetProfileValidator(
             "Target base URL origin must exactly match its allowed origin"
         }
         healthPath.validateFixedRelativePath("Target health path")
+        contractSha256?.let { require(Regex("[0-9a-f]{64}").matches(it)) { "Invalid contract SHA-256" } }
+        harnessManifestPath?.let { path ->
+            require(environment in PILOT_ENVIRONMENTS) { "Harness manifest is allowed only for LOCAL or TEST Targets" }
+            path.validateFixedRelativePath("Target Harness manifest path")
+        }
         declaredOpenApiPaths().takeIf { paths -> paths.isNotEmpty() }?.let { paths ->
             require(environment in PILOT_ENVIRONMENTS) {
                 "OpenAPI discovery is refused in '$environment'; only LOCAL or TEST Targets are supported"

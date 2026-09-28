@@ -17,6 +17,7 @@ internal object SpecRequestPolicy {
         "host",
         "transfer-encoding",
         "x-arl-run-id",
+        "x-arl-harness-version",
         // Attribution depends on this header appearing on workload requests and nowhere else. A specification
         // that could set it on a setup call would make fixture creation look like the work being judged.
         "x-arl-trial",

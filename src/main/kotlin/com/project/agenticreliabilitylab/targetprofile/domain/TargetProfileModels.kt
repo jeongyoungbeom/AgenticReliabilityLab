@@ -49,6 +49,8 @@ data class TargetRegistrationDefinition(
     /** Explicit relative OpenAPI document paths. This list is an allowlist, never a Swagger UI crawl seed. */
     // Nullable for Profile JSON written before this field existed; [declaredOpenApiPaths] normalizes it at use.
     val openApiPaths: List<String>? = null,
+    val harnessManifestPath: String? = null,
+    val contractSha256: String? = null,
     val sourceRepository: String,
     val identityVerification: IdentityVerificationStatus,
     val capabilities: Set<TargetCapability>,

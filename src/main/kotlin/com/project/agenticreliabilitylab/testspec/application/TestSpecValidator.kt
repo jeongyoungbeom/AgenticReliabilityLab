@@ -34,6 +34,7 @@ class TestSpecValidator(
             addAll(requirementViolations(specification))
             addAll(limitViolations(specification, capabilities))
             addAll(stepViolations(specification, capabilities))
+            addAll(readinessViolations(specification))
             addAll(executionBoundaryViolations(specification))
         }
         if (violations.isNotEmpty()) {
@@ -45,7 +46,8 @@ class TestSpecValidator(
         specification: TestSpecification,
         capabilities: TargetSpecCapabilities,
     ): List<String> = buildList {
-        val calls = specification.setup.map { it.call } + specification.workload.mapNotNull(WorkloadStep::call) +
+        val calls = specification.setup.map { it.call } + specification.setup.mapNotNull { it.readiness } +
+            specification.workload.mapNotNull(WorkloadStep::call) + specification.workload.mapNotNull { it.readiness } +
             specification.observations.mapNotNull { it.call }
         calls.forEach { call ->
             SpecRequestPolicy.specificationPathViolation(call.path)?.let(::add)
@@ -312,6 +314,21 @@ class TestSpecValidator(
                     if (step.infraMaxHold == null) add("Infrastructure step '${step.name}' must declare a maximum hold")
                 }
                 else -> Unit
+            }
+        }
+    }
+
+    private fun readinessViolations(specification: TestSpecification): List<String> = buildList {
+        val calls = specification.setup.mapNotNull { it.readiness } +
+            specification.workload.mapNotNull { it.readiness }
+        calls.forEach { call ->
+            if (call.method != "GET" || call.bodyJson != null) {
+                add("Readiness checks must use a bodyless GET")
+            }
+        }
+        specification.workload.filter { it.readiness != null }.forEach { step ->
+            if (step.kind != WorkloadStepKind.CALL || step.requestCount != 1 || step.concurrency != 1) {
+                add("Step '${step.name}' can check readiness only after one sequential CALL")
             }
         }
     }

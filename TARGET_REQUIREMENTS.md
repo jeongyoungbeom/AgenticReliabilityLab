@@ -2,6 +2,8 @@
 
 ARL이 판정을 내리려면 Target 쪽에서 준비되어 있어야 하는 것들을 모았다.
 기준은 코드다 — 문서에만 있고 구현이 없는 것은 아래 "아직 쓰이지 않는 것"으로 내렸다.
+다른 프로젝트에 Harness를 붙이는 다음 단계의 **계획된** 최소 준비 계약은 `TARGET_ONBOARDING_V1.md`를 본다.
+이 문서의 기존 관측·인증 설명은 현재 구현을 이해하기 위한 자료이며 새 Harness V1의 확정 schema는 아니다.
 
 관통하는 원칙 하나: **소스 종류는 Target이 자기 몫을 했을 때 쓸 수 있다.**
 Target이 준비하지 않은 관측은 조용히 통과하지 않고 판정 불가가 된다. 그래서 아래를 하나도 안 해도
@@ -19,8 +21,8 @@ ARL은 DNS 응답을 **전부** CIDR로 검사한 뒤 그 IP에 핀을 고정한
 
 ### 인증
 
-Profile의 `auth-profiles`에 선언한 역할별 자격증명을 ARL이 환경변수로 받는다
-(`EnvironmentSpecAuthProvider`). 명세 문서에는 자격증명이 들어가지 못한다 —
+Profile의 `auth-profiles`에 선언한 역할별 자격증명을 ARL이 런타임 쿠키 세션 또는 배포 환경변수로 받는다
+(`RuntimeAwareSpecAuthProvider`). 명세 문서에는 자격증명이 들어가지 못한다 —
 `Authorization` 같은 헤더를 명세가 직접 쓰면 검증에서 거부된다.
 
 Target 쪽에서 필요한 것은 **역할이 분리되어 있을 것** 하나다.

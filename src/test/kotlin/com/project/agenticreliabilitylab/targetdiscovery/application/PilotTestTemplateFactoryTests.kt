@@ -10,6 +10,38 @@ class PilotTestTemplateFactoryTests {
     private val factory = PilotTestTemplateFactory(mapper)
 
     @Test
+    fun `order and payment pilots declare readiness for every asynchronous prerequisite`() {
+        val orderPilots = listOf(
+            PilotTestTemplateFactory.ORDER_WORKFLOW,
+            PilotTestTemplateFactory.ORDER_IDEMPOTENCY,
+            PilotTestTemplateFactory.ORDER_CONCURRENCY,
+            PilotTestTemplateFactory.PAYMENT_SUCCESS,
+            PilotTestTemplateFactory.PAYMENT_FAILURE_RECOVERY,
+        )
+        orderPilots.forEach { candidate ->
+            val document = mapper.readTree(factory.document(candidate, 1))
+            assertTrue(
+                document.path("setup")[0].path("readiness").path("path").asString()
+                    .contains("/readiness/products/"),
+            )
+        }
+        val paymentSuccess = mapper.readTree(factory.document(PilotTestTemplateFactory.PAYMENT_SUCCESS, 1))
+        assertTrue(
+            paymentSuccess.path("setup")[1].path("readiness").path("path").asString()
+                .contains("/readiness/payments/"),
+        )
+        val recovery = mapper.readTree(factory.document(PilotTestTemplateFactory.PAYMENT_FAILURE_RECOVERY, 1))
+        assertTrue(
+            recovery.path("workload")[0].path("readiness").path("path").asString()
+                .contains("/readiness/payments/"),
+        )
+        assertTrue(
+            recovery.path("workload")[4].path("readiness").path("path").asString()
+                .contains("/readiness/payments/"),
+        )
+    }
+
+    @Test
     fun `payment recovery template has a bounded fault and a fresh post-release order`() {
         val document = mapper.readTree(factory.document(PilotTestTemplateFactory.PAYMENT_FAILURE_RECOVERY, 1))
         val workload = document.path("workload")

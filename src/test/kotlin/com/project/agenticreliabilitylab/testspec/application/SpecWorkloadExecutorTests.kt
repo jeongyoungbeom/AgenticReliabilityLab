@@ -43,6 +43,88 @@ class SpecWorkloadExecutorTests {
     private val clock: Clock = Clock.fixed(Instant.EPOCH, ZoneOffset.UTC)
 
     @Test
+    fun `waits for a captured product to become ready before ordering`() {
+        val polls = AtomicInteger()
+        val transport = RecordingTransport { request ->
+            when (request.uri.path) {
+                "/products" -> jsonResponse(201, """{"id":"p-9"}""")
+                "/ready/p-9" -> jsonResponse(
+                    200,
+                    if (polls.incrementAndGet() == 1)
+                        """{"version":"1.0","runId":"run-1","ready":false,"reason":"PENDING"}"""
+                    else """{"version":"1.0","runId":"run-1","ready":true,"reason":"READY"}""",
+                )
+                "/orders" -> {
+                    assertEquals(2, polls.get())
+                    jsonResponse(200, """{"orderId":"o-42"}""")
+                }
+                else -> error("Unexpected path ${request.uri.path}")
+            }
+        }
+        val spec = specification(requestCount = 1, concurrency = 1).let { base ->
+            base.copy(setup = base.setup.map { step ->
+                step.copy(readiness = SpecHttpCall("GET", "/ready/{{setup.product.productId}}", null, emptyMap(), null))
+            })
+        }
+
+        val execution = executor(transport).execute(spec, testTarget(), "run-1", 1)
+
+        assertTrue(execution.completed)
+        assertEquals(2, polls.get())
+        assertEquals(listOf("/products", "/ready/p-9", "/ready/p-9", "/orders"), transport.requests.map { it.uri.path })
+        assertTrue(transport.requests.filter { it.uri.path == "/ready/p-9" }
+            .all { it.headers["X-ARL-Harness-Version"] == "1" })
+        assertTrue(transport.requests.filter { it.uri.path == "/products" || it.uri.path == "/orders" }
+            .all { "X-ARL-Harness-Version" !in it.headers })
+    }
+
+    @Test
+    fun `times out without sending an order when the product never becomes ready`() {
+        val transport = RecordingTransport { request ->
+            if (request.uri.path == "/products") jsonResponse(201, """{"id":"p-9"}""")
+            else jsonResponse(200, """{"version":"1.0","runId":"run-1","ready":false,"reason":"STOCK_NOT_READY"}""")
+        }
+        val spec = specification(requestCount = 1, concurrency = 1).let { base ->
+            base.copy(setup = base.setup.map { step ->
+                step.copy(readiness = SpecHttpCall("GET", "/ready/{{setup.product.productId}}", null, emptyMap(), null))
+            })
+        }
+
+        val execution = executor(transport).execute(spec, testTarget(), "run-1", 1)
+
+        assertFalse(execution.completed)
+        assertTrue(execution.failure!!.contains("STOCK_NOT_READY"))
+        assertTrue(transport.requests.none { it.uri.path == "/orders" })
+    }
+
+    @Test
+    fun `rejects foreign run and incomplete readiness responses before ordering`() {
+        val invalidBodies = listOf(
+            """{"version":"1.0","runId":"another-run","ready":true,"reason":"READY"}""",
+            """{"runId":"run-1","ready":true,"reason":"READY"}""",
+            """{"version":"1.0","runId":"run-1","ready":true}""",
+        )
+        val spec = specification(requestCount = 1, concurrency = 1).let { base ->
+            base.copy(setup = base.setup.map { step ->
+                step.copy(readiness = SpecHttpCall("GET", "/ready/{{setup.product.productId}}", null, emptyMap(), null))
+            })
+        }
+        invalidBodies.forEach { body ->
+            val transport = RecordingTransport { request ->
+                when (request.uri.path) {
+                    "/products" -> jsonResponse(201, """{"id":"p-9"}""")
+                    "/ready/p-9" -> jsonResponse(200, body)
+                    else -> error("Unexpected business request ${request.uri.path}")
+                }
+            }
+            val execution = executor(transport).execute(spec, testTarget(), "run-1", 1)
+            assertFalse(execution.completed)
+            assertTrue(execution.failure!!.contains("invalid V1 response"))
+            assertTrue(transport.requests.none { it.uri.path == "/orders" })
+        }
+    }
+
+    @Test
     fun `carries a value captured during setup into the workload`() {
         val transport = RecordingTransport { request ->
             if (request.uri.path == "/products") jsonResponse(201, """{"id":"p-9"}""") else jsonResponse(201, "{}")

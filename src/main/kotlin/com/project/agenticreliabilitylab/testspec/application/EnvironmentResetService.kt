@@ -7,6 +7,7 @@ import com.project.agenticreliabilitylab.testspec.domain.ResetOutcome
 import com.project.agenticreliabilitylab.testspec.domain.ResetPlan
 import com.project.agenticreliabilitylab.testspec.domain.ResetVerification
 import org.springframework.stereotype.Component
+import tools.jackson.databind.ObjectMapper
 
 /**
  * Puts the environment back and then checks that it actually went back.
@@ -21,6 +22,8 @@ class EnvironmentResetService(
     private val values: SpecValueReader,
     private val expressions: SpecExpressionEnvironment,
 ) {
+    private val objectMapper = ObjectMapper()
+
     @Suppress("ReturnCount") // Nothing to undo, the hook failing and the checks failing are different outcomes.
     fun reset(
         plan: ResetPlan,
@@ -37,10 +40,14 @@ class EnvironmentResetService(
         val response = caller.send(
             target, hook, mapOf("runId" to runId), FIRST_REQUEST, runId,
             credentialSessionId = credentialSessionId,
+            harnessRequest = true,
         )
         if (!response.delivered || response.statusCode !in SUCCESS_STATUS) {
             val reason = response.failure ?: "HTTP ${response.statusCode}"
             return ResetOutcome(false, false, emptyList(), "The reset hook did not succeed: $reason")
+        }
+        if (hook.path == "/api/harness/reset" && !validResetResponse(response.body, runId)) {
+            return ResetOutcome(true, false, emptyList(), "The reset hook returned an invalid V1 cleanup result")
         }
         if (plan.verifications.isEmpty()) {
             return ResetOutcome(true, false, emptyList(), "The reset was not verified: no checks are declared")
@@ -73,6 +80,7 @@ class EnvironmentResetService(
             runId = runId,
             label = verification.id,
             credentialSessionId = credentialSessionId,
+            harnessRequest = true,
         )
         if (!observed.present) {
             return ResetCheck(verification.id, verification.condition, observed.display, satisfied = false)
@@ -83,6 +91,17 @@ class EnvironmentResetService(
         }.getOrDefault(false)
         return ResetCheck(verification.id, verification.condition, observed.display, satisfied)
     }
+
+    private fun validResetResponse(body: String, runId: String): Boolean = runCatching {
+        val result = objectMapper.readTree(body)
+        result.path("version").asString() == "1.0" &&
+            result.path("runId").asString() == runId &&
+            result.path("clean").isBoolean && result.path("clean").asBoolean() &&
+            result.path("removedFixtureCount").isIntegralNumber &&
+            result.path("removedFixtureCount").asLong() >= 0 &&
+            result.path("activeFaultCount").isIntegralNumber &&
+            result.path("activeFaultCount").asLong() == 0L
+    }.getOrDefault(false)
 
     private companion object {
         const val FIRST_REQUEST = 1

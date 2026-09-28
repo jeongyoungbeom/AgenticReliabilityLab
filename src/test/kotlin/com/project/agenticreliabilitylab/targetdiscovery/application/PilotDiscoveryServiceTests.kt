@@ -35,6 +35,8 @@ import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class PilotDiscoveryServiceTests {
     @Test
@@ -65,20 +67,116 @@ class PilotDiscoveryServiceTests {
     }
 
     @Test
-    fun `blocks every pilot template when formal Harness fault routes are not declared`() {
+    fun `missing fault routes block only the fault candidate`() {
         val version = profileVersion(includeFaultInjection = false)
         val profiles = Mockito.mock(TargetProfileService::class.java)
         val snapshots = Mockito.mock(TargetKnowledgeSnapshotStore::class.java)
         Mockito.`when`(profiles.findActive(version.targetSystemId)).thenReturn(version)
-        Mockito.`when`(snapshots.findByTarget(version.targetSystemId, 50)).thenReturn(listOf(snapshot(version)))
+        Mockito.`when`(snapshots.findByTarget(version.targetSystemId, 50))
+            .thenReturn(listOf(snapshot(version, includeWorkflowOperations = true)))
 
         val candidates = PilotDiscoveryService(profiles, snapshots).find(version.targetSystemId).candidates
         val availability = candidates.single { candidate -> candidate.id == "availability" }
 
-        assertEquals(true, candidates.all { candidate -> candidate.readiness == PilotCandidateReadiness.NOT_READY })
-        assertEquals(PilotCandidateReadiness.NOT_READY, availability.readiness)
-        assertEquals(true, "Harness POST fault injection" in availability.missingOperations)
-        assertEquals(true, "Harness POST fault release" in availability.missingOperations)
+        assertEquals(PilotCandidateReadiness.READY, availability.readiness)
+        assertEquals(PilotCandidateReadiness.READY, candidates.single { it.id == "product-create" }.readiness)
+        val recovery = candidates.single { it.id == "payment-failure-recovery" }
+        assertEquals(PilotCandidateReadiness.NOT_READY, recovery.readiness)
+        assertTrue("Harness POST fault injection" in recovery.missingOperations)
+        assertTrue("Harness POST fault release" in recovery.missingOperations)
+        assertTrue(candidates.filter { it.id != "payment-failure-recovery" }
+            .all { it.readiness == PilotCandidateReadiness.READY })
+        assertFalse(candidates.filter { it.id != "payment-failure-recovery" }
+            .flatMap { it.missingOperations }.any { it.startsWith("Harness POST fault") })
+    }
+
+    @Test
+    fun `missing readiness route blocks only templates that call it`() {
+        val initial = profileVersion()
+        val execution = requireNotNull(initial.definition.testSpecExecution)
+        val withoutReadiness = initial.copy(
+            definition = initial.definition.copy(
+                testSpecExecution = execution.copy(
+                    allowedCalls = execution.allowedCalls.filterNot { it.path.contains("/readiness/") },
+                ),
+            ),
+        )
+        val profiles = Mockito.mock(TargetProfileService::class.java)
+        val snapshots = Mockito.mock(TargetKnowledgeSnapshotStore::class.java)
+        Mockito.`when`(profiles.findActive(withoutReadiness.targetSystemId)).thenReturn(withoutReadiness)
+        Mockito.`when`(snapshots.findByTarget(withoutReadiness.targetSystemId, 50))
+            .thenReturn(listOf(snapshot(withoutReadiness, includeWorkflowOperations = true)))
+
+        val candidates = PilotDiscoveryService(profiles, snapshots).find(withoutReadiness.targetSystemId).candidates
+        assertEquals(PilotCandidateReadiness.READY, candidates.single { it.id == "product-create" }.readiness)
+        assertEquals(PilotCandidateReadiness.READY, candidates.single { it.id == "availability" }.readiness)
+        val workflow = candidates.single { it.id == "order-workflow" }
+        assertEquals(PilotCandidateReadiness.NOT_READY, workflow.readiness)
+        assertTrue(
+            "Harness GET readiness ${PilotTestTemplateFactory.PRODUCT_READINESS_PATH}" in workflow.missingOperations,
+        )
+        assertEquals(PilotCandidateReadiness.NOT_READY, candidates.single { it.id == "payment-success" }.readiness)
+        assertEquals(PilotCandidateReadiness.NOT_READY, candidates.single { it.id == "order-idempotency" }.readiness)
+    }
+
+    @Test
+    fun `read only pilot stays ready without a Harness`() {
+        val initial = profileVersion()
+        val execution = requireNotNull(initial.definition.testSpecExecution)
+        val withoutHarness = initial.copy(
+            definition = initial.definition.copy(
+                testSpecExecution = execution.copy(
+                    allowedCalls = execution.allowedCalls.filterNot { it.authProfile == "harness" &&
+                        it.path.startsWith("/api/harness/") },
+                    authProfiles = setOf("seller", "buyer"),
+                    observationSources = emptyList(),
+                    reset = null,
+                    stateChangingAllowed = false,
+                    supportedFaults = emptySet(),
+                    faultInjection = null,
+                ),
+            ),
+        )
+        val profiles = Mockito.mock(TargetProfileService::class.java)
+        val snapshots = Mockito.mock(TargetKnowledgeSnapshotStore::class.java)
+        Mockito.`when`(profiles.findActive(withoutHarness.targetSystemId)).thenReturn(withoutHarness)
+        Mockito.`when`(snapshots.findByTarget(withoutHarness.targetSystemId, 50))
+            .thenReturn(listOf(snapshot(withoutHarness)))
+
+        val candidates = PilotDiscoveryService(profiles, snapshots).find(withoutHarness.targetSystemId).candidates
+        assertEquals(PilotCandidateReadiness.READY, candidates.single { it.id == "availability" }.readiness)
+        assertEquals(PilotCandidateReadiness.NOT_READY, candidates.single { it.id == "product-create" }.readiness)
+    }
+
+    @Test
+    fun `reset must verify the same run state source before a write candidate is ready`() {
+        val initial = profileVersion()
+        val execution = requireNotNull(initial.definition.testSpecExecution)
+        val reset = requireNotNull(execution.reset)
+        val version = initial.copy(
+            definition = initial.definition.copy(
+                testSpecExecution = execution.copy(
+                    reset = reset.copy(
+                        verifications = reset.verifications.map { verification ->
+                            verification.copy(
+                                call = ProfileHttpCallDefinition("GET", "/actuator/health", "harness"),
+                            )
+                        },
+                    ),
+                ),
+            ),
+        )
+        val profiles = Mockito.mock(TargetProfileService::class.java)
+        val snapshots = Mockito.mock(TargetKnowledgeSnapshotStore::class.java)
+        Mockito.`when`(profiles.findActive(version.targetSystemId)).thenReturn(version)
+        Mockito.`when`(snapshots.findByTarget(version.targetSystemId, 50))
+            .thenReturn(listOf(snapshot(version, includeWorkflowOperations = true)))
+
+        val candidates = PilotDiscoveryService(profiles, snapshots).find(version.targetSystemId).candidates
+        assertEquals(PilotCandidateReadiness.READY, candidates.single { it.id == "availability" }.readiness)
+        val writeCandidates = candidates.filter { it.id != "availability" }
+        assertTrue(writeCandidates.all { it.readiness == PilotCandidateReadiness.NOT_READY })
+        assertTrue(writeCandidates.all { "Harness POST reset with verification" in it.missingOperations })
     }
 
     private fun profileVersion(includeFaultInjection: Boolean = true): TargetProfileVersion {
@@ -147,6 +245,8 @@ class PilotDiscoveryServiceTests {
                 ProfileHttpCallDefinition("POST", "/api/products", "seller", "createProduct_1"),
                 ProfileHttpCallDefinition("POST", "/api/orders", "buyer", "orders"),
                 ProfileHttpCallDefinition("POST", "/api/payments/webhook", null, "webhook"),
+                ProfileHttpCallDefinition("GET", PilotTestTemplateFactory.PRODUCT_READINESS_PATH, "harness"),
+                ProfileHttpCallDefinition("GET", PilotTestTemplateFactory.PAYMENT_READINESS_PATH, "harness"),
             ),
             authProfiles = setOf("seller", "buyer", "harness"),
             observationSources = listOf(
@@ -196,7 +296,10 @@ class PilotDiscoveryServiceTests {
             ) else null,
         )
 
-    private fun snapshot(version: TargetProfileVersion): TargetKnowledgeSnapshot = TargetKnowledgeSnapshot(
+    private fun snapshot(
+        version: TargetProfileVersion,
+        includeWorkflowOperations: Boolean = false,
+    ): TargetKnowledgeSnapshot = TargetKnowledgeSnapshot(
         id = UUID.randomUUID(),
         targetSystemId = version.targetSystemId,
         profileVersionId = version.id,
@@ -204,11 +307,15 @@ class PilotDiscoveryServiceTests {
         extractionVersion = "test",
         content = TargetKnowledgeContent(
             sources = listOf(KnowledgeSourceDocument(KnowledgeSourceType.OPENAPI, 100, "document-checksum")),
-            operations = listOf(
-                operation("GET", "/products", "getProducts", OperationMutability.READ),
-                operation("POST", "/products", "createProduct_1", OperationMutability.WRITE),
-                operation("DELETE", "/products/{productId}", "deactivateProduct", OperationMutability.WRITE),
-            ),
+            operations = buildList {
+                add(operation("GET", "/products", "getProducts", OperationMutability.READ))
+                add(operation("POST", "/products", "createProduct_1", OperationMutability.WRITE))
+                if (includeWorkflowOperations) {
+                    add(operation("POST", "/orders", "orders", OperationMutability.WRITE))
+                    add(operation("POST", "/payments/webhook", "webhook", OperationMutability.WRITE))
+                }
+                add(operation("DELETE", "/products/{productId}", "deactivateProduct", OperationMutability.WRITE))
+            },
             workflows = emptyList(),
             domainHypotheses = emptyList(),
             invariants = emptyList(),

@@ -95,6 +95,7 @@ class TestSpecParser(
         name = node.requiredText("name"),
         call = toCall(node.path("call")),
         captures = node.path("captures").toStringMap(),
+        readiness = node.path("readiness").takeIf { it.isObject }?.let(::toCall),
     )
 
     private fun toCall(node: JsonNode): SpecHttpCall {
@@ -117,6 +118,9 @@ class TestSpecParser(
     private fun toWorkloadStep(node: JsonNode): WorkloadStep {
         val kind = node.requiredEnum("kind", WorkloadStepKind.entries)
         val name = node.requiredText("name")
+        if (kind != WorkloadStepKind.CALL && node.has("readiness")) {
+            throw SpecParseException("Readiness is supported only on a CALL workload step")
+        }
         return when (kind) {
             WorkloadStepKind.CALL -> WorkloadStep(
                 kind = kind, name = name, call = toCall(node.path("call")),
@@ -124,6 +128,7 @@ class TestSpecParser(
                 concurrency = node.optionalInt("concurrency") ?: 1,
                 captureAs = node.optionalText("captureAs"),
                 captures = node.path("captures").toStringMap(),
+                readiness = node.path("readiness").takeIf { it.isObject }?.let(::toCall),
             )
             WorkloadStepKind.WAIT -> WorkloadStep(
                 kind = kind, name = name, wait = node.requiredDuration("duration"),

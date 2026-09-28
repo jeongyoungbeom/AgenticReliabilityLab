@@ -43,7 +43,10 @@ class FaultInjectionService(
             put("scope", (scope ?: "").jsonEscaped())
         }
         val call = plan.injectHook.copy(bodyJson = INJECT_BODY_TEMPLATE)
-        val response = caller.send(target, call, bindings, FIRST_REQUEST, runId, trialScope, credentialSessionId)
+        val response = caller.send(
+            target, call, bindings, FIRST_REQUEST, runId, trialScope, credentialSessionId,
+            harnessRequest = true,
+        )
         if (!response.delivered || response.statusCode !in SUCCESS_STATUS) {
             return FaultInjectionOutcome(null, false, response.failure ?: "HTTP ${response.statusCode}")
         }
@@ -79,6 +82,7 @@ class FaultInjectionService(
             FIRST_REQUEST,
             runId,
             credentialSessionId = credentialSessionId,
+            harnessRequest = true,
         )
         return if (response.delivered && response.statusCode in SUCCESS_STATUS) {
             FaultInjectionOutcome(faultId, true)

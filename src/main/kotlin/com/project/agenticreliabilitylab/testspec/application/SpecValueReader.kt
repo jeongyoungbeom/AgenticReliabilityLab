@@ -31,6 +31,7 @@ class SpecValueReader(
         runId: String,
         label: String,
         credentialSessionId: String? = null,
+        harnessRequest: Boolean = false,
     ): ObservedValue {
         val required = readTiming.rule.consecutiveReads()
         val deadline = System.nanoTime() + effectiveWait(readTiming.maxWait).toNanos()
@@ -41,7 +42,7 @@ class SpecValueReader(
         var lastFailure: String? = null
         while (true) {
             val attempt = runCatching {
-                readOnce(target, call, expression, bindings, runId, label, credentialSessionId)
+                readOnce(target, call, expression, bindings, runId, label, credentialSessionId, harnessRequest)
             }
             attempt.onSuccess { value ->
                 repeats = if (repeats > 0 && value == previous) repeats + 1 else 1
@@ -64,6 +65,7 @@ class SpecValueReader(
         runId: String,
         label: String,
         credentialSessionId: String?,
+        harnessRequest: Boolean,
     ): Any {
         val response = caller.send(
             target,
@@ -72,13 +74,22 @@ class SpecValueReader(
             FIRST_REQUEST,
             runId,
             credentialSessionId = credentialSessionId,
+            harnessRequest = harnessRequest,
         )
         if (!response.delivered || response.statusCode !in SUCCESS_STATUS) {
             throw ObservationExpressionException(
                 "read of '$label' returned ${response.failure ?: "HTTP ${response.statusCode}"}",
             )
         }
-        return evaluator.evaluate(expression, evaluator.responseScope(response))
+        val scope = evaluator.responseScope(response)
+        if (harnessRequest && call.path == "/api/harness/state") {
+            val version = evaluator.evaluate("response.body.version", scope)
+            val responseRunId = evaluator.evaluate("response.body.runId", scope)
+            if (version != "1.0" || responseRunId != runId) {
+                throw ObservationExpressionException("read of '$label' returned a different Harness version or run ID")
+            }
+        }
+        return evaluator.evaluate(expression, scope)
     }
 
     /** The Runner's own ceiling wins. A specification cannot hold a Target for longer than an operator allowed. */
