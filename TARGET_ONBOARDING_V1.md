@@ -1,6 +1,6 @@
 # Target Onboarding V1 - 표준 Harness와 AI 추가 테스트
 
-Status: Approved direction, H0-H3 implemented and verified; H4-H6 pending
+Status: Approved direction, H0-H5 implemented and verified; H6 pending
 Updated: 2026-09-29
 
 이 문서는 다음 제품화 단계의 요구사항과 구현 순서를 정의한다. 현재 구현 여부는 코드와 `HANDOFF.md`에서 확인한다. 과거 Eventful Commerce 파일럿 설계는 `DESIGN4.md`, 기존 관측·명세 계약은 `TARGET_REQUIREMENTS.md`와 `TEST_SPEC.md`에 남긴다.
@@ -43,8 +43,8 @@ Harness가 없어도 기존 읽기 전용 점검은 유지된다. `manifest`/`st
 1. URL·환경을 등록하고 역할별 테스트 자격증명을 입력한다. ARL은 허용된 origin에서 OpenAPI와 Harness manifest를 읽는다.
 2. 각 문서의 출처·버전을 보존한 Knowledge Snapshot을 보여 주고 확인받는다. 여러 서비스 문서는 추천 시 하나의 입력 묶음으로 다루되, 어떤 문서에서 나온 근거인지 잃지 않는다.
 3. ARL이 business operation/역할/fixture/관측/정리의 매핑과 Profile 완전본을 제안한다. 사용자가 쓰기 허용 범위를 명시적으로 확인한 뒤에만 활성화한다. Swagger 또는 manifest만으로 쓰기 allowlist를 넓히지 않는다.
-4. 후보별 capability gate를 계산한다. 읽기·생성/조회·멱등성·동시성·비동기 workflow·장애/복구는 필요한 계약이 갖춰진 경우에만 READY다.
-5. 기본 후보 선택 → 명시 승인 → 기존 Test Spec 엔진의 run별 reset, fixture, workload, readiness, observation, 결정적 판정과 정리 검증을 수행한다. Eventful Commerce의 기존 7개 템플릿은 범용 경로 검증 전까지 호환 경로로 유지한다.
+4. 후보별 capability gate를 계산한다. H4 기본 후보인 읽기·쓰기·멱등성·비동기 workflow는 필요한 계약이 갖춰진 경우에만 READY다. 범용 동시성·장애/복구는 타겟 고유의 판정 근거가 선언될 때 선택적으로 확장한다.
+5. 기본 후보 선택 → 명시 승인 → 기존 Test Spec 엔진의 run별 reset, fixture, workload, readiness, observation, 결정적 판정과 정리 검증을 수행한다. Eventful Commerce의 기존 7개 템플릿은 사용자 최종 테스트 후 전용 경로 제거 여부를 결정할 때까지 호환 경로로 유지한다.
 
 ## 4. AI 추가 추천
 
@@ -81,8 +81,8 @@ AI 출력은 제안이다. schema·Profile allowlist·환경·fixture·readiness
 ### H4 - 범용 기본 후보
 
 - `PilotDiscoveryService`와 `PilotTestTemplateFactory`의 business 경로 고정을 capability 기반 후보·명세 생성으로 옮긴다. 공통 recipe만 재사용하고 도메인 기대값은 manifest/관측 계약에서 얻는다.
-- 후보별 의존성만 검사한다. fault 미지원은 장애 후보만 막고, readiness 미지원은 해당 비동기 후보만 막는다. 부족한 fixture·판정 근거를 모델의 추측으로 메우지 않는다.
-- Eventful Commerce 7개 회귀와 새 adapter의 읽기/쓰기/멱등/비동기 사례를 모두 검증한 뒤 전용 경로 제거 여부를 결정한다.
+- 후보별 의존성만 검사한다. 기존 고정 장애 후보의 fault gate를 유지하고, readiness 미지원은 해당 비동기 후보만 막는다. 범용 fault·동시성은 판정 근거를 추가로 선언할 때 선택적으로 확장하며, 부족한 fixture·판정 근거를 모델의 추측으로 메우지 않는다.
+- 기존 7개 고정 후보 경로의 자동화 회귀와 범용 계약의 읽기/쓰기/멱등/비동기 사례를 검증한다. Eventful Commerce 실제 7개 파일럿 재실행은 사용자 최종 테스트에서 수행하며 H4 완료 게이트로 삼지 않는다. 전용 경로 제거 여부는 최종 테스트 후 결정한다.
 
 ### H5 - AI 추천과 UI
 
@@ -104,7 +104,7 @@ AI 출력은 제안이다. schema·Profile allowlist·환경·fixture·readiness
 | H1 | ARL Profile/Harness 계약과 `PilotDiscoveryService`의 현재 전체 게이트 | 계약 schema·conformance suite·후보별 누락 기능 판정이 서로 일치함 |
 | H2 | SideProject `reliability-harness`, Gateway local overlay, ARL 파일럿 실행 | 기존 7개 후보·정리 확인; 비활성 환경에서 Harness 접근 불가 |
 | H3 | `QuickTargetProfileRegistrationWorkflow`, `QuickTargetProfileFactory`, Profile 검증·활성화 | 두 종류의 OpenAPI/manifest로 Profile 제안과 승인·거부를 테스트함 |
-| H4 | `PilotDiscoveryService`, `PilotTestTemplateFactory`, Test Spec validator/executor | 도메인 경로를 ARL 코드에 추가하지 않고 두 타겟의 기본 후보 실행 |
+| H4 | `PilotDiscoveryService`, `PilotTestTemplateFactory`, Test Spec validator/executor | 도메인 경로를 ARL 코드에 추가하지 않고 서로 다른 두 범용 HTTP 계약의 기본 후보 실행 |
 | H5 | `TestSpecGenerationService`, Snapshot 저장·확인 흐름, `PilotDiscoveryPanel` 및 `PilotTemplateRunnerPanel` | 안전한 신규 제안만 승인 대기 상태; 모델 실패 시 기본 후보 그대로 사용 |
 | H6 | 별도 도메인의 참조 adapter와 ARL E2E 기록 | Target별 ARL 코드 없이 연결·실행·판정·정리·AI 승인까지 재현 |
 

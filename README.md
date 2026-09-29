@@ -6,7 +6,7 @@
 
 ## 먼저 알아둘 현재 범위
 
-Eventful Commerce local 파일럿의 고정 후보 7개는 실제 실행·정리까지 검증했습니다. H3의 범용 Profile 제안 API는 다른 HTTP 타겟의 OpenAPI와 Harness manifest를 읽어 DRAFT 권한을 만들지만, 범용 후보·실행 화면은 아직 H4/H5 단계입니다. 기존 간편 등록과 고정 후보는 상품·주문·결제 계약에 묶여 있습니다. 요구사항과 구현 순서는 `TARGET_ONBOARDING_V1.md`, 현재 범위는 `TASK.md`를 봅니다. 과거 Phase 문서는 설계 이력입니다.
+Eventful Commerce local 파일럿의 고정 후보 7개는 이전 버전에서 실제 실행·정리까지 검증했습니다. H3의 범용 Profile 제안 API는 다른 HTTP 타겟의 OpenAPI와 Harness manifest를 읽어 DRAFT 권한을 만듭니다. H4의 활성 범용 Profile 기본 후보와 Test Spec 실행 백엔드는 구현됐습니다. 기존 간편 등록과 고정 후보는 상품·주문·결제 계약에 묶여 있습니다. 요구사항과 구현 순서는 `TARGET_ONBOARDING_V1.md`, 현재 범위는 `TASK.md`를 봅니다. 과거 Phase 문서는 설계 이력입니다.
 
 | 할 수 있는 일 | 아직 할 수 없는 일 |
 | --- | --- |
@@ -146,9 +146,10 @@ docker compose --profile arl down
 1. **테스트** 화면의 간편 등록에서 Target 이름, 순수 origin URL, 환경(`LOCAL` 또는 `TEST`)을 입력합니다. ARL은 표준 Profile을 생성·활성화하고 허용된 Swagger/OpenAPI 경로만 자동 확인합니다.
 2. 등록한 Target을 선택하고, **현재 적용 설정**에서 ARL이 생성한 경로와 실행 상한을 확인합니다. 표준에서 벗어나는 Target만 여기서 생성된 전체 YAML을 고급 설정의 출발점으로 사용합니다.
 3. **Swagger 발견과 기본 후보**에서 allowlist 안의 후보와 막힌 이유를 확인합니다. 읽기 전용 가용성 후보에는 Harness가 필요하지 않습니다. 쓰기 후보는 `state`·`reset`, 비동기 후보는 해당 readiness, 장애 후보는 `fault`·`fault release`가 있어야 합니다.
-4. seller, buyer, harness 테스트 자격증명을 붙여넣고 역할별 preflight를 실행합니다. Harness의 비변경 `GET state` preflight가 성공할 때만 실행 후보가 표시됩니다. 진단을 위해 상태 변경 요청을 보내지 않습니다.
-5. READY 고정 템플릿을 고르고 확인 대화상자에서 명시 승인합니다. 선택한 후보는 순서대로 실행되며, 같은 멱등 키 요청은 Target을 다시 호출하지 않고 저장된 세션을 재생합니다.
+4. 쓰기 후보를 실행할 때 필요한 역할의 테스트 자격증명을 붙여넣고 preflight를 실행합니다. 공개 읽기 후보는 Harness 자격증명 없이 사용할 수 있습니다. 진단을 위해 상태 변경 요청을 보내지 않습니다.
+5. READY 기본 후보를 고르고 확인 대화상자에서 명시 승인합니다. 선택한 후보는 순서대로 실행되며, 같은 멱등 키 요청은 Target을 다시 호출하지 않고 저장된 세션을 재생합니다.
 6. **결과** 화면에서 저장된 파일럿 세션을 엽니다. 판정, 실행 상태, 정리 검증을 별도로 확인하고, `RECOVERY_REQUIRED` 또는 미검증 정리가 있으면 성공으로 해석하지 마세요. 각 후보의 **시행 상세 보기**에서 연결된 Test Spec Run 증거를 확인할 수 있습니다.
+7. **AI 추가 후보**에서 활성 Profile의 Knowledge Snapshot 출처·추출 내용을 확인하고 최대 10개를 선택합니다. 생성된 제안의 근거·API 순서·입력·위험도·판정 조건을 검토한 뒤 명세를 별도로 승인하고 실행합니다. 거부된 제안의 이유와 모델 실패도 화면에 남으며 기본 후보 실행에는 영향을 주지 않습니다.
 
 새로고침 뒤에도 쿠키로 식별되는 런타임 세션과 저장된 파일럿 세션을 복구합니다. ARL 재시작으로 중단된 실행은 `RECOVERY_REQUIRED`로 표시되며, 완료된 세션처럼 표시되지 않습니다.
 
@@ -156,7 +157,11 @@ docker compose --profile arl down
 
 `PROFILE_EDITOR` 권한으로 `POST /api/target-profiles/proposals`에 `name`, 순수 origin `baseUrl`, `LOCAL`/`TEST` `environment`, 명시적 `openApiPaths` 목록, `harnessKey`를 보냅니다. 기본 manifest 경로는 `/api/harness/manifest`이며 필요하면 `manifestPath`로 지정합니다. Harness 키는 응답·Profile·Snapshot에 저장하지 않고 런타임 세션 쿠키로만 연결됩니다. 제안 응답은 `DRAFT` 버전입니다. `GET /api/target-profiles/{versionId}/effective-settings`에서 전체 YAML과 쓰기 method/path/역할을 확인한 뒤 `POST /api/target-profiles/{versionId}/activate`에 `{"confirmation":"ACTIVATE_TARGET_PROFILE_VERSION"}`를 보내야 활성화됩니다. 활성화 요청에도 제안 응답의 쿠키가 필요하며 그 사이의 OpenAPI/manifest 변경은 거부됩니다.
 
-범용 역할의 토큰은 `PUT /api/targets/{targetSystemId}/runtime-credentials`의 `roles` 객체로 세션에 추가하고 `POST /api/targets/{targetSystemId}/runtime-credentials/preflight`로 확인합니다. H3는 inline JSON object 요청 schema의 중첩 필수 필드를 포함해 안전한 fixture 매핑을 확인하고, 진단 run에서 0으로 확인된 숫자 관측 필드가 있는 쓰기 operation만 제안합니다. health와 기존 읽기 Batch에는 OpenAPI에 선언되고 무인증 GET에서 성공 응답을 확인한 고정 경로만 넣습니다. 이런 경로가 없으면 제안을 거부합니다. 지원하지 않는 매핑은 거부합니다. H4 전에는 범용 후보 생성과 실행 버튼이 없으며 기존 7개 파일럿 경로는 그대로 사용합니다.
+범용 역할의 토큰은 `PUT /api/targets/{targetSystemId}/runtime-credentials`의 `roles` 객체로 세션에 추가하고 `POST /api/targets/{targetSystemId}/runtime-credentials/preflight`로 확인합니다. H3는 inline JSON object 요청 schema의 중첩 필수 필드를 포함해 안전한 fixture 매핑을 확인하고, 진단 run에서 0으로 확인된 숫자 관측 필드가 있는 쓰기 operation만 제안합니다. health와 기존 읽기 Batch에는 OpenAPI에 선언되고 무인증 GET에서 성공 응답을 확인한 고정 경로만 넣습니다. 이런 경로가 없으면 제안을 거부합니다. 지원하지 않는 매핑은 거부합니다. H4 범용 후보는 `GET /api/targets/{targetSystemId}/pilot-discovery`에서 조회합니다. 읽기 후보는 Harness 자격증명 없이 활성 Profile의 public GET을 사용하고, 쓰기 후보는 세션 쿠키로 새로 읽은 OpenAPI·manifest가 활성 Profile의 계약 해시와 일치할 때만 나타납니다. `POST /api/targets/{targetSystemId}/pilot-template-runs`에는 `Idempotency-Key`와 `{"candidateIds":["generic-write-1"],"confirmation":"EXECUTE_PILOT_TEMPLATES"}`처럼 선택·승인을 명시합니다. 쓰기 실행에는 역할별 자격증명이 필요합니다. 범용 Profile은 승인 당시 OpenAPI의 `openapi-sha256`을 저장해 키 없는 읽기 실행 전에도 변경을 차단합니다. 기존 Profile에 이 값이 없으면 새 제안·활성화가 필요합니다. 이 경로는 읽기·쓰기·KEYED 멱등성·readiness가 선언된 비동기 operation을 대상으로 합니다. 기존 7개 파일럿 경로는 유지합니다.
+
+### H5 AI 추가 후보 API
+
+Profile 활성화 때 저장된 Snapshot을 `GET /api/targets/{targetSystemId}/knowledge-snapshots`에서 조회하고, 검토한 각 Snapshot을 `POST /api/target-knowledge-snapshots/{snapshotId}/confirmation`의 `{"confirmation":"CONFIRM_TARGET_KNOWLEDGE"}`로 확인합니다. `POST /api/targets/{targetSystemId}/test-specification-generations`에 `Idempotency-Key`와 `{"knowledgeSnapshotIds":["<확정된 UUID>", "<확정된 UUID>"]}`를 보내면 생성 요청만 저장합니다. 단일 `knowledgeSnapshotId`와 선택적 `openApiDocument` 입력도 기존 API 호환을 위해 유지합니다. 새 UI는 확정 Snapshot을 사용하며 원본 문서를 보내지 않습니다. 생성 기록은 `GET /api/targets/{targetSystemId}/test-specification-generations`에서 다시 볼 수 있습니다. 유효한 제안은 `PENDING_APPROVAL` Test Spec으로 저장되고, 거부된 제안에는 이유가 남습니다. 승인과 실행은 기존 `/api/test-specifications/{id}/approve`, `/api/test-specifications/{id}/runs`를 사용합니다.
 
 ## Target Profile 작성법
 
@@ -426,8 +431,8 @@ start.ps1         로컬 통합 기동 스크립트
 
 아직 없는 기능과 검증되지 않은 부분은 다음과 같습니다.
 
-- **범용 onboarding은 아직 없습니다.** 현재 quick registration과 고정 7개 템플릿은 Eventful Commerce 경로·역할에 맞춰져 있습니다.
+- **범용 onboarding 백엔드는 H4 범위까지 구현됐습니다.** H3 Profile 제안과 H4 기본 후보·실행 API는 있으며, 별도 검토 UI와 실제 두 번째 타겟 검증은 남아 있습니다. 기존 quick registration과 고정 7개 템플릿은 Eventful Commerce 경로·역할에 맞춰져 있습니다.
 - **AI 명세 제안은 백엔드 API 단계입니다.** Ollama 연동과 명세 검증은 있지만 기본 파일럿 UI에는 없고, 여러 Swagger Snapshot을 하나의 추천 근거로 묶는 작업도 남아 있습니다.
-- **H0 검증 기준선이 회복됐습니다.** PostgreSQL 동시 실행 API 경로를 수정한 뒤 ARL 전체 `check`가 통과했습니다. Eventful Commerce 7개 local 파일럿의 PASS·cleanup 결과는 이전 실행 결과이며 H0에서는 재실행하지 않았습니다. 검증 시점은 `HANDOFF.md`에 기록했습니다.
+- **H4 코드 검증은 통과했습니다.** ARL 전체 `check`와 범용 HTTP fixture의 실행·정리 검증은 통과했습니다. Eventful Commerce 실제 7개 파일럿 재실행은 사용자 최종 테스트 항목입니다. 검증 시점은 `HANDOFF.md`에 기록했습니다.
 
 추가 쓰기 요청과 테스트 데이터 생성은 Phase 17의 Profile 권한·환경 격리·승인·reset 검증·감사 규칙을 통과하는 경우에만 확장합니다.

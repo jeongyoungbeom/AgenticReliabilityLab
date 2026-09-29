@@ -5,7 +5,7 @@ internal object TargetProfileYamlSchema {
     val REGISTRATIONS_FIELD = setOf("registrations")
     val TARGET_FIELDS = setOf(
         "id", "name", "adapter-type", "environment", "base-url", "allowed-origin", "allowed-cidrs",
-        "health-path", "openapi-path", "openapi-paths", "harness-manifest-path", "contract-sha256",
+        "health-path", "openapi-path", "openapi-paths", "harness-manifest-path", "contract-sha256", "openapi-sha256",
         "source-repository", "identity-verification",
         "capabilities", "enabled",
     )

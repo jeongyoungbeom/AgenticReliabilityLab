@@ -4,6 +4,8 @@ import com.project.agenticreliabilitylab.access.OperatorAccessService
 import com.project.agenticreliabilitylab.testspec.api.dto.StartTestSpecGenerationRequest
 import com.project.agenticreliabilitylab.testspec.api.dto.TestSpecGenerationRunResponse
 import com.project.agenticreliabilitylab.testspec.application.TestSpecGenerationService
+import com.project.agenticreliabilitylab.targetcredential.api.TargetCredentialSessionCookie
+import org.springframework.web.bind.annotation.CookieValue
 import jakarta.validation.Valid
 import org.slf4j.MDC
 import org.springframework.http.HttpStatus
@@ -18,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController
 import tools.jackson.databind.ObjectMapper
 import java.util.UUID
 
-/** Phase 20 LLM-proposed specification generation, run alongside the existing rule-based candidate list. */
+/** Model proposals beside the confirmed Snapshot and basic-candidate flow. */
 @RestController
 @RequestMapping("/api")
 class TestSpecGenerationController(
@@ -31,11 +33,17 @@ class TestSpecGenerationController(
         @PathVariable targetSystemId: String,
         @RequestHeader("Authorization", required = false) authorization: String?,
         @RequestHeader("Idempotency-Key", required = false) idempotencyKey: String?,
+        @CookieValue(TargetCredentialSessionCookie.NAME, required = false) credentialSessionId: String?,
         @Valid @RequestBody request: StartTestSpecGenerationRequest,
     ): ResponseEntity<TestSpecGenerationRunResponse> {
         require(!idempotencyKey.isNullOrBlank()) { "Idempotency-Key header is required" }
         val actor = operatorAccessService.requireProfileEditor(authorization)
-        val details = service.start(request.toCommand(targetSystemId), idempotencyKey, actor, correlationId())
+        val details = service.start(
+            request.toCommand(targetSystemId, credentialSessionId),
+            idempotencyKey,
+            actor,
+            correlationId(),
+        )
         val body = TestSpecGenerationRunResponse.from(details, objectMapper)
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(body)
     }
@@ -47,6 +55,15 @@ class TestSpecGenerationController(
     ): TestSpecGenerationRunResponse {
         operatorAccessService.requireViewer(authorization)
         return TestSpecGenerationRunResponse.from(service.find(runId), objectMapper)
+    }
+
+    @GetMapping("/targets/{targetSystemId}/test-specification-generations")
+    fun findByTarget(
+        @PathVariable targetSystemId: String,
+        @RequestHeader("Authorization", required = false) authorization: String?,
+    ): List<TestSpecGenerationRunResponse> {
+        operatorAccessService.requireViewer(authorization)
+        return service.findByTarget(targetSystemId).map { TestSpecGenerationRunResponse.from(it, objectMapper) }
     }
 
     private fun correlationId(): String = MDC.get(CORRELATION_ID_KEY) ?: "missing-correlation-id"

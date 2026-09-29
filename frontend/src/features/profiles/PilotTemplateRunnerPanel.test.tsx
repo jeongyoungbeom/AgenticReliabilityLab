@@ -84,6 +84,33 @@ describe('PilotTemplateRunnerPanel', () => {
     expect(screen.getByRole('button', { name: '선택한 템플릿 실행' })).toBeDisabled()
   })
 
+  it('allows a public read candidate without Harness preflight', async () => {
+    const readDiscovery = {
+      ...discovery,
+      candidates: [{
+        id: 'generic-read-1', title: '공개 읽기', description: 'public GET',
+        readiness: 'READY' as const,
+        operations: [{ method: 'GET', executionPath: '/health', swaggerPath: '/health',
+          operationId: 'health', authProfile: null, summary: null }],
+        missingOperations: [],
+      }],
+    }
+    const api = { get: vi.fn().mockResolvedValue(readDiscovery), post: vi.fn().mockResolvedValue(completedSession) } as unknown as ApiClient
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(
+      <PilotTemplateRunnerPanel api={api} targetSystemId="sideproject-local" refreshKey={0}
+        harnessPreflight={null} onOpenRun={vi.fn()} onOpenSession={vi.fn()} />,
+    )
+    await userEvent.click(await screen.findByRole('checkbox', { name: /공개 읽기/ }))
+    await userEvent.click(screen.getByRole('button', { name: '선택한 템플릿 실행' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/api/targets/sideproject-local/pilot-template-runs',
+      { candidateIds: ['generic-read-1'], confirmation: 'EXECUTE_PILOT_TEMPLATES' },
+      'executor',
+      expect.stringMatching(/^pilot-template-/),
+    ))
+  })
+
   it('clears an existing choice and refuses execution when a later Harness preflight fails', async () => {
     const api = apiStub()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)

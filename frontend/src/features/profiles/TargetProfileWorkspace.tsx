@@ -9,6 +9,7 @@ import { TargetCredentialPanel } from './TargetCredentialPanel'
 import { PilotTemplateRunnerPanel } from './PilotTemplateRunnerPanel'
 import { QuickTargetRegistration } from './QuickTargetRegistration'
 import { EffectiveSettingsPanel } from './EffectiveSettingsPanel'
+import { AiProposalPanel } from './AiProposalPanel'
 import type { TargetCredentialPreflightResult, TargetRuntimeCredentialStatus } from '../../api/targetCredentials'
 
 interface TargetProfileWorkspaceProps {
@@ -202,6 +203,13 @@ export function TargetProfileWorkspace({
         harnessPreflight={credentialPreflight.find((result) => result.role === 'harness') ?? null}
         onOpenRun={onOpenRun}
         onOpenSession={onOpenSession}
+      />
+      <AiProposalPanel
+        api={api}
+        targetSystemId={selectedTargetId}
+        refreshKey={discoveryRefreshKey}
+        credentialPreflight={credentialPreflight}
+        onOpenRun={onOpenRun}
       />
     </div>
   )

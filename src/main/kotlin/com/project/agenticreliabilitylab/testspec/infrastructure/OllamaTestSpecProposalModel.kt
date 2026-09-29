@@ -31,7 +31,10 @@ class OllamaTestSpecProposalModel(
             ChatClient.builder(chatModel)
                 .build()
                 .prompt()
-                .options(OllamaChatOptions.builder().model(request.modelId).format("json"))
+                .options(
+                    OllamaChatOptions.builder().model(request.modelId).format("json")
+                        .thinkLow().numCtx(MODEL_CONTEXT_TOKENS),
+                )
                 .system(request.systemInstruction)
                 .user(request.inputBundleJson)
                 .call()
@@ -55,5 +58,6 @@ class OllamaTestSpecProposalModel(
 
     private companion object {
         const val NANOS_PER_MILLI = 1_000_000
+        const val MODEL_CONTEXT_TOKENS = 8_192
     }
 }

@@ -140,6 +140,30 @@ class SpecWorkloadExecutorTests {
     }
 
     @Test
+    fun `escapes captured strings when a later setup uses them in JSON`() {
+        val requests = AtomicInteger()
+        val transport = RecordingTransport { request ->
+            if (request.uri.path == "/products") {
+                if (requests.incrementAndGet() == 2) {
+                    assertEquals("a\"b\\c", mapper.readTree(request.body).path("parentId").asString())
+                }
+                jsonResponse(201, """{"id":"a\"b\\c"}""")
+            } else jsonResponse(201, "{}")
+        }
+        val base = specification(requestCount = 1, concurrency = 1)
+        val child = base.setup.single().copy(
+            name = "child",
+            call = base.setup.single().call.copy(bodyJson = """{"parentId":"{{setup.product.productId}}"}"""),
+            captures = emptyMap(),
+        )
+
+        val execution = executor(transport).execute(base.copy(setup = base.setup + child), testTarget(), "run-1", 1)
+
+        assertTrue(execution.completed, execution.failure)
+        assertEquals(2, requests.get())
+    }
+
+    @Test
     fun `numbers each request so an idempotency key can differ per request`() {
         val transport = RecordingTransport { request ->
             if (request.uri.path == "/products") jsonResponse(201, """{"id":"p-9"}""") else jsonResponse(201, "{}")

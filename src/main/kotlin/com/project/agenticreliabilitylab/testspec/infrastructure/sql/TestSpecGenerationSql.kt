@@ -25,6 +25,12 @@ object TestSpecGenerationSql {
     val FIND_RUN_BY_ID = "$SELECT_RUN where id = :id"
     val FIND_RUN_BY_TARGET_AND_IDEMPOTENCY_KEY =
         "$SELECT_RUN where target_system_id = :targetSystemId and idempotency_key = :idempotencyKey"
+    val FIND_RUN_IDS_BY_TARGET = """
+        select id from test_spec_generation_run
+        where target_system_id = :targetSystemId
+        order by requested_at desc
+        limit :limit
+    """.trimIndent()
 
     val CLAIM = """
         update test_spec_generation_run

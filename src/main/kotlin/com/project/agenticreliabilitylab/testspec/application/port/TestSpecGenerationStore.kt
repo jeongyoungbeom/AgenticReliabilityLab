@@ -12,6 +12,7 @@ interface TestSpecGenerationStore {
     fun findById(id: UUID): TestSpecGenerationRunRecord?
     fun findByTargetAndIdempotencyKey(targetSystemId: String, idempotencyKey: String): TestSpecGenerationRunRecord?
     fun findDetails(id: UUID): TestSpecGenerationRunDetails?
+    fun findByTarget(targetSystemId: String, limit: Int): List<TestSpecGenerationRunDetails>
     fun claim(id: UUID, now: Instant): Boolean
     fun complete(id: UUID, completion: TestSpecGenerationCompletion, now: Instant)
     fun fail(id: UUID, code: String, message: String, now: Instant)

@@ -52,10 +52,10 @@ class TestSpecExecutionProfileValidator {
         profile.authProfiles.forEach { name ->
             require(IDENTIFIER_PATTERN.matches(name)) { "Test specification auth profile '$name' is invalid" }
         }
-        val duplicateCalls = profile.allowedCalls.groupingBy { call -> call.key() }
+        val duplicateCalls = profile.allowedCalls.groupingBy { call -> call.key() to call.authProfile }
             .eachCount().filterValues { it > 1 }.keys
         require(duplicateCalls.isEmpty()) {
-            "Test specification has duplicate allowed calls: ${duplicateCalls.sorted().joinToString()}"
+            "Test specification has duplicate allowed calls: ${duplicateCalls.joinToString()}"
         }
         profile.allowedCalls.forEach { call -> call.validate(profile.authProfiles, "allowed call") }
 

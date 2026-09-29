@@ -19,8 +19,9 @@ import org.springframework.stereotype.Service
 class PilotDiscoveryService(
     private val profiles: TargetProfileService,
     private val snapshots: TargetKnowledgeSnapshotStore,
+    private val genericTemplates: GenericPilotTemplateFactory,
 ) {
-    fun find(targetSystemId: String): PilotDiscovery {
+    fun find(targetSystemId: String, credentialSessionId: String? = null): PilotDiscovery {
         val profile = activeProfile(targetSystemId)
         val openApiPaths = profile.openApiPaths()
         val snapshots = activeOpenApiSnapshots(targetSystemId, profile)
@@ -42,7 +43,9 @@ class PilotDiscoveryService(
             discoveredOperations = discovered,
             ignoredOperationCount = snapshots.sumOf { snapshot -> snapshot.content.operations.size } -
                 matchedSwaggerOperations,
-            candidates = candidates(profile, discovered),
+            candidates = if (profile.definition.target.sourceRepository == "generic-registration") {
+                genericTemplates.candidates(profile, credentialSessionId)
+            } else candidates(profile, discovered),
         )
     }
 

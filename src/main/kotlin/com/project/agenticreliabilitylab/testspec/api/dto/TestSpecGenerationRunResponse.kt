@@ -9,6 +9,7 @@ data class TestSpecGenerationRunResponse(
     val id: String,
     val targetSystemId: String,
     val knowledgeSnapshotId: String,
+    val knowledgeSnapshotIds: List<String>,
     val modelKey: String,
     val modelId: String,
     val promptVersion: String,
@@ -29,6 +30,9 @@ data class TestSpecGenerationRunResponse(
             id = details.run.id.toString(),
             targetSystemId = details.run.targetSystemId,
             knowledgeSnapshotId = details.run.knowledgeSnapshotId.toString(),
+            knowledgeSnapshotIds = objectMapper.readTree(details.run.inputBundleJson)
+                .path("knowledgeSnapshots").values().map { it.path("id").asString() }
+                .ifEmpty { listOf(details.run.knowledgeSnapshotId.toString()) },
             modelKey = details.run.modelKey,
             modelId = details.run.modelId,
             promptVersion = details.run.promptVersion,

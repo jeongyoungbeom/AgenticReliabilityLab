@@ -22,6 +22,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
+@Suppress("MaxLineLength") // Compact JSON examples make the escaped payload assertion readable.
 class SpecReferenceResolverTests {
     private val resolver = SpecReferenceResolver(ObjectMapper())
 
@@ -31,6 +32,32 @@ class SpecReferenceResolverTests {
         val resolved = resolver.resolve(text, mapOf("setup.product.productId" to "p-77"))
 
         assertEquals("""{"items":[{"productId":"p-77","quantity":1}]}""", resolved)
+    }
+
+    @Test
+    fun `JSON body references preserve string escaping and scalar types`() {
+        val body = """{"id":"{{captured.id}}","count":"{{arl-number:captured.count}}","enabled":"{{arl-boolean:captured.enabled}}"}"""
+        val resolved = resolver.resolveJsonBody(
+            body,
+            mapOf("captured.id" to "a\" , \"admin\":true", "captured.count" to "42", "captured.enabled" to "true"),
+        )
+        val root = ObjectMapper().readTree(resolved)
+
+        assertEquals("a\" , \"admin\":true", root.path("id").asString())
+        assertEquals(42, root.path("count").asInt())
+        assertTrue(root.path("count").isNumber)
+        assertTrue(root.path("enabled").asBoolean())
+        assertEquals(3, root.size())
+    }
+
+    @Test
+    fun `typed capture refuses a nonnumeric value before HTTP dispatch`() {
+        assertFailsWith<SpecExecutionException> {
+            resolver.resolveJsonBody(
+                """{"count":"{{arl-number:captured.count}}"}""",
+                mapOf("captured.count" to "not-a-number"),
+            )
+        }
     }
 
     @Test

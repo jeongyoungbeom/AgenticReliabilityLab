@@ -55,6 +55,7 @@ class GenericProfileContractMapper(
         val hasState = capabilities["state"] == true
         val hasReset = capabilities["reset"] == true
         val readinessKinds = capabilities.stringList("readinessKinds")
+        require(readinessKinds.all(READINESS_KIND::matches)) { "Invalid readiness kind" }
         val faults = capabilities.stringList("faultTypes").toSet()
         val declared = manifest.listValue("operations")
         require(declared.size <= MAX_OPERATIONS) { "Harness manifest declares too many operations" }
@@ -76,7 +77,7 @@ class GenericProfileContractMapper(
             require(matched.requestSchema != null) {
                 "Manifest operation $method $path has no supported JSON request body"
             }
-            validateRecipe(operation.objectValue("fixtureRecipe"), matched.requestSchema, declared.take(index))
+            validateRecipe(operation.objectValue("fixtureRecipe"), matched.requestSchema, declared.take(index), openApi)
             operation.objectValue("captures").forEach { (_, pointerValue) ->
                 val pointer = pointerValue as? String ?: throw IllegalArgumentException("Invalid capture pointer")
                 require(POINTER.matches(pointer) && matched.responseSchema != null &&
@@ -86,6 +87,10 @@ class GenericProfileContractMapper(
             }
             val observations = operation.listValue("observations")
             require(observations.isNotEmpty()) { "Manifest operation $method $path has no observations" }
+            val observationFields = observations.map { it.asObject("observation").text("field") }
+            require(observationFields.distinct().size == observations.size) {
+                "Manifest operation $method $path has duplicate observation fields"
+            }
             observations.forEach { entry ->
                 val observation = entry.asObject("observation")
                 require(FIELD.matches(observation.text("field"))) { "Invalid observation field" }
@@ -126,8 +131,7 @@ class GenericProfileContractMapper(
         val state = ProfileHttpCallDefinition("GET", STATE_PATH, "harness")
         val reset = ProfileHttpCallDefinition("POST", RESET_PATH, "harness")
         val readCalls = readOperations.map { read ->
-            val role = writes.filter { it.path == read.path }.mapNotNull { it.authProfile }.distinct().singleOrNull()
-            ProfileHttpCallDefinition("GET", read.path, role, read.operationId)
+            ProfileHttpCallDefinition("GET", read.path, null, read.operationId)
         }
         val roleReadCalls = openApi.filter { it.method == "GET" && it.staticPath && it.successCodes.isNotEmpty() }
             .mapNotNull { read ->
@@ -135,8 +139,15 @@ class GenericProfileContractMapper(
                     .mapNotNull { it.authProfile }.distinct().singleOrNull()
                 role?.let { ProfileHttpCallDefinition("GET", read.path, it, read.operationId) }
             }
-        val calls = (readCalls + roleReadCalls +
-            writes + if (writes.isNotEmpty()) listOf(state) else emptyList()).distinctBy { it.method to it.path }
+        val readinessCalls = declared.mapNotNull { value ->
+            value.asObject("manifest operation").optionalText("readinessKind")?.let { kind ->
+                ProfileHttpCallDefinition("GET", "/api/harness/readiness/$kind/{id}", "harness")
+            }
+        }
+        val calls = (readCalls + roleReadCalls + writes + readinessCalls +
+            if (writes.isNotEmpty()) listOf(state) else emptyList()).distinctBy {
+            Triple(it.method, it.path, it.authProfile)
+        }
         val execution = TestSpecExecutionProfileDefinition(
             executionEnabled = true,
             allowedCalls = calls,
@@ -171,6 +182,7 @@ class GenericProfileContractMapper(
             target = target.copy(
                 healthPath = readOperations.first().path,
                 contractSha256 = contractSha256(openApiDocuments, manifestDocument),
+                openApiSha256 = sha256(openApiDocuments),
             ),
             genericHttp = GenericHttpProfileDefinition(
                 true, target.id, MAX_BATCH_SIZE, Duration.ofSeconds(REQUEST_TIMEOUT_SECONDS),
@@ -195,7 +207,9 @@ class GenericProfileContractMapper(
         }
     }
 
-    private fun validateRecipe(recipe: Map<String, Any?>, schema: Map<String, Any?>, previous: List<Any?>) {
+    private fun validateRecipe(
+        recipe: Map<String, Any?>, schema: Map<String, Any?>, previous: List<Any?>, openApi: List<OpenApiOperation>,
+    ) {
         require(recipe.text("kind") == "SYNTHETIC_JSON_V1") { "Unsupported fixture recipe" }
         val inputs = recipe.listValue("inputs")
         require(inputs.isNotEmpty()) { "Fixture recipe needs inputs" }
@@ -225,6 +239,7 @@ class GenericProfileContractMapper(
                     require(producer != null && input.text("capture") in producer.objectValue("captures")) {
                         "Fixture capture does not refer to an earlier operation"
                     }
+                    validateCaptureType(producer, input.text("capture"), property["type"], openApi)
                 }
                 else -> throw IllegalArgumentException("Unsupported fixture input source")
             }
@@ -234,6 +249,19 @@ class GenericProfileContractMapper(
         val required = requiredPointers(schema)
         require(required.all { needed -> pointers.any { it == needed || it.startsWith("$needed/") } }) {
             "Fixture recipe does not cover required OpenAPI request fields"
+        }
+    }
+
+    private fun validateCaptureType(
+        producer: Map<String, Any?>, capture: String, consumedType: Any?, openApi: List<OpenApiOperation>,
+    ) {
+        val producerOperation = openApi.singleOrNull {
+            it.method == producer.text("method") && it.path == producer.text("path")
+        } ?: throw IllegalArgumentException("Fixture capture producer is absent or ambiguous in OpenAPI")
+        val capturePointer = producer.objectValue("captures").getValue(capture) as String
+        val producedType = producerOperation.responseSchema?.property(capturePointer)?.get("type")
+        require(producedType == consumedType || producedType == "integer" && consumedType == "number") {
+            "Fixture capture type does not match OpenAPI request field"
         }
     }
 
@@ -260,8 +288,11 @@ class GenericProfileContractMapper(
     }
 
     private fun contractSha256(documents: List<String>, manifest: String): String =
+        sha256(documents + manifest)
+
+    private fun sha256(documents: List<String>): String =
         MessageDigest.getInstance("SHA-256")
-            .digest((documents + manifest).joinToString("\u0000").toByteArray(StandardCharsets.UTF_8))
+            .digest(documents.joinToString("\u0000").toByteArray(StandardCharsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
 
     private fun operations(document: String): List<OpenApiOperation> {
@@ -340,6 +371,7 @@ class GenericProfileContractMapper(
         val FIELD = Regex("[A-Za-z][A-Za-z0-9_-]{0,99}")
         val POINTER = Regex("/(?:[A-Za-z][A-Za-z0-9_-]*/)*[A-Za-z][A-Za-z0-9_-]*")
         val PREFIX = Regex("[A-Za-z][A-Za-z0-9_-]{0,31}")
+        val READINESS_KIND = Regex("[A-Za-z][A-Za-z0-9_-]{0,31}")
         val SCALAR_TYPES = setOf("string", "integer", "number", "boolean")
         val MAP_TYPE = object : TypeReference<Map<String, Any?>>() {}
     }

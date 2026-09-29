@@ -55,9 +55,12 @@ class TestSpecValidator(
             if (registeredCall == null) {
                 add("Call '${call.method} ${call.path}' is not registered in the active Profile")
             } else if (registeredCall in capabilities.authProfilesByCall) {
-                val expected = capabilities.authProfilesByCall[registeredCall]
-                if (call.authProfile != expected) {
-                    add("Call '${call.method} ${call.path}' must use auth profile '${expected ?: "none"}'")
+                val allowed = capabilities.authProfilesByCall.getValue(registeredCall)
+                if (call.authProfile !in allowed) {
+                    val requirement = if (allowed.size == 1) {
+                        "auth profile '${allowed.single() ?: "none"}'"
+                    } else "an approved auth profile"
+                    add("Call '${call.method} ${call.path}' must use $requirement")
                 }
             }
             call.authProfile?.let { profile ->

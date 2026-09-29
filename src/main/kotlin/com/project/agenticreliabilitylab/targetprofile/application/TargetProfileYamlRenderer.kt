@@ -46,6 +46,7 @@ class TargetProfileYamlRenderer {
         "openapi-paths" to openApiPaths.orEmpty(),
         "harness-manifest-path" to harnessManifestPath,
         "contract-sha256" to contractSha256,
+        "openapi-sha256" to openApiSha256,
         "source-repository" to sourceRepository,
         "identity-verification" to identityVerification.name,
         "capabilities" to capabilities.map { capability -> capability.name }.sorted(),

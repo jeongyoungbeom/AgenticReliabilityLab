@@ -67,6 +67,7 @@ class TargetProfileYamlDefinitionMapper(
             openApiPaths = optionalStringList("openapi-paths") ?: emptyList(),
             harnessManifestPath = optionalString("harness-manifest-path"),
             contractSha256 = optionalString("contract-sha256"),
+            openApiSha256 = optionalString("openapi-sha256"),
             sourceRepository = requiredString("source-repository"),
             identityVerification = enumValue("identity-verification"),
             capabilities = requiredStringList("capabilities").mapTo(linkedSetOf(), TargetCapability::valueOf),

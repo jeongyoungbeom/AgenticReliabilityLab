@@ -60,6 +60,13 @@ class JdbcTestSpecGenerationRepository(
         return TestSpecGenerationRunDetails(run, findCandidates(id))
     }
 
+    override fun findByTarget(targetSystemId: String, limit: Int): List<TestSpecGenerationRunDetails> = jdbcClient
+        .sql(TestSpecGenerationSql.FIND_RUN_IDS_BY_TARGET)
+        .params(mapOf("targetSystemId" to targetSystemId, "limit" to limit))
+        .query { resultSet, _ -> resultSet.getObject("id", UUID::class.java) }
+        .list()
+        .mapNotNull(::findDetails)
+
     override fun claim(id: UUID, now: Instant): Boolean = jdbcClient.sql(TestSpecGenerationSql.CLAIM)
         .params(
             mapOf(

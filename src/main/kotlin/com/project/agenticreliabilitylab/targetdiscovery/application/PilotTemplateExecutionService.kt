@@ -40,6 +40,7 @@ class PilotTemplateExecutionService(
     private val sessions: PilotTestSessionStore,
     private val identifierGenerator: IdentifierGenerator,
     private val clock: Clock,
+    private val genericTemplates: GenericPilotTemplateFactory,
 ) {
     fun execute(command: ExecutePilotTemplates, actor: String, correlationId: String): PilotTestSessionView {
         require(command.confirmation == REQUIRED_CONFIRMATION) {
@@ -57,7 +58,7 @@ class PilotTemplateExecutionService(
             ensureSameRequest(existing, requestHash)
             return view(existing)
         }
-        val catalogue = discovery.find(command.targetSystemId)
+        val catalogue = discovery.find(command.targetSystemId, command.credentialSessionId)
         val ready = catalogue.candidates
             .filter { candidate -> candidate.readiness == PilotCandidateReadiness.READY }
             .associateBy(PilotTestCandidate::id)
@@ -69,7 +70,7 @@ class PilotTemplateExecutionService(
         }
         requireReadyCredentials(
             command.targetSystemId,
-            selected.map(PilotTestCandidate::id),
+            selected,
             command.credentialSessionId,
         )
 
@@ -166,10 +167,15 @@ class PilotTemplateExecutionService(
 
     private fun requireReadyCredentials(
         targetSystemId: String,
-        candidateIds: List<String>,
+        candidates: List<PilotTestCandidate>,
         credentialSessionId: String?,
     ) {
-        val required = candidateIds.flatMap(PilotTestTemplateFactory::requiredAuthProfiles).toSet()
+        val required = candidates.flatMap { candidate ->
+            if (candidate.id.startsWith("generic-")) {
+                candidate.operations.mapNotNull(PilotDiscoveredOperation::authProfile) +
+                    if (candidate.operations.any { it.method != "GET" }) listOf("harness") else emptyList()
+            } else PilotTestTemplateFactory.requiredAuthProfiles(candidate.id).toList()
+        }.toSet()
         val resultByRole = preflight.preflight(targetSystemId, credentialSessionId)
             .associateBy { result -> result.role }
         val nonReady = required.associateWith { role ->
@@ -210,7 +216,11 @@ class PilotTemplateExecutionService(
             CreateTestSpecification(
                 targetSystemId = command.targetSystemId,
                 source = SpecSource.RULE_GENERATED,
-                documentJson = templates.document(candidateId, version),
+                documentJson = if (candidateId.startsWith("generic-")) {
+                    genericTemplates.document(
+                        command.targetSystemId, candidateId, version, command.credentialSessionId,
+                    )
+                } else templates.document(candidateId, version),
             ),
             actor,
             correlationId,

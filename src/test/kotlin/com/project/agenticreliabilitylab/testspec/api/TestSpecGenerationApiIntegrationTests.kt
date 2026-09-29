@@ -2,16 +2,21 @@ package com.project.agenticreliabilitylab.testspec.api
 
 import com.project.agenticreliabilitylab.targetintelligence.application.port.TargetKnowledgeSnapshotStore
 import com.project.agenticreliabilitylab.targetintelligence.domain.KnowledgeSourceDocument
+import com.project.agenticreliabilitylab.targetintelligence.domain.KnowledgeCitation
+import com.project.agenticreliabilitylab.targetintelligence.domain.ExtractedOperation
+import com.project.agenticreliabilitylab.targetintelligence.domain.OperationMutability
 import com.project.agenticreliabilitylab.targetintelligence.domain.KnowledgeSourceType
 import com.project.agenticreliabilitylab.targetintelligence.domain.TargetKnowledgeContent
 import com.project.agenticreliabilitylab.targetintelligence.domain.TargetKnowledgeSnapshot
 import com.project.agenticreliabilitylab.targetprofile.domain.TargetProfileStatus
 import com.project.agenticreliabilitylab.targetprofile.domain.TargetProfileVersion
+import com.project.agenticreliabilitylab.targetprofile.domain.ProfileHttpCallDefinition
 import com.project.agenticreliabilitylab.targetprofile.domain.TestSpecExecutionProfileDefinition
 import com.project.agenticreliabilitylab.targetprofile.infrastructure.JdbcTargetProfileRepository
 import com.project.agenticreliabilitylab.testspec.application.port.TestSpecProposalModel
 import com.project.agenticreliabilitylab.testspec.application.port.TestSpecProposalModelRequest
 import com.project.agenticreliabilitylab.testspec.application.port.TestSpecProposalModelResponse
+import com.project.agenticreliabilitylab.testspec.application.port.TestSpecProposalModelUnavailableException
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -67,6 +72,9 @@ class TestSpecGenerationApiIntegrationTests {
     fun enableGenerationFixtures() {
         fakeProposalModel.calls.set(0)
         fakeProposalModel.nextResponse = FakeTestSpecProposalModel.CANNED_RESPONSE
+        fakeProposalModel.unavailable = false
+        fakeProposalModel.lastRequest = null
+        fakeProposalModel.onPropose = null
         originalProfile = profileRepository.findActive(TARGET_ID) ?: error("Test target must have an active Profile")
         executionProfile = executionProfileFrom(originalProfile)
         assertTrue(profileRepository.createIfAbsent(executionProfile))
@@ -85,8 +93,29 @@ class TestSpecGenerationApiIntegrationTests {
                         byteCount = 0,
                         checksum = "b".repeat(64),
                     ),
+                    KnowledgeSourceDocument(
+                        type = KnowledgeSourceType.OPENAPI,
+                        byteCount = 0,
+                        checksum = "e".repeat(64),
+                    ),
                 ),
-                operations = emptyList(),
+                operations = listOf(
+                    ExtractedOperation(
+                        method = "GET", path = "/health", operationId = "health", summary = "Health check",
+                        requestMediaTypes = emptySet(), responseStatusCodes = setOf(200),
+                        mutability = OperationMutability.READ,
+                        citation = KnowledgeCitation(KnowledgeSourceType.BRIEF, "brief:health", "Health endpoint"),
+                    ),
+                    ExtractedOperation(
+                        method = "GET", path = "/orders", operationId = "listOrders", summary = "Orders list",
+                        requestMediaTypes = emptySet(), responseStatusCodes = setOf(200),
+                        mutability = OperationMutability.READ,
+                        citation = KnowledgeCitation(
+                            KnowledgeSourceType.OPENAPI, "paths./orders.get",
+                            "GET /orders returns a list with HTTP 200",
+                        ),
+                    ),
+                ),
                 workflows = emptyList(),
                 domainHypotheses = emptyList(),
                 invariants = emptyList(),
@@ -117,6 +146,9 @@ class TestSpecGenerationApiIntegrationTests {
 
         val completed = awaitTerminalRun(runId)
         assertContains(completed.body(), "\"status\":\"COMPLETED\"")
+        val history = get("/api/targets/$TARGET_ID/test-specification-generations")
+        assertEquals(200, history.statusCode())
+        assertTrue(objectMapper.readTree(history.body()).values().any { it.path("id").asString() == runId })
         val candidates = objectMapper.readTree(completed.body()).path("candidates")
         assertEquals(2, candidates.size(), completed.body())
 
@@ -126,7 +158,7 @@ class TestSpecGenerationApiIntegrationTests {
 
         val rejected = candidates.values().first { it.path("specKey").asString() == "model-proposed-invalid" }
         assertEquals("REJECTED", rejected.path("outcome").asString())
-        assertContains(rejected.path("rejectionReason").asString(), "not registered")
+        assertContains(rejected.path("rejectionReason").asString(), "no approved synthetic fixture")
         assertTrue(rejected.path("specificationId").isNull)
 
         assertEquals(
@@ -150,6 +182,136 @@ class TestSpecGenerationApiIntegrationTests {
     }
 
     @Test
+    fun `keeps the singular Snapshot and optional OpenAPI input API compatible`() {
+        val started = post(
+            "/api/targets/$TARGET_ID/test-specification-generations",
+            objectMapper.writeValueAsString(
+                mapOf(
+                    "knowledgeSnapshotId" to snapshotId.toString(),
+                    "openApiDocument" to """{"openapi":"3.0.0"}""",
+                ),
+            ),
+            "h5-legacy-document",
+        )
+        assertEquals(202, started.statusCode(), started.body())
+        awaitTerminalRun(field(started.body(), "id"))
+        val input = objectMapper.readTree(fakeProposalModel.lastRequest?.inputBundleJson ?: error("No model input"))
+        assertContains(input.path("openApiDocument").asString(), "\"openapi\"")
+    }
+
+    @Test
+    fun `combines confirmed snapshots and approved capabilities with source provenance`() {
+        val secondId = UUID.randomUUID()
+        val first = snapshotStore.findById(snapshotId) ?: error("First Snapshot disappeared")
+        assertTrue(snapshotStore.createIfAbsent(first.copy(id = secondId, checksum = "d".repeat(64))))
+        assertTrue(snapshotStore.confirm(secondId, "phase20-test", "phase20-setup", Instant.now()))
+
+        val started = post(
+            "/api/targets/$TARGET_ID/test-specification-generations",
+            objectMapper.writeValueAsString(
+                mapOf("knowledgeSnapshotIds" to listOf(snapshotId.toString(), secondId.toString())),
+            ),
+            "h5-multi-snapshot",
+        )
+        assertEquals(202, started.statusCode(), started.body())
+        val completed = awaitTerminalRun(field(started.body(), "id"))
+        val body = objectMapper.readTree(completed.body())
+        assertEquals(2, body.path("knowledgeSnapshotIds").size())
+        val input = objectMapper.readTree(fakeProposalModel.lastRequest?.inputBundleJson ?: error("No model input"))
+        assertEquals(2, input.path("knowledgeSnapshots").size())
+        assertEquals("BRIEF", input.path("knowledgeSnapshots").values().first().path("sources").values().first()
+            .path("type").asString())
+        assertTrue(input.path("approvedCapabilities").path("allowedCalls").toString().contains("GET /health"))
+    }
+
+    @Test
+    fun `rejects an unconfirmed snapshot in a multi-snapshot request`() {
+        val secondId = UUID.randomUUID()
+        val first = snapshotStore.findById(snapshotId) ?: error("First Snapshot disappeared")
+        assertTrue(snapshotStore.createIfAbsent(first.copy(
+            id = secondId, checksum = "f".repeat(64),
+            confirmedBy = null, confirmedCorrelationId = null, confirmedAt = null,
+        )))
+        val response = post(
+            "/api/targets/$TARGET_ID/test-specification-generations",
+            objectMapper.writeValueAsString(
+                mapOf("knowledgeSnapshotIds" to listOf(snapshotId.toString(), secondId.toString())),
+            ),
+            "h5-unconfirmed-snapshot",
+        )
+        assertEquals(400, response.statusCode(), response.body())
+        assertEquals(0, fakeProposalModel.calls.get())
+    }
+
+    @Test
+    fun `rejects duplicate proposal by operation order and judgement purpose`() {
+        val first = objectMapper.readTree(FakeTestSpecProposalModel.CANNED_RESPONSE)
+            .path("specifications").values().first()
+        val renamed = objectMapper.readTree(
+            first.toString().replace("model-proposed-consistency", "renamed-consistency")
+                .replace("Model proposed consistency check", "Another title for the same judgement")
+                .replace("\"name\":\"read\"", "\"name\":\"probe\"")
+                .replace("read[*].status", "probe[*].status")
+                .replace("\"id\":\"responseCount\"", "\"id\":\"observedCount\"")
+                .replace("responseCount == 1", "observedCount == 1"),
+        )
+        fakeProposalModel.nextResponse = objectMapper.writeValueAsString(
+            mapOf("specifications" to listOf(first, renamed)),
+        )
+
+        val started = startGeneration("h5-duplicate")
+        val candidates = objectMapper.readTree(awaitTerminalRun(field(started.body(), "id")).body()).path("candidates")
+        assertEquals("ACCEPTED", candidates.values().first().path("outcome").asString())
+        val duplicate = candidates.values().toList()[1]
+        assertEquals("REJECTED", duplicate.path("outcome").asString())
+        assertContains(duplicate.path("rejectionReason").asString(), "Duplicates")
+    }
+
+    @Test
+    fun `fails malformed model JSON without storing a candidate`() {
+        fakeProposalModel.nextResponse = "not-json"
+        val started = startGeneration("h5-invalid-json")
+        val failed = objectMapper.readTree(awaitTerminalRun(field(started.body(), "id")).body())
+        assertEquals("FAILED", failed.path("status").asString())
+        assertEquals("MODEL_OUTPUT_INVALID", failed.path("failureCode").asString())
+        assertEquals(0, failed.path("candidates").size())
+    }
+
+    @Test
+    fun `fails unavailable model without affecting the basic candidate path`() {
+        fakeProposalModel.unavailable = true
+        val started = startGeneration("h5-model-unavailable")
+        val failed = objectMapper.readTree(awaitTerminalRun(field(started.body(), "id")).body())
+        assertEquals("FAILED", failed.path("status").asString())
+        assertEquals("MODEL_UNAVAILABLE", failed.path("failureCode").asString())
+    }
+
+    @Test
+    fun `does not promote proposals after the active Profile changes during model generation`() {
+        fakeProposalModel.onPropose = {
+            val replacement = executionProfileFrom(originalProfile)
+            profileRepository.createIfAbsent(replacement)
+            profileRepository.activate(TARGET_ID, replacement.id, "phase20-test", Instant.now())
+        }
+        val started = startGeneration("h5-profile-drift")
+        val failed = objectMapper.readTree(awaitTerminalRun(field(started.body(), "id")).body())
+        assertEquals("FAILED", failed.path("status").asString())
+        assertEquals("TEST_SPEC_GENERATION_PROFILE_VERSION_INACTIVE", failed.path("failureCode").asString())
+        assertEquals(0, failed.path("candidates").size())
+    }
+
+    @Test
+    fun `accepts a novel proposal returned by the installed Ollama model in a synthetic evaluation`() {
+        fakeProposalModel.nextResponse = REAL_MODEL_SAMPLE
+        val started = startGeneration("h5-real-model-sample")
+        val completed = objectMapper.readTree(awaitTerminalRun(field(started.body(), "id")).body())
+        assertEquals("COMPLETED", completed.path("status").asString())
+        val proposal = completed.path("candidates").values().single()
+        assertEquals("ACCEPTED", proposal.path("outcome").asString(), proposal.toString())
+        assertEquals("pilot-generic-read-2", proposal.path("specKey").asString())
+    }
+
+    @Test
     fun `completes the run and keeps the valid candidate when another candidate is too long to store`() {
         fakeProposalModel.nextResponse = """
             {"specifications":[
@@ -159,10 +321,11 @@ class TestSpecGenerationApiIntegrationTests {
                 "title":"${"x".repeat(TOO_LONG_TITLE_CHARACTERS)}",
                 "category":"CONSISTENCY",
                 "risk":"SAFE",
-                "workload":[{"kind":"WAIT","name":"settle","duration":0}],
-                "observations":[{"id":"responseCount","source":"RESPONSES","expr":"count(work[*].status)"}],
+                "evidence":[{"sourceType":"BRIEF","location":"brief:health","excerpt":"Health endpoint"}],
+                "workload":[{"kind":"CALL","name":"read","call":{"method":"GET","path":"/health"}}],
+                "observations":[{"id":"responseCount","source":"RESPONSES","expr":"count(read[*].status)"}],
                 "invariants":[
-                  {"id":"noResponse","description":"unused","condition":"responseCount == 0"}
+                  {"id":"oneResponse","description":"one health response","condition":"responseCount == 1"}
                 ],
                 "policy":{"trials":1},
                 "cleanup":{"method":"NOT_REQUIRED"}
@@ -173,10 +336,11 @@ class TestSpecGenerationApiIntegrationTests {
                 "title":"Model proposed a valid consistency check",
                 "category":"CONSISTENCY",
                 "risk":"SAFE",
-                "workload":[{"kind":"WAIT","name":"settle","duration":0}],
-                "observations":[{"id":"responseCount","source":"RESPONSES","expr":"count(work[*].status)"}],
+                "evidence":[{"sourceType":"BRIEF","location":"brief:health","excerpt":"Health endpoint"}],
+                "workload":[{"kind":"CALL","name":"read","call":{"method":"GET","path":"/health"}}],
+                "observations":[{"id":"responseCount","source":"RESPONSES","expr":"count(read[*].status)"}],
                 "invariants":[
-                  {"id":"noResponse","description":"unused","condition":"responseCount == 0"}
+                  {"id":"oneResponse","description":"one health response","condition":"responseCount == 1"}
                 ],
                 "policy":{"trials":1},
                 "cleanup":{"method":"NOT_REQUIRED"}
@@ -269,7 +433,10 @@ class TestSpecGenerationApiIntegrationTests {
         definition = base.definition.copy(
             testSpecExecution = TestSpecExecutionProfileDefinition(
                 executionEnabled = true,
-                allowedCalls = emptyList(),
+                allowedCalls = listOf(
+                    ProfileHttpCallDefinition("GET", "/health"),
+                    ProfileHttpCallDefinition("GET", "/orders"),
+                ),
                 authProfiles = emptySet(),
                 observationSources = emptyList(),
                 supportedFaults = emptySet(),
@@ -313,6 +480,21 @@ class TestSpecGenerationApiIntegrationTests {
         const val AWAIT_TIMEOUT_SECONDS = 5L
         const val AWAIT_POLL_MILLIS = 25L
         const val TOO_LONG_TITLE_CHARACTERS = 600
+        val REAL_MODEL_SAMPLE = """
+            {"specifications":[{
+              "observations":[{"source":"RESPONSES","id":"status","expr":"readOrders[*].status"}],
+              "cleanup":{"method":"NOT_REQUIRED"},
+              "setup":[],"risk":"SAFE",
+              "invariants":[{"condition":"status >= 200 && status < 300",
+                "description":"Orders endpoint healthy","id":"available"}],
+              "specKey":"pilot-generic-read-2","title":"Orders list availability",
+              "policy":{"trials":1},
+              "evidence":[{"location":"paths./orders.get",
+                "excerpt":"GET /orders returns a list with HTTP 200","sourceType":"OPENAPI"}],
+              "category":"AVAILABILITY",
+              "workload":[{"call":{"path":"/orders","method":"GET"},"kind":"CALL","name":"readOrders"}]
+            }]}
+        """.trimIndent()
     }
 
     @TestConfiguration(proxyBeanMethods = false)
@@ -326,9 +508,15 @@ class TestSpecGenerationApiIntegrationTests {
 class FakeTestSpecProposalModel : TestSpecProposalModel {
     val calls = AtomicInteger(0)
     var nextResponse: String = CANNED_RESPONSE
+    var unavailable: Boolean = false
+    var lastRequest: TestSpecProposalModelRequest? = null
+    var onPropose: (() -> Unit)? = null
 
     override fun propose(request: TestSpecProposalModelRequest): TestSpecProposalModelResponse {
         calls.incrementAndGet()
+        lastRequest = request
+        onPropose?.invoke()
+        if (unavailable) throw TestSpecProposalModelUnavailableException("Stub model unavailable")
         return TestSpecProposalModelResponse(content = nextResponse)
     }
 
@@ -341,13 +529,14 @@ class FakeTestSpecProposalModel : TestSpecProposalModel {
                 "title":"Model proposed consistency check",
                 "category":"CONSISTENCY",
                 "risk":"SAFE",
-                "workload":[{"kind":"WAIT","name":"settle","duration":0}],
-                "observations":[{"id":"responseCount","source":"RESPONSES","expr":"count(work[*].status)"}],
+                "evidence":[{"sourceType":"BRIEF","location":"brief:health","excerpt":"Health endpoint"}],
+                "workload":[{"kind":"CALL","name":"read","call":{"method":"GET","path":"/health"}}],
+                "observations":[{"id":"responseCount","source":"RESPONSES","expr":"count(read[*].status)"}],
                 "invariants":[
                   {
-                    "id":"noUnexpectedResponse",
-                    "description":"No response was expected from a wait-only workload",
-                    "condition":"responseCount == 0"
+                    "id":"oneResponse",
+                    "description":"One health response is expected",
+                    "condition":"responseCount == 1"
                   }
                 ],
                 "policy":{
@@ -365,6 +554,7 @@ class FakeTestSpecProposalModel : TestSpecProposalModel {
                 "title":"Model proposed a call outside the active profile",
                 "category":"CONTRACT_INPUT",
                 "risk":"SAFE",
+                "evidence":[{"sourceType":"BRIEF","location":"brief:health","excerpt":"Health endpoint"}],
                 "setup":[{"name":"wipe","call":{"method":"POST","path":"/admin/wipe"}}],
                 "observations":[{"id":"responseCount","source":"RESPONSES","expr":"count(work[*].status)"}],
                 "invariants":[{"id":"noResponse","description":"unused","condition":"responseCount == 0"}],

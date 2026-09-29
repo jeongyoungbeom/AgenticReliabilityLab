@@ -37,7 +37,8 @@ class TestSpecExecutionProfileMapper {
             environment = definition.target.environment.name,
             allowedCalls = profile.allowedCalls.mapTo(linkedSetOf()) { call -> call.key() },
             authProfiles = profile.authProfiles,
-            authProfilesByCall = profile.allowedCalls.associate { call -> call.key() to call.authProfile },
+            authProfilesByCall = profile.allowedCalls.groupBy({ call -> call.key() }, { call -> call.authProfile })
+                .mapValues { (_, roles) -> roles.toSet() },
             observationSources = profile.observationSources.associate { source -> source.name to source.toDomain() },
             supportedFaults = profile.supportedFaults,
             infrastructureTargets = profile.infrastructureTargets,

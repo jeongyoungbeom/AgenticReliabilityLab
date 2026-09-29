@@ -39,6 +39,11 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class PilotDiscoveryServiceTests {
+    private fun discovery(
+        profiles: TargetProfileService,
+        snapshots: TargetKnowledgeSnapshotStore,
+    ) = PilotDiscoveryService(profiles, snapshots, Mockito.mock(GenericPilotTemplateFactory::class.java))
+
     @Test
     fun `keeps only allowlisted operations and reports missing workflow operations as not ready`() {
         val version = profileVersion()
@@ -48,7 +53,7 @@ class PilotDiscoveryServiceTests {
         Mockito.`when`(profiles.findActive(version.targetSystemId)).thenReturn(version)
         Mockito.`when`(snapshots.findByTarget(version.targetSystemId, 50)).thenReturn(listOf(snapshot))
 
-        val discovery = PilotDiscoveryService(profiles, snapshots).find(version.targetSystemId)
+        val discovery = discovery(profiles, snapshots).find(version.targetSystemId)
 
         assertEquals(listOf("GET /api/products", "POST /api/products"), discovery.discoveredOperations.map {
             operation -> "${operation.method} ${operation.executionPath}"
@@ -75,7 +80,7 @@ class PilotDiscoveryServiceTests {
         Mockito.`when`(snapshots.findByTarget(version.targetSystemId, 50))
             .thenReturn(listOf(snapshot(version, includeWorkflowOperations = true)))
 
-        val candidates = PilotDiscoveryService(profiles, snapshots).find(version.targetSystemId).candidates
+        val candidates = discovery(profiles, snapshots).find(version.targetSystemId).candidates
         val availability = candidates.single { candidate -> candidate.id == "availability" }
 
         assertEquals(PilotCandidateReadiness.READY, availability.readiness)
@@ -107,7 +112,7 @@ class PilotDiscoveryServiceTests {
         Mockito.`when`(snapshots.findByTarget(withoutReadiness.targetSystemId, 50))
             .thenReturn(listOf(snapshot(withoutReadiness, includeWorkflowOperations = true)))
 
-        val candidates = PilotDiscoveryService(profiles, snapshots).find(withoutReadiness.targetSystemId).candidates
+        val candidates = discovery(profiles, snapshots).find(withoutReadiness.targetSystemId).candidates
         assertEquals(PilotCandidateReadiness.READY, candidates.single { it.id == "product-create" }.readiness)
         assertEquals(PilotCandidateReadiness.READY, candidates.single { it.id == "availability" }.readiness)
         val workflow = candidates.single { it.id == "order-workflow" }
@@ -143,7 +148,7 @@ class PilotDiscoveryServiceTests {
         Mockito.`when`(snapshots.findByTarget(withoutHarness.targetSystemId, 50))
             .thenReturn(listOf(snapshot(withoutHarness)))
 
-        val candidates = PilotDiscoveryService(profiles, snapshots).find(withoutHarness.targetSystemId).candidates
+        val candidates = discovery(profiles, snapshots).find(withoutHarness.targetSystemId).candidates
         assertEquals(PilotCandidateReadiness.READY, candidates.single { it.id == "availability" }.readiness)
         assertEquals(PilotCandidateReadiness.NOT_READY, candidates.single { it.id == "product-create" }.readiness)
     }
@@ -172,7 +177,7 @@ class PilotDiscoveryServiceTests {
         Mockito.`when`(snapshots.findByTarget(version.targetSystemId, 50))
             .thenReturn(listOf(snapshot(version, includeWorkflowOperations = true)))
 
-        val candidates = PilotDiscoveryService(profiles, snapshots).find(version.targetSystemId).candidates
+        val candidates = discovery(profiles, snapshots).find(version.targetSystemId).candidates
         assertEquals(PilotCandidateReadiness.READY, candidates.single { it.id == "availability" }.readiness)
         val writeCandidates = candidates.filter { it.id != "availability" }
         assertTrue(writeCandidates.all { it.readiness == PilotCandidateReadiness.NOT_READY })

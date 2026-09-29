@@ -75,9 +75,9 @@ class TestSpecValidatorTests {
     fun `enforces the auth profile registered for a specific call`() {
         val profile = capabilities().copy(
             authProfilesByCall = mapOf(
-                "POST /products" to "seller",
-                "POST /orders" to "buyer",
-                "GET /products/{id}" to null,
+                "POST /products" to setOf("seller"),
+                "POST /orders" to setOf("buyer"),
+                "GET /products/{id}" to setOf(null),
             ),
         )
         val wrongRole = specification(

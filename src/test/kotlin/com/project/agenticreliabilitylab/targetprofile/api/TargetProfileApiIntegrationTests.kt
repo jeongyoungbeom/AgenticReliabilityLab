@@ -20,6 +20,8 @@ import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -29,6 +31,9 @@ import tools.jackson.databind.ObjectMapper
 
 @ActiveProfiles("test")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@Suppress(
+    "LargeClass", "LongMethod", "CyclomaticComplexMethod", "MaxLineLength",
+) // HTTP fixture and end-to-end assertions cover Profile activation and generic pilot execution together.
 class TargetProfileApiIntegrationTests {
     @Value("\${local.server.port}")
     private var serverPort: Int = 0
@@ -79,6 +84,17 @@ class TargetProfileApiIntegrationTests {
                 )
                 assertEquals(202, activated.statusCode(), activated.body())
                 assertContains(activated.body(), "\"status\":\"ACTIVE\"")
+                val withoutHarness = get("/api/targets/$targetId/pilot-discovery")
+                assertEquals(200, withoutHarness.statusCode(), withoutHarness.body())
+                assertContains(withoutHarness.body(), "\"id\":\"generic-read-1\"")
+                assertFalse(withoutHarness.body().contains("\"id\":\"generic-write-1\""))
+                val readRun = post(
+                    "/api/targets/$targetId/pilot-template-runs",
+                    """{"candidateIds":["generic-read-1"],"confirmation":"EXECUTE_PILOT_TEMPLATES"}""",
+                    executorAuthorizationHeader() + mapOf("Idempotency-Key" to "read-${UUID.randomUUID()}"),
+                )
+                assertEquals(201, readRun.statusCode(), readRun.body())
+                assertContains(readRun.body(), "\"resultOutcome\":\"PASSED\"")
                 val candidates = get("/api/targets/$targetId/test-candidates")
                 assertEquals(200, candidates.statusCode(), candidates.body())
                 assertFalse(candidates.body().contains("\"path\":\"/api/${fixture.resource}\""))
@@ -98,9 +114,83 @@ class TargetProfileApiIntegrationTests {
                 )
                 assertEquals(200, preflight.statusCode(), preflight.body())
                 assertContains(preflight.body(), "\"role\":\"${fixture.role}\",\"status\":\"READY\"")
+                val discovery = get(
+                    "/api/targets/$targetId/pilot-discovery",
+                    mapOf("Cookie" to cookie),
+                )
+                assertEquals(200, discovery.statusCode(), discovery.body())
+                val genericCandidates = objectMapper.readTree(discovery.body()).path("candidates")
+                assertTrue(genericCandidates.any {
+                    it.path("id").asString() == "generic-read-1" &&
+                        it.path("readiness").asString() == "READY"
+                }, discovery.body())
+                assertTrue(genericCandidates.any {
+                    it.path("id").asString() == "generic-write-1" &&
+                        it.path("readiness").asString() == "READY"
+                }, discovery.body())
+                val run = post(
+                    "/api/targets/$targetId/pilot-template-runs",
+                    """{"candidateIds":["generic-write-1"],"confirmation":"EXECUTE_PILOT_TEMPLATES"}""",
+                    executorAuthorizationHeader() + mapOf(
+                        "Cookie" to cookie,
+                        "Idempotency-Key" to "generic-${UUID.randomUUID()}",
+                    ),
+                )
+                assertEquals(201, run.statusCode(), run.body())
+                assertContains(run.body(), "\"resultOutcome\":\"PASSED\"")
+                assertContains(run.body(), "\"cleanupVerified\":true")
             } finally {
                 target.stop(0)
             }
+        }
+    }
+
+    @Test
+    fun `public GET beside protected write stays ready and rejects OpenAPI drift without Harness credentials`() {
+        val fixture = GenericFixture("public-items", "POST", "writer", "itemCount")
+        val manifest = AtomicReference(genericManifest(fixture))
+        val openApi = AtomicReference(genericOpenApi(fixture))
+        val target = genericTarget(fixture, manifest, openApi, publicRead = true)
+        target.start()
+        try {
+            val proposed = post(
+                "/api/target-profiles/proposals",
+                genericProposal("Public read ${UUID.randomUUID()}", target.address.port),
+                authorizationHeader(),
+            )
+            assertEquals(202, proposed.statusCode(), proposed.body())
+            val versionId = objectMapper.readTree(proposed.body()).path("id").asString()
+            val targetId = objectMapper.readTree(proposed.body()).path("targetSystemId").asString()
+            val cookie = proposed.headers().firstValue("Set-Cookie").orElseThrow().substringBefore(';')
+            assertEquals(202, post(
+                "/api/target-profiles/$versionId/activate",
+                """{"confirmation":"ACTIVATE_TARGET_PROFILE_VERSION"}""",
+                authorizationHeader() + mapOf("Cookie" to cookie),
+            ).statusCode())
+            val discovery = get("/api/targets/$targetId/pilot-discovery")
+            assertEquals(200, discovery.statusCode(), discovery.body())
+            assertTrue(objectMapper.readTree(discovery.body()).path("candidates").any {
+                it.path("id").asString() == "generic-read-2" && it.path("readiness").asString() == "READY"
+            }, discovery.body())
+            val run = post(
+                "/api/targets/$targetId/pilot-template-runs",
+                """{"candidateIds":["generic-read-2"],"confirmation":"EXECUTE_PILOT_TEMPLATES"}""",
+                executorAuthorizationHeader() + mapOf("Idempotency-Key" to "read-${UUID.randomUUID()}"),
+            )
+            assertEquals(201, run.statusCode(), run.body())
+            assertContains(run.body(), "\"resultOutcome\":\"PASSED\"")
+
+            openApi.set(openApi.get().replace("\"version\":\"1\"", "\"version\":\"2\""))
+            assertEquals(409, get("/api/targets/$targetId/pilot-discovery").statusCode())
+            val rejected = post(
+                "/api/targets/$targetId/pilot-template-runs",
+                """{"candidateIds":["generic-read-2"],"confirmation":"EXECUTE_PILOT_TEMPLATES"}""",
+                executorAuthorizationHeader() + mapOf("Idempotency-Key" to "drift-${UUID.randomUUID()}"),
+            )
+            assertEquals(409, rejected.statusCode(), rejected.body())
+            assertContains(rejected.body(), "TARGET_CONTRACT_CHANGED")
+        } finally {
+            target.stop(0)
         }
     }
 
@@ -161,6 +251,201 @@ class TargetProfileApiIntegrationTests {
             assertEquals(400, activation.statusCode(), activation.body())
             assertContains(activation.body(), "changed since Profile proposal")
             assertContains(get("/api/target-profiles/$versionId").body(), "\"status\":\"DRAFT\"")
+        } finally {
+            target.stop(0)
+        }
+    }
+
+    @Test
+    fun `generic keyed and asynchronous candidates execute only from the approved manifest`() {
+        listOf("KEYED", "ASYNC").forEach { mode ->
+            val fixture = GenericFixture("jobs", "POST", "writer", "jobCount")
+            val original = genericManifest(fixture)
+            val manifest = AtomicReference(
+                if (mode == "KEYED") original.replace("\"idempotency\":\"NONE\"", "\"idempotency\":\"KEYED\"")
+                else original
+                    .replace("\"readinessKinds\":[]", "\"readinessKinds\":[\"jobs\"]")
+                    .replace("\"captures\":{}", "\"captures\":{\"id\":\"/id\"}")
+                    .replace("\"idempotency\":\"NONE\"", "\"idempotency\":\"NONE\",\"readinessKind\":\"jobs\""),
+            )
+            val openApi = AtomicReference(
+                if (mode == "ASYNC") genericOpenApi(fixture).replace(
+                    "\"201\":{\"description\":\"created\"}",
+                    "\"201\":{\"description\":\"created\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}}}}}}",
+                ) else genericOpenApi(fixture),
+            )
+            val target = genericTarget(fixture, manifest, openApi)
+            target.start()
+            try {
+                val proposed = post(
+                    "/api/target-profiles/proposals",
+                    genericProposal("Generic $mode ${UUID.randomUUID()}", target.address.port),
+                    authorizationHeader(),
+                )
+                assertEquals(202, proposed.statusCode(), proposed.body())
+                val versionId = objectMapper.readTree(proposed.body()).path("id").asString()
+                val targetId = objectMapper.readTree(proposed.body()).path("targetSystemId").asString()
+                val cookie = proposed.headers().firstValue("Set-Cookie").orElseThrow().substringBefore(';')
+                val activated = post(
+                    "/api/target-profiles/$versionId/activate",
+                    """{"confirmation":"ACTIVATE_TARGET_PROFILE_VERSION"}""",
+                    authorizationHeader() + mapOf("Cookie" to cookie),
+                )
+                assertEquals(202, activated.statusCode(), activated.body())
+                val credentials = put(
+                    "/api/targets/$targetId/runtime-credentials",
+                    """{"roles":{"writer":"role-test-token"}}""",
+                    executorAuthorizationHeader() + mapOf("Cookie" to cookie),
+                )
+                assertEquals(200, credentials.statusCode(), credentials.body())
+                val candidateId = if (mode == "KEYED") "generic-idempotency-1" else "generic-async-1"
+                val discovery = get("/api/targets/$targetId/pilot-discovery", mapOf("Cookie" to cookie))
+                assertEquals(200, discovery.statusCode(), discovery.body())
+                assertTrue(objectMapper.readTree(discovery.body()).path("candidates").any {
+                    it.path("id").asString() == candidateId && it.path("readiness").asString() == "READY"
+                }, discovery.body())
+                val run = post(
+                    "/api/targets/$targetId/pilot-template-runs",
+                    """{"candidateIds":["$candidateId"],"confirmation":"EXECUTE_PILOT_TEMPLATES"}""",
+                    executorAuthorizationHeader() + mapOf(
+                        "Cookie" to cookie, "Idempotency-Key" to "generic-${UUID.randomUUID()}",
+                    ),
+                )
+                assertEquals(201, run.statusCode(), run.body())
+                assertContains(run.body(), "\"resultOutcome\":\"PASSED\"")
+                assertContains(run.body(), "\"cleanupVerified\":true")
+
+                manifest.set(manifest.get().replace("arl-jobs", "changed-jobs"))
+                val changed = get("/api/targets/$targetId/pilot-discovery", mapOf("Cookie" to cookie))
+                assertEquals(409, changed.statusCode(), changed.body())
+                assertContains(changed.body(), "TARGET_CONTRACT_CHANGED")
+            } finally {
+                target.stop(0)
+            }
+        }
+    }
+
+    @Test
+    fun `generic fixture recipe captures a numeric ID into a later request`() {
+        val fixture = GenericFixture("tasks", "POST", "writer", "taskCount")
+        val manifest = AtomicReference(
+            """
+            {"version":"1.0","capabilities":{"state":true,"reset":true,"readinessKinds":[],"faultTypes":[]},
+            "operations":[
+              {"operationId":"createTask","method":"POST","path":"/api/tasks","authProfile":"writer",
+               "fixtureRecipe":{"kind":"SYNTHETIC_JSON_V1","inputs":[
+                 {"pointer":"/name","source":"RUN_TAGGED_STRING","prefix":"arl-task"}]},
+               "captures":{"id":"/id"},"observations":[{"field":"taskCount","expected":1}],"idempotency":"NONE"},
+              {"operationId":"updateTask","method":"PUT","path":"/api/tasks","authProfile":"writer",
+               "fixtureRecipe":{"kind":"SYNTHETIC_JSON_V1","inputs":[
+                 {"pointer":"/parentId","source":"RUN_CAPTURE","operationId":"createTask","capture":"id"}]},
+               "captures":{},"observations":[{"field":"taskCount","expected":2}],"idempotency":"NONE"}]}
+            """.trimIndent(),
+        )
+        val openApi = AtomicReference(
+            """
+            {"openapi":"3.0.1","info":{"title":"Tasks","version":"1"},"paths":{
+              "/health":{"get":{"operationId":"health","responses":{"200":{"description":"ok"}}}},
+              "/api/tasks":{
+                "get":{"operationId":"readTasks","responses":{"200":{"description":"ok"}}},
+                "post":{"operationId":"createTask",
+                  "requestBody":{"content":{"application/json":{"schema":{"type":"object",
+                    "required":["name"],"properties":{"name":{"type":"string"}}}}}},
+                  "responses":{"201":{"description":"created","content":{"application/json":{"schema":{
+                    "type":"object","properties":{"id":{"type":"integer"}}}}}}}},
+                "put":{"operationId":"updateTask",
+                  "requestBody":{"content":{"application/json":{"schema":{"type":"object",
+                    "required":["parentId"],"properties":{"parentId":{"type":"integer"}}}}}},
+                  "responses":{"201":{"description":"updated"}}}}}}
+            """.trimIndent(),
+        )
+        val target = genericTarget(fixture, manifest, openApi)
+        target.start()
+        try {
+            val approvedOpenApi = openApi.get()
+            openApi.set(approvedOpenApi.replace("\"id\":{\"type\":\"integer\"}", "\"id\":{\"type\":\"string\"}"))
+            val mismatched = post(
+                "/api/target-profiles/proposals",
+                genericProposal("Mismatched capture ${UUID.randomUUID()}", target.address.port),
+                authorizationHeader(),
+            )
+            assertEquals(400, mismatched.statusCode(), mismatched.body())
+            assertContains(mismatched.body(), "Fixture capture type does not match OpenAPI request field")
+            openApi.set(approvedOpenApi)
+            val proposed = post(
+                "/api/target-profiles/proposals",
+                genericProposal("Captured ID ${UUID.randomUUID()}", target.address.port),
+                authorizationHeader(),
+            )
+            assertEquals(202, proposed.statusCode(), proposed.body())
+            val versionId = objectMapper.readTree(proposed.body()).path("id").asString()
+            val targetId = objectMapper.readTree(proposed.body()).path("targetSystemId").asString()
+            val cookie = proposed.headers().firstValue("Set-Cookie").orElseThrow().substringBefore(';')
+            assertEquals(202, post(
+                "/api/target-profiles/$versionId/activate",
+                """{"confirmation":"ACTIVATE_TARGET_PROFILE_VERSION"}""",
+                authorizationHeader() + mapOf("Cookie" to cookie),
+            ).statusCode())
+            assertEquals(200, put(
+                "/api/targets/$targetId/runtime-credentials",
+                """{"roles":{"writer":"role-test-token"}}""",
+                executorAuthorizationHeader() + mapOf("Cookie" to cookie),
+            ).statusCode())
+            val discovery = get("/api/targets/$targetId/pilot-discovery", mapOf("Cookie" to cookie))
+            assertEquals(200, discovery.statusCode(), discovery.body())
+            assertTrue(objectMapper.readTree(discovery.body()).path("candidates").any {
+                it.path("id").asString() == "generic-write-2" &&
+                    it.path("readiness").asString() == "READY"
+            }, discovery.body())
+            val run = post(
+                "/api/targets/$targetId/pilot-template-runs",
+                """{"candidateIds":["generic-write-2"],"confirmation":"EXECUTE_PILOT_TEMPLATES"}""",
+                executorAuthorizationHeader() + mapOf(
+                    "Cookie" to cookie, "Idempotency-Key" to "generic-${UUID.randomUUID()}",
+                ),
+            )
+            assertEquals(201, run.statusCode(), run.body())
+            assertContains(run.body(), "\"resultOutcome\":\"PASSED\"")
+            assertContains(run.body(), "\"cleanupVerified\":true")
+        } finally {
+            target.stop(0)
+        }
+    }
+
+    @Test
+    fun `generic candidate is not ready when its run tagged fixture violates OpenAPI length`() {
+        val fixture = GenericFixture("labels", "POST", "writer", "labelCount")
+        val manifest = AtomicReference(genericManifest(fixture))
+        val openApi = AtomicReference(
+            genericOpenApi(fixture).replace(
+                "\"name\":{\"type\":\"string\"}",
+                "\"name\":{\"type\":\"string\",\"maxLength\":8}",
+            ),
+        )
+        val target = genericTarget(fixture, manifest, openApi)
+        target.start()
+        try {
+            val proposed = post(
+                "/api/target-profiles/proposals",
+                genericProposal("Limited fixture ${UUID.randomUUID()}", target.address.port),
+                authorizationHeader(),
+            )
+            assertEquals(202, proposed.statusCode(), proposed.body())
+            val versionId = objectMapper.readTree(proposed.body()).path("id").asString()
+            val targetId = objectMapper.readTree(proposed.body()).path("targetSystemId").asString()
+            val cookie = proposed.headers().firstValue("Set-Cookie").orElseThrow().substringBefore(';')
+            assertEquals(202, post(
+                "/api/target-profiles/$versionId/activate",
+                """{"confirmation":"ACTIVATE_TARGET_PROFILE_VERSION"}""",
+                authorizationHeader() + mapOf("Cookie" to cookie),
+            ).statusCode())
+            val discovery = get("/api/targets/$targetId/pilot-discovery", mapOf("Cookie" to cookie))
+            assertEquals(200, discovery.statusCode(), discovery.body())
+            assertTrue(objectMapper.readTree(discovery.body()).path("candidates").any {
+                it.path("id").asString() == "generic-write-1" &&
+                    it.path("readiness").asString() == "NOT_READY" &&
+                    it.path("missingOperations").toString().contains("OpenAPI-compatible fixture")
+            }, discovery.body())
         } finally {
             target.stop(0)
         }
@@ -289,8 +574,11 @@ class TargetProfileApiIntegrationTests {
         fixture: GenericFixture,
         manifest: AtomicReference<String>,
         openApi: AtomicReference<String> = AtomicReference(genericOpenApi(fixture)),
+        publicRead: Boolean = false,
     ): HttpServer =
         HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+            val runCounts = ConcurrentHashMap<String, AtomicInteger>()
+            val idempotencyKeys = ConcurrentHashMap.newKeySet<String>()
             createContext("/openapi.json") { exchange ->
                 val document = openApi.get().toByteArray()
                 exchange.sendResponseHeaders(200, document.size.toLong())
@@ -309,7 +597,25 @@ class TargetProfileApiIntegrationTests {
             }
             createContext("/api/harness/state") { exchange ->
                 val runId = exchange.requestHeaders.getFirst("X-ARL-Run-Id")
-                val document = """{"version":"1.0","runId":"$runId","${fixture.field}":0}""".toByteArray()
+                val count = runCounts[runId]?.get() ?: 0
+                val document = """{"version":"1.0","runId":"$runId","${fixture.field}":$count}""".toByteArray()
+                exchange.responseHeaders.add("X-ARL-Harness-Version", "1")
+                exchange.responseHeaders.add("Content-Type", "application/json")
+                exchange.sendResponseHeaders(200, document.size.toLong())
+                exchange.responseBody.use { it.write(document) }
+            }
+            createContext("/api/harness/reset") { exchange ->
+                val runId = exchange.requestHeaders.getFirst("X-ARL-Run-Id")
+                val removed = runCounts.remove(runId)?.get() ?: 0
+                val document = """{"version":"1.0","runId":"$runId","clean":true,"removedFixtureCount":$removed,"activeFaultCount":0}""".toByteArray()
+                exchange.responseHeaders.add("X-ARL-Harness-Version", "1")
+                exchange.responseHeaders.add("Content-Type", "application/json")
+                exchange.sendResponseHeaders(200, document.size.toLong())
+                exchange.responseBody.use { it.write(document) }
+            }
+            createContext("/api/harness/readiness") { exchange ->
+                val runId = exchange.requestHeaders.getFirst("X-ARL-Run-Id")
+                val document = """{"version":"1.0","runId":"$runId","ready":true,"reason":"fixture visible"}""".toByteArray()
                 exchange.responseHeaders.add("X-ARL-Harness-Version", "1")
                 exchange.responseHeaders.add("Content-Type", "application/json")
                 exchange.sendResponseHeaders(200, document.size.toLong())
@@ -317,7 +623,27 @@ class TargetProfileApiIntegrationTests {
             }
             createContext("/api/${fixture.resource}") { exchange ->
                 val valid = exchange.requestHeaders.getFirst("Authorization") == "Bearer role-test-token"
-                exchange.sendResponseHeaders(if (valid) 200 else 401, -1)
+                if (valid && exchange.requestMethod in setOf(fixture.method, "PUT")) {
+                    if (exchange.requestMethod == "PUT" && manifest.get().contains("updateTask")) {
+                        val body = objectMapper.readTree(exchange.requestBody.readAllBytes())
+                        if (!body.path("parentId").isNumber) {
+                            exchange.sendResponseHeaders(400, -1)
+                            return@createContext
+                        }
+                    }
+                    val runId = exchange.requestHeaders.getFirst("X-ARL-Run-Id")
+                    val key = exchange.requestHeaders.getFirst("Idempotency-Key")
+                    if (key == null || idempotencyKeys.add("$runId:$key")) {
+                        runCounts.computeIfAbsent(runId) { AtomicInteger() }.incrementAndGet()
+                    }
+                    val document = if (fixture.resource == "tasks") """{"id":42}""".toByteArray()
+                        else """{"id":"synthetic"}""".toByteArray()
+                    exchange.responseHeaders.add("Content-Type", "application/json")
+                    exchange.sendResponseHeaders(201, document.size.toLong())
+                    exchange.responseBody.use { it.write(document) }
+                } else {
+                    exchange.sendResponseHeaders(if (valid || publicRead && exchange.requestMethod == "GET") 200 else 401, -1)
+                }
             }
         }
 
@@ -621,13 +947,11 @@ class TargetProfileApiIntegrationTests {
 
     private fun profileJson(yaml: String): String = "{\"yaml\":${objectMapper.writeValueAsString(yaml)}}"
 
-    private fun get(path: String): HttpResponse<String> = httpClient.send(
-        request(path)
-            .header("Authorization", "Bearer profile-editor-test-token")
-            .GET()
-            .build(),
-        HttpResponse.BodyHandlers.ofString(),
-    )
+    private fun get(path: String, headers: Map<String, String> = emptyMap()): HttpResponse<String> {
+        val request = request(path).header("Authorization", "Bearer profile-editor-test-token")
+        headers.forEach { (name, value) -> request.header(name, value) }
+        return httpClient.send(request.GET().build(), HttpResponse.BodyHandlers.ofString())
+    }
 
     private fun post(
         path: String,

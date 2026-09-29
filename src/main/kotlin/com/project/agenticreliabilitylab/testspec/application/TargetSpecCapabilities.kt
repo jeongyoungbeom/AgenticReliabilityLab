@@ -31,8 +31,8 @@ data class TargetSpecCapabilities(
     /** Paths the Profile registers, as "METHOD /path". Nothing else may be called. */
     val allowedCalls: Set<String>,
     val authProfiles: Set<String>,
-    /** Required auth profile for each registered call. A present null value explicitly means no auth. */
-    val authProfilesByCall: Map<String, String?> = emptyMap(),
+    /** Approved auth profiles per registered call; a null member explicitly permits no auth. */
+    val authProfilesByCall: Map<String, Set<String?>> = emptyMap(),
     /** Profile-owned executable observation source definitions, keyed by source name. */
     val observationSources: Map<String, DeclaredObservationSource>,
     val supportedFaults: Set<String>,

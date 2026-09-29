@@ -46,8 +46,10 @@ export function PilotTemplateRunnerPanel({
   }, [api, targetSystemId, refreshKey])
 
   useEffect(() => {
-    if (!harnessReady) setSelected([])
-  }, [harnessReady])
+    setSelected((current) => current.filter((id) =>
+      discovery?.candidates.some((candidate) => candidate.id === id && eligible(candidate, harnessReady)),
+    ))
+  }, [harnessReady, discovery])
 
   async function load(targetId: string, isCurrent: () => boolean = () => currentTargetId.current === targetId) {
     try {
@@ -71,11 +73,12 @@ export function PilotTemplateRunnerPanel({
   }
 
   async function execute() {
-    if (!targetSystemId || !harnessReady || selected.length === 0) return
+    if (!targetSystemId || selected.length === 0 ||
+      !selected.every((id) => discovery?.candidates.some((candidate) => candidate.id === id && eligible(candidate, harnessReady)))) return
     const targetId = targetSystemId
     const candidateIds = [...selected]
     const accepted = window.confirm(
-      `${candidateIds.length}개 고정 템플릿을 순서대로 실행합니다. 각 실행 전 reset 검증을 하고, 끝나면 reset/fault 해제를 검증합니다. 계속할까요?`,
+      `${candidateIds.length}개 기본 후보를 순서대로 실행합니다. 상태 변경 후보는 실행 전후 reset과 정리를 검증합니다. 계속할까요?`,
     )
     if (!accepted) return
     try {
@@ -98,26 +101,26 @@ export function PilotTemplateRunnerPanel({
   }
 
   if (!targetSystemId) return null
-  const ready = harnessReady ? discovery?.candidates.filter((candidate) => candidate.readiness === 'READY') ?? [] : []
+  const ready = discovery?.candidates.filter((candidate) => eligible(candidate, harnessReady)) ?? []
 
   return (
     <section className="card pilot-template-runner">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">6. 고정 템플릿 실행</p>
+          <p className="eyebrow">6. 기본 후보 실행</p>
           <h2>선택 → 명시 승인 → 순차 결과</h2>
         </div>
         <button className="secondary-button" type="button" onClick={() => void load(targetSystemId)} disabled={busy}>후보 새로고침</button>
       </div>
       <p className="notice warning">
-        READY 후보만 실행합니다. seller/buyer/harness runtime credential과 preflight가 준비되어야 하며, Target 토큰은 이 화면이나 결과에 저장되지 않습니다.
+        READY 후보만 실행합니다. 쓰기 후보에는 필요한 역할과 Harness credential preflight가 필요합니다. Target 토큰은 이 화면이나 결과에 저장되지 않습니다.
       </p>
       {discovery && !harnessReady && (
         <p className="notice warning">
           Harness 실행 게이트: {harnessPreflight
             ? `${preflightLabel(harnessPreflight.status)} (${harnessPreflight.method ?? 'GET'} ${harnessPreflight.path ?? '/state'})`
             : 'Harness GET state preflight가 필요합니다.'}
-          {' '}Profile에는 state, reset, fault, fault release 네 경로가 모두 선언돼야 합니다.
+          {' '}읽기 전용 후보는 public GET 계약이 준비되면 실행할 수 있습니다. 쓰기 후보는 필요한 Harness 기능을 확인합니다.
         </p>
       )}
       {ready.length > 0 && (
@@ -130,11 +133,11 @@ export function PilotTemplateRunnerPanel({
           ))}
         </div>
       )}
-      {discovery && harnessReady && ready.length === 0 && (
+      {discovery && ready.length === 0 && (
         <p className="notice warning">현재 Swagger allowlist에서 실행 가능한 후보가 없습니다.</p>
       )}
       <div className="button-row">
-        <button type="button" onClick={() => void execute()} disabled={busy || !harnessReady || selected.length === 0}>선택한 템플릿 실행</button>
+        <button type="button" onClick={() => void execute()} disabled={busy || selected.length === 0}>선택한 템플릿 실행</button>
       </div>
       {message && <p className="notice error">{message}</p>}
       {result && (
@@ -176,6 +179,13 @@ function labelFor(candidateId: string): string {
     'order-idempotency': '주문 idempotency', 'order-concurrency': '주문 동시성', 'payment-failure-recovery': '결제 장애·복구',
   }
   return labels[candidateId] ?? candidateId
+}
+
+function eligible(candidate: PilotDiscovery['candidates'][number], harnessReady: boolean): boolean {
+  if (candidate.readiness !== 'READY') return false
+  if (harnessReady) return true
+  return candidate.operations.length > 0 && candidate.operations.every((operation) =>
+    ['GET', 'HEAD'].includes(operation.method.toUpperCase()) && operation.authProfile === null)
 }
 
 function errorMessage(error: unknown): string {

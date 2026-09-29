@@ -51,6 +51,7 @@ data class TargetRegistrationDefinition(
     val openApiPaths: List<String>? = null,
     val harnessManifestPath: String? = null,
     val contractSha256: String? = null,
+    val openApiSha256: String? = null,
     val sourceRepository: String,
     val identityVerification: IdentityVerificationStatus,
     val capabilities: Set<TargetCapability>,

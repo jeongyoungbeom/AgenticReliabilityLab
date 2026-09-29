@@ -95,7 +95,9 @@ describe('App shell', () => {
     vi.mocked(globalThis.fetch).mockImplementation(async (input) =>
       String(input).includes('/effective-settings') ? json(EFFECTIVE_SETTINGS)
         : String(input).includes('/pilot-discovery') ? json(PILOT_DISCOVERY)
-          : json(REGISTERED_TARGET))
+          : String(input).includes('/knowledge-snapshots') || String(input).includes('/test-specification-generations')
+            ? json([])
+            : json(REGISTERED_TARGET))
     render(<App />)
 
     await userEvent.click(await screen.findByRole('button', { name: /Other Target/ }))

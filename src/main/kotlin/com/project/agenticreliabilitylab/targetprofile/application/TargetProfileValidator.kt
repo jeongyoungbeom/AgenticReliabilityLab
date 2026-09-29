@@ -46,6 +46,7 @@ class TargetProfileValidator(
         }
         healthPath.validateFixedRelativePath("Target health path")
         contractSha256?.let { require(Regex("[0-9a-f]{64}").matches(it)) { "Invalid contract SHA-256" } }
+        openApiSha256?.let { require(Regex("[0-9a-f]{64}").matches(it)) { "Invalid OpenAPI SHA-256" } }
         harnessManifestPath?.let { path ->
             require(environment in PILOT_ENVIRONMENTS) { "Harness manifest is allowed only for LOCAL or TEST Targets" }
             path.validateFixedRelativePath("Target Harness manifest path")

@@ -44,7 +44,7 @@ class SpecHttpCaller(
     ): RecordedResponse {
         val uri = resolveUri(target, call, bindings)
         val headers = buildHeaders(target, call, bindings, runId, trialScope, credentialSessionId, harnessRequest)
-        val body = call.bodyJson?.let { references.resolve(it, bindings) }
+        val body = call.bodyJson?.let { references.resolveJsonBody(it, bindings) }
             ?.toByteArray(StandardCharsets.UTF_8) ?: ByteArray(0)
 
         val startedAt = System.nanoTime()

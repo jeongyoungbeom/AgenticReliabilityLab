@@ -16,6 +16,7 @@ import com.project.agenticreliabilitylab.testspec.domain.TrialExecution
 import com.project.agenticreliabilitylab.testspec.domain.TrialOutcome
 import com.project.agenticreliabilitylab.testspec.domain.TrialResult
 import com.project.agenticreliabilitylab.testspec.domain.TrialStopPolicy
+import com.project.agenticreliabilitylab.testspec.domain.WorkloadStepKind
 import org.springframework.stereotype.Component
 import java.time.Duration
 
@@ -43,7 +44,8 @@ class TestSpecRunner(
         faultInjectionPlan: FaultInjectionPlan? = null,
         credentialSessionId: String? = null,
     ): SpecRunOutcome {
-        requireSafeEnvironment(specification, target)
+        val changesState = requireSafeEnvironment(specification, target)
+        val executionPlan = if (changesState) plan else ResetPlan.NOT_REQUIRED
         val trials = mutableListOf<TrialResult>()
         val executions = mutableListOf<TrialExecution>()
         val resets = mutableListOf<ResetOutcome>()
@@ -51,7 +53,7 @@ class TestSpecRunner(
         var faultsReleased = true
 
         try {
-            val baseline = safeReset(plan, target, runId, credentialSessionId)
+            val baseline = safeReset(executionPlan, target, runId, credentialSessionId)
             resets.add(baseline)
             if (!baseline.verified) {
                 val reason = baseline.failure ?: "Pre-run reset was not verified"
@@ -59,7 +61,7 @@ class TestSpecRunner(
                 trials.add(evaluator.unrunnable(specification, 1, reason))
             } else {
                 runTrials(
-                    specification, target, plan, runId, observationSources, faultInjectionPlan,
+                    specification, target, executionPlan, runId, observationSources, faultInjectionPlan,
                     trials, executions, resets, cleanup, credentialSessionId,
                 )
             }
@@ -67,7 +69,7 @@ class TestSpecRunner(
             // Faults are released before the environment reset, so the reset's own verification checks see a
             // Target that is no longer under an injected fault rather than one still mid-failure.
             faultsReleased = releasePendingFaults(faultInjectionPlan, target, runId, executions, credentialSessionId)
-            if (cleanup.owed) resets.add(safeReset(plan, target, runId, credentialSessionId))
+            if (cleanup.owed) resets.add(safeReset(executionPlan, target, runId, credentialSessionId))
         }
 
         return SpecRunOutcome(
@@ -218,17 +220,24 @@ class TestSpecRunner(
      * the environment check against the Target itself. A Profile can be edited; which environment a Target is
      * cannot, and a write to production must fail on the fact rather than on a configuration record about it.
      */
-    private fun requireSafeEnvironment(specification: TestSpecification, target: RegisteredTarget) {
+    private fun requireSafeEnvironment(specification: TestSpecification, target: RegisteredTarget): Boolean {
         val mutating = (
             specification.setup.map { it.call } + specification.workload.mapNotNull { it.call } +
                 specification.observations.mapNotNull { it.call }
             )
-            .any { it.method.uppercase() !in READ_METHODS }
+            .any { it.method.uppercase() !in READ_METHODS } ||
+            specification.workload.any { step ->
+                step.kind in setOf(
+                    WorkloadStepKind.INJECT_FAULT, WorkloadStepKind.RELEASE_FAULT,
+                    WorkloadStepKind.INFRA_ACTION, WorkloadStepKind.INFRA_RESTORE,
+                )
+            }
         if (mutating && target.environment !in WRITABLE_ENVIRONMENTS) {
             throw SpecExecutionException(
                 "This specification changes state, which is refused in '${target.environment}'",
             )
         }
+        return mutating
     }
 
     private fun shouldStop(specification: TestSpecification, trial: TrialResult): Boolean =

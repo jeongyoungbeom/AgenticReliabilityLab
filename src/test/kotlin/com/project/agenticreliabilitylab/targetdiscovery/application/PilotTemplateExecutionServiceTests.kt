@@ -28,6 +28,7 @@ import kotlin.test.assertIs
 
 class PilotTemplateExecutionServiceTests {
     @Test
+    @Suppress("LongMethod") // A replay must prove it skipped every external collaborator and kept stored outcomes.
     fun `replays an existing matching session without touching discovery credentials or the Target`() {
         val discovery = Mockito.mock(PilotDiscoveryService::class.java)
         val specifications = Mockito.mock(TestSpecificationService::class.java)
@@ -72,6 +73,7 @@ class PilotTemplateExecutionServiceTests {
             sessions,
             IdentifierGenerator { error("A replay must not create an identifier") },
             Clock.fixed(Instant.EPOCH, ZoneOffset.UTC),
+            Mockito.mock(GenericPilotTemplateFactory::class.java),
         )
 
         val result = service.execute(
@@ -99,7 +101,7 @@ class PilotTemplateExecutionServiceTests {
         val templates = Mockito.mock(PilotTestTemplateFactory::class.java)
         val sessions = InMemoryPilotTestSessionStore()
         val sessionId = UUID.randomUUID()
-        Mockito.`when`(discovery.find("sideproject-local")).thenReturn(readyDiscovery())
+        Mockito.`when`(discovery.find("sideproject-local", "credential-session")).thenReturn(readyDiscovery())
         Mockito.`when`(preflight.preflight("sideproject-local", "credential-session"))
             .thenReturn(listOf(readyHarnessPreflight()))
         Mockito.`when`(templates.document("availability", 1))
@@ -124,7 +126,7 @@ class PilotTemplateExecutionServiceTests {
         val preflight = Mockito.mock(TargetCredentialPreflightService::class.java)
         val templates = Mockito.mock(PilotTestTemplateFactory::class.java)
         val sessions = InMemoryPilotTestSessionStore()
-        Mockito.`when`(discovery.find("sideproject-local")).thenReturn(readyDiscovery())
+        Mockito.`when`(discovery.find("sideproject-local", "credential-session")).thenReturn(readyDiscovery())
         Mockito.`when`(preflight.preflight("sideproject-local", "credential-session"))
             .thenReturn(listOf(readyHarnessPreflight()))
         val unsafeTargetFailure = "Authorization: Bearer pilot-secret response body={\"token\":\"response-secret\"}"
@@ -173,6 +175,7 @@ class PilotTemplateExecutionServiceTests {
         sessions,
         IdentifierGenerator { sessionId },
         Clock.fixed(Instant.parse("2026-08-28T00:00:00Z"), ZoneOffset.UTC),
+        Mockito.mock(GenericPilotTemplateFactory::class.java),
     )
 
     private fun command() = ExecutePilotTemplates(

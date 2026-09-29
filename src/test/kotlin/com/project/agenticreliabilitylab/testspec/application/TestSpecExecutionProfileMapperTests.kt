@@ -42,7 +42,7 @@ class TestSpecExecutionProfileMapperTests {
         assertEquals(20, mapped.capabilities.maxRequestCount)
         assertEquals(10, mapped.capabilities.maxTrials)
         assertTrue(mapped.capabilities.allowedCalls.contains("POST /products"))
-        assertEquals("seller", mapped.capabilities.authProfilesByCall["POST /products"])
+        assertEquals(setOf("seller"), mapped.capabilities.authProfilesByCall["POST /products"])
         assertEquals(
             DeclaredObservationSourceKind.HARNESS_STATE,
             mapped.capabilities.observationSources.getValue("harness").kind,

@@ -4,6 +4,7 @@ import com.project.agenticreliabilitylab.testspec.domain.SpecExecutionException
 import com.project.agenticreliabilitylab.testspec.domain.TestSpecification
 import com.project.agenticreliabilitylab.testspec.domain.WorkloadStepKind
 import org.springframework.stereotype.Component
+import tools.jackson.core.type.TypeReference
 import tools.jackson.databind.ObjectMapper
 
 /**
@@ -25,6 +26,40 @@ class SpecReferenceResolver(
 
     fun resolveAll(values: Map<String, String>, bindings: Map<String, String>): Map<String, String> =
         values.mapValues { (_, value) -> resolve(value, bindings) }
+
+    /** Resolves request references as JSON values, preserving string escaping and scalar capture types. */
+    @Suppress("TooGenericExceptionCaught") // Any malformed body has the same safe pre-dispatch failure.
+    fun resolveJsonBody(bodyJson: String, bindings: Map<String, String>): String {
+        val body = try {
+            objectMapper.readValue(bodyJson, ANY_JSON)
+        } catch (exception: Exception) {
+            throw SpecExecutionException("Request body is not valid JSON", exception)
+        }
+        return objectMapper.writeValueAsString(resolveJsonValue(body, bindings))
+    }
+
+    private fun resolveJsonValue(value: Any?, bindings: Map<String, String>): Any? = when (value) {
+        is Map<*, *> -> value.entries.associate { (key, entry) ->
+            key.toString() to resolveJsonValue(entry, bindings)
+        }
+        is List<*> -> value.map { entry -> resolveJsonValue(entry, bindings) }
+        is String -> {
+            val typed = SCALAR_PLACEHOLDER.matchEntire(value)
+            if (typed == null) resolve(value, bindings) else {
+                val raw = bindings[typed.groupValues[2]]
+                    ?: throw SpecExecutionException("Scalar capture reference is not available")
+                val node = try { objectMapper.readTree(raw) } catch (_: Exception) { null }
+                when (typed.groupValues[1]) {
+                    "number" -> if (node?.isNumber == true) objectMapper.readValue(raw, ANY_JSON)
+                        else throw SpecExecutionException("Scalar capture is not a number")
+                    "boolean" -> if (node?.isBoolean == true) node.asBoolean()
+                        else throw SpecExecutionException("Scalar capture is not a boolean")
+                    else -> error("Unsupported scalar capture type")
+                }
+            }
+        }
+        else -> value
+    }
 
     /** Substitutes what it can and leaves the rest in place, so a later check can report every problem at once. */
     fun resolveOrKeep(text: String, bindings: Map<String, String>): String = PLACEHOLDER.replace(text) { match ->
@@ -90,5 +125,7 @@ class SpecReferenceResolver(
 
     private companion object {
         val PLACEHOLDER = Regex("\\{\\{([^}]+)}}")
+        val SCALAR_PLACEHOLDER = Regex("\\{\\{arl-(number|boolean):([A-Za-z0-9_.-]+)}}")
+        val ANY_JSON = object : TypeReference<Any?>() {}
     }
 }

@@ -90,7 +90,7 @@ class SpecWorkloadExecutor(
         credentialSessionId: String?,
     ) {
         val prefix = "setup.${step.name}"
-        val body = step.call.bodyJson?.let { json -> references.resolve(json, state.bindings) }
+        val body = step.call.bodyJson?.let { json -> references.resolveJsonBody(json, state.bindings) }
         state.bindings.putAll(references.bodyFields(prefix, body))
         state.markStateChange(step.call)
 
